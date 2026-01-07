@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { 
   ArrowLeft, ThumbsUp, Clock, User, Paperclip, 
-  Tag, AlertCircle, Link as LinkIcon, Plus, Edit2, Send 
+  Tag, AlertCircle, Link as LinkIcon, Plus, Edit2, Send, Map 
 } from 'lucide-react';
+import AddToRoadmapModal from './AddToRoadmapModal';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
@@ -49,6 +50,7 @@ export default function FeedbackDetail({
   const [editingMeta, setEditingMeta] = useState(false);
   const [status, setStatus] = useState(feedback.status);
   const [priority, setPriority] = useState(feedback.priority || '');
+  const [showAddToRoadmap, setShowAddToRoadmap] = useState(false);
 
   const handleSubmitReply = async () => {
     if (!replyContent.trim()) return;
@@ -129,10 +131,10 @@ export default function FeedbackDetail({
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => onAddToRoadmap?.(feedback)}
+                    onClick={() => setShowAddToRoadmap(true)}
                     className="text-slate-600"
                   >
-                    <Plus className="h-4 w-4 mr-1" />
+                    <Map className="h-4 w-4 mr-1" />
                     Add to Roadmap
                   </Button>
                 )}
@@ -323,6 +325,15 @@ export default function FeedbackDetail({
           </div>
         </div>
       </div>
+
+      {/* Add to Roadmap Modal */}
+      <AddToRoadmapModal
+        isOpen={showAddToRoadmap}
+        onClose={() => setShowAddToRoadmap(false)}
+        feedback={feedback}
+        workspaceId={feedback.workspace_id}
+        onSuccess={onUpdate}
+      />
     </div>
   );
 }
