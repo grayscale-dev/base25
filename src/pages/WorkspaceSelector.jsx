@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Folder, Plus, LogOut, User } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
@@ -14,6 +23,10 @@ export default function WorkspaceSelector() {
   const [workspaces, setWorkspaces] = useState([]);
   const [workspaceRoles, setWorkspaceRoles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isTenantAdmin, setIsTenantAdmin] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newWorkspace, setNewWorkspace] = useState({ name: '', slug: '', description: '' });
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -23,6 +36,11 @@ export default function WorkspaceSelector() {
     try {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
+
+      // Check if user is tenant admin
+      const tenantMembers = await base44.entities.TenantMember.filter({ user_id: currentUser.id });
+      const tenantAdmin = tenantMembers.find(tm => tm.is_tenant_admin);
+      setIsTenantAdmin(!!tenantAdmin);
 
       // Load workspace roles
       const roles = await base44.entities.WorkspaceRole.filter({ 
@@ -67,6 +85,43 @@ export default function WorkspaceSelector() {
     return role?.role || 'viewer';
   };
 
+  const handleCreateWorkspace = async () => {
+    if (!newWorkspace.name || !newWorkspace.slug) return;
+    
+    setCreating(true);
+    try {
+      const tenantMembers = await base44.entities.TenantMember.filter({ user_id: user.id });
+      const tenantMember = tenantMembers[0];
+      
+      const workspace = await base44.entities.Workspace.create({
+        tenant_id: tenantMember.tenant_id,
+        name: newWorkspace.name,
+        slug: newWorkspace.slug,
+        description: newWorkspace.description,
+        visibility: 'restricted',
+        support_enabled: true,
+        status: 'active'
+      });
+
+      // Assign current user as admin
+      await base44.entities.WorkspaceRole.create({
+        workspace_id: workspace.id,
+        user_id: user.id,
+        email: user.email,
+        role: 'admin',
+        assigned_via: 'explicit'
+      });
+
+      setShowCreateModal(false);
+      setNewWorkspace({ name: '', slug: '', description: '' });
+      loadData();
+    } catch (error) {
+      console.error('Failed to create workspace:', error);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -109,13 +164,21 @@ export default function WorkspaceSelector() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-12">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            Select a Workspace
-          </h1>
-          <p className="text-slate-500">
-            Choose a workspace to view feedback, roadmap, and support.
-          </p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">
+              Select a Workspace
+            </h1>
+            <p className="text-slate-500">
+              Choose a workspace to view feedback, roadmap, and support.
+            </p>
+          </div>
+          {isTenantAdmin && (
+            <Button onClick={() => setShowCreateModal(true)} className="bg-slate-900 hover:bg-slate-800">
+              <Plus className="h-4 w-4 mr-2" />
+              Create Workspace
+            </Button>
+          )}
         </div>
 
         {workspaces.length === 0 ? (
