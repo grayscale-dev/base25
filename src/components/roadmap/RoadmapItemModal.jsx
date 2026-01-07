@@ -68,12 +68,26 @@ export default function RoadmapItemModal({
           visibility: 'public',
         });
       } else {
+        const oldStatus = item.status;
         await base44.entities.RoadmapItem.update(item.id, {
           title,
           description,
           status,
           target_quarter: targetQuarter,
         });
+        
+        // If status changed to "shipped", create changelog entry
+        if (oldStatus !== 'shipped' && status === 'shipped') {
+          await base44.entities.ChangelogEntry.create({
+            workspace_id: workspaceId,
+            roadmap_item_id: item.id,
+            title,
+            description,
+            release_date: new Date().toISOString().split('T')[0],
+            tags: item.tags || [],
+            visibility: 'public'
+          });
+        }
       }
       onSave?.();
       onClose();
