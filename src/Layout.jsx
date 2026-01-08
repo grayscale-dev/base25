@@ -103,8 +103,8 @@ export default function Layout({ children, currentPageName }) {
   const isAdmin = role === 'admin';
   const isStaff = ['support', 'admin'].includes(role);
 
-  // No layout for workspaces hub or join page
-  if (['Workspaces', 'JoinWorkspace'].includes(currentPageName)) {
+  // No layout for workspaces hub, join page, or landing page
+  if (['Workspaces', 'JoinWorkspace', 'Home'].includes(currentPageName)) {
     return children;
   }
 

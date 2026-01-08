@@ -14,9 +14,13 @@ export default function WorkspaceCard({ workspace, role, onClick }) {
       onClick={onClick}
     >
       <div className="flex items-start justify-between mb-4">
-        <div className="p-2.5 bg-slate-900 rounded-xl">
-          <Folder className="h-5 w-5 text-white" />
-        </div>
+        {workspace.logo_url ? (
+          <img src={workspace.logo_url} alt={workspace.name} className="h-12 w-12 object-contain rounded-xl" />
+        ) : (
+          <div className="p-2.5 rounded-xl" style={{ backgroundColor: workspace.primary_color || '#0f172a' }}>
+            <Folder className="h-5 w-5 text-white" />
+          </div>
+        )}
         <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-1 transition-all" />
       </div>
       
