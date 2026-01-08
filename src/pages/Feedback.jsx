@@ -41,9 +41,10 @@ export default function Feedback() {
   useEffect(() => {
     const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
     const storedRole = sessionStorage.getItem('currentRole');
+    const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
     
     if (!storedWorkspace) {
-      navigate(createPageUrl('WorkspaceSelector'));
+      navigate(createPageUrl(isPublicAccess ? 'PublicWorkspaceSelector' : 'WorkspaceSelector'));
       return;
     }
     
@@ -54,8 +55,13 @@ export default function Feedback() {
 
   const loadData = async () => {
     try {
-      const currentUser = await base44.auth.me();
-      setUser(currentUser);
+      const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+      
+      // Only load user if not public access
+      if (!isPublicAccess) {
+        const currentUser = await base44.auth.me();
+        setUser(currentUser);
+      }
       
       const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
       const feedback = await base44.entities.Feedback.filter(
@@ -111,8 +117,9 @@ export default function Feedback() {
     }
   };
 
-  const canCreateFeedback = ['contributor', 'support', 'admin'].includes(role);
-  const isStaff = ['support', 'admin'].includes(role);
+  const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+  const canCreateFeedback = ['contributor', 'support', 'admin'].includes(role) && !isPublicAccess;
+  const isStaff = ['support', 'admin'].includes(role) && !isPublicAccess;
 
   // Filter feedback
   const filteredFeedback = feedbackList.filter(fb => {

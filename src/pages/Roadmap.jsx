@@ -102,7 +102,8 @@ export default function Roadmap() {
     loadData();
   };
 
-  const isStaff = ['support', 'admin'].includes(role);
+  const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+  const isStaff = ['support', 'admin'].includes(role) && !isPublicAccess;
 
   if (loading) {
     return (

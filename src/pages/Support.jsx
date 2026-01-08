@@ -112,7 +112,8 @@ export default function Support() {
   };
 
   const canCreateThread = ['contributor', 'support', 'admin'].includes(role);
-  const isStaff = ['support', 'admin'].includes(role);
+  const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+  const isStaff = ['support', 'admin'].includes(role) && !isPublicAccess;
 
   // Filter threads
   const filteredThreads = threads.filter(thread => {

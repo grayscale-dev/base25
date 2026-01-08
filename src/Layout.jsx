@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Folder, LogOut, User, ChevronDown, Settings, Key, 
-  MessageSquareText, Map, HeadphonesIcon, Menu, X, Sparkles 
+  MessageSquareText, Map, HeadphonesIcon, Menu, X, Sparkles, ArrowLeft 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,6 +43,22 @@ export default function Layout({ children, currentPageName }) {
 
   const loadContext = async () => {
     try {
+      const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+      
+      // For public access, don't require authentication
+      if (isPublicAccess) {
+        if (needsWorkspace) {
+          const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+          const storedRole = sessionStorage.getItem('currentRole');
+          
+          if (storedWorkspace) {
+            setWorkspace(JSON.parse(storedWorkspace));
+            setRole(storedRole || 'viewer');
+          }
+        }
+        return;
+      }
+
       const currentUser = await base44.auth.me();
       setUser(currentUser);
 
@@ -89,8 +105,9 @@ export default function Layout({ children, currentPageName }) {
     return currentPageName === page;
   };
 
-  const isAdmin = role === 'admin';
-  const isStaff = ['support', 'admin'].includes(role);
+  const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+  const isAdmin = role === 'admin' && !isPublicAccess;
+  const isStaff = ['support', 'admin'].includes(role) && !isPublicAccess;
 
   // No layout for landing or workspace selectors
   if (['Landing', 'WorkspaceSelector', 'PublicWorkspaceSelector'].includes(currentPageName)) {
@@ -139,13 +156,27 @@ export default function Layout({ children, currentPageName }) {
                           <span className="ml-auto text-xs text-slate-400">Current</span>
                         )}
                       </DropdownMenuItem>
-                    ))}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link to={createPageUrl('WorkspaceSelector')} className="cursor-pointer">
-                        View all workspaces
-                      </Link>
-                    </DropdownMenuItem>
+                      ))}
+                      {!isPublicAccess && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                          <Link to={createPageUrl('WorkspaceSelector')} className="cursor-pointer">
+                            View all workspaces
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                      )}
+                      {isPublicAccess && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                          <Link to={createPageUrl('Landing')} className="cursor-pointer">
+                            Back to Home
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                      )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
@@ -201,7 +232,7 @@ export default function Layout({ children, currentPageName }) {
                 </div>
               )}
 
-              {user && (
+              {user && !isPublicAccess && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm" className="flex items-center gap-2">
@@ -224,6 +255,20 @@ export default function Layout({ children, currentPageName }) {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+              )}
+
+              {isPublicAccess && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    sessionStorage.clear();
+                    navigate(createPageUrl('Landing'));
+                  }}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Home
+                </Button>
               )}
 
               {/* Mobile menu button */}
