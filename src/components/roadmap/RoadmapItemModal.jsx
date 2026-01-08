@@ -41,6 +41,7 @@ export default function RoadmapItemModal({
   const [updateContent, setUpdateContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [postingUpdate, setPostingUpdate] = useState(false);
+  const [addToChangelog, setAddToChangelog] = useState(false);
 
   useEffect(() => {
     if (item) {
@@ -50,6 +51,7 @@ export default function RoadmapItemModal({
       setTargetQuarter(item.target_quarter || '');
     }
     setEditing(isNew);
+    setAddToChangelog(false);
   }, [item, isNew]);
 
   const handleSave = async () => {
@@ -76,8 +78,8 @@ export default function RoadmapItemModal({
           target_quarter: targetQuarter,
         });
         
-        // If status changed to "shipped", create changelog entry
-        if (oldStatus !== 'shipped' && status === 'shipped') {
+        // If checkbox is checked and status is shipped, create changelog entry
+        if (status === 'shipped' && addToChangelog) {
           await base44.entities.ChangelogEntry.create({
             workspace_id: workspaceId,
             roadmap_item_id: item.id,
@@ -206,6 +208,21 @@ export default function RoadmapItemModal({
                   </Select>
                 </div>
               </div>
+              
+              {status === 'shipped' && isStaff && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg border border-green-200">
+                  <input
+                    type="checkbox"
+                    id="addToChangelog"
+                    checked={addToChangelog}
+                    onChange={(e) => setAddToChangelog(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <label htmlFor="addToChangelog" className="text-sm text-green-900 cursor-pointer">
+                    Add to Changelog when saving
+                  </label>
+                </div>
+              )}
               
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <Button variant="ghost" onClick={() => isNew ? onClose() : setEditing(false)}>
