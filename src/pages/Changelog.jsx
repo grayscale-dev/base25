@@ -106,6 +106,56 @@ export default function Changelog() {
           ))}
         </div>
       )}
+
+      {/* Create Entry Modal */}
+      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Changelog Entry</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Title</Label>
+              <Input
+                value={newEntry.title}
+                onChange={(e) => setNewEntry({ ...newEntry, title: e.target.value })}
+                placeholder="What's new?"
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea
+                value={newEntry.description}
+                onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
+                placeholder="Describe what changed..."
+                className="mt-1.5 h-32"
+              />
+            </div>
+            <div>
+              <Label>Release Date</Label>
+              <Input
+                type="date"
+                value={newEntry.release_date}
+                onChange={(e) => setNewEntry({ ...newEntry, release_date: e.target.value })}
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCreateModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateEntry}
+              disabled={!newEntry.title || !newEntry.release_date || creating}
+              className="bg-slate-900 hover:bg-slate-800"
+            >
+              {creating ? 'Creating...' : 'Create Entry'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
