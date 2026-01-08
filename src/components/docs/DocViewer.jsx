@@ -77,6 +77,24 @@ export default function DocViewer({ doc, onRefresh }) {
         )}
       </div>
 
+      {/* Links Panel */}
+      {isStaff && (
+        <div className="mt-6">
+          <LinksPanel
+            workspaceId={doc.workspace_id}
+            itemType="docs"
+            itemId={doc.id}
+            links={{
+              feedback_ids: doc.feedback_ids || [],
+              roadmap_item_ids: doc.roadmap_item_ids || [],
+              changelog_entry_ids: doc.changelog_entry_ids || []
+            }}
+            onUpdate={onRefresh}
+            isStaff={isStaff}
+          />
+        </div>
+      )}
+
       {/* Comments */}
       <div className="border-t border-slate-200 pt-8">
         <div className="flex items-center gap-2 mb-6">

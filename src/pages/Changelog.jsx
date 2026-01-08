@@ -188,46 +188,20 @@ export default function Changelog() {
                 {entry.description}
               </p>
 
-              {/* Type Badge */}
-              {entry.feedbackType && (
-                <div className="mb-4">
-                  {entry.feedbackType === 'question' && (
-                    <Badge variant="purple">❓ Question</Badge>
-                  )}
-                  {entry.feedbackType === 'bug' && (
-                    <Badge variant="danger">🐛 Bug</Badge>
-                  )}
-                  {entry.feedbackType === 'feature_request' && (
-                    <Badge variant="primary">✨ Feature</Badge>
-                  )}
-                  {entry.feedbackType === 'improvement' && (
-                    <Badge variant="success">📈 Improvement</Badge>
-                  )}
-                </div>
-              )}
-
-              {/* Roadmap Link */}
-              {entry.roadmapItem && (
-                <a
-                  href={`${createPageUrl('Roadmap')}?item=${entry.roadmap_item_id}`}
-                  className="inline-flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors mb-4"
-                >
-                  <Map className="h-4 w-4 text-purple-600" />
-                  <span className="text-sm text-purple-900 font-medium">
-                    View on Roadmap →
-                  </span>
-                </a>
-              )}
-
-              {/* Tags */}
-              {entry.tags && entry.tags.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {entry.tags.map((tag, idx) => (
-                    <Badge key={idx} variant="outline" size="sm">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
+              {/* Links Panel */}
+              {isAdmin && (
+                <LinksPanel
+                  workspaceId={workspace?.id}
+                  itemType="changelog"
+                  itemId={entry.id}
+                  links={{
+                    roadmap_item_ids: entry.roadmap_item_ids || [],
+                    feedback_ids: entry.feedback_ids || [],
+                    doc_page_ids: entry.doc_page_ids || []
+                  }}
+                  onUpdate={loadChangelog}
+                  isStaff={isAdmin}
+                />
               )}
             </div>
           ))}

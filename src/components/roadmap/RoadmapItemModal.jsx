@@ -292,36 +292,20 @@ export default function RoadmapItemModal({
                 )}
               </div>
 
-              {/* Linked Feedback */}
-              {linkedFeedback.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-slate-700 mb-2">Linked Feedback</h4>
-                  <div className="space-y-2">
-                    {linkedFeedback.map(fb => (
-                      <a
-                        key={fb.id}
-                        href={`${createPageUrl('Feedback')}?id=${fb.id}`}
-                        className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
-                      >
-                        <MessageSquare className="h-4 w-4 text-slate-400" />
-                        <span className="text-sm text-slate-600">{fb.title}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Changelog Link */}
-              {changelogEntry && (
-                <a
-                  href={createPageUrl('Changelog')}
-                  className="flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
-                >
-                  <Sparkles className="h-4 w-4 text-purple-600" />
-                  <span className="text-sm text-purple-900 font-medium">
-                    View in Changelog →
-                  </span>
-                </a>
+              {/* Links Panel */}
+              {item && (
+                <LinksPanel
+                  workspaceId={workspaceId}
+                  itemType="roadmap"
+                  itemId={item.id}
+                  links={{
+                    feedback_ids: item.linked_feedback_ids || [],
+                    changelog_entry_ids: item.changelog_entry_ids || [],
+                    doc_page_ids: item.doc_page_ids || []
+                  }}
+                  onUpdate={onSave}
+                  isStaff={isStaff}
+                />
               )}
 
               {/* Updates */}
