@@ -8,6 +8,8 @@ import Roadmap from './pages/Roadmap';
 import Support from './pages/Support';
 import WorkspaceSelector from './pages/WorkspaceSelector';
 import WorkspaceSettings from './pages/WorkspaceSettings';
+import JoinWorkspace from './pages/JoinWorkspace';
+import CustomerHome from './pages/CustomerHome';
 import __Layout from './Layout.jsx';
 
 
@@ -22,6 +24,8 @@ export const PAGES = {
     "Support": Support,
     "WorkspaceSelector": WorkspaceSelector,
     "WorkspaceSettings": WorkspaceSettings,
+    "JoinWorkspace": JoinWorkspace,
+    "CustomerHome": CustomerHome,
 }
 
 export const pagesConfig = {

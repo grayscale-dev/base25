@@ -109,8 +109,8 @@ export default function Layout({ children, currentPageName }) {
   const isAdmin = role === 'admin' && !isPublicAccess;
   const isStaff = ['support', 'admin'].includes(role) && !isPublicAccess;
 
-  // No layout for landing or workspace selectors
-  if (['Landing', 'WorkspaceSelector', 'PublicWorkspaceSelector'].includes(currentPageName)) {
+  // No layout for landing, workspace selectors, or join page
+  if (['Landing', 'WorkspaceSelector', 'PublicWorkspaceSelector', 'JoinWorkspace', 'CustomerHome'].includes(currentPageName)) {
     return children;
   }
 
