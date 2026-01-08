@@ -52,6 +52,17 @@ export default function Feedback() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const feedbackId = params.get('id');
+    if (feedbackId && feedbackList.length > 0) {
+      const fb = feedbackList.find(f => f.id === feedbackId);
+      if (fb) {
+        handleFeedbackClick(fb);
+      }
+    }
+  }, [feedbackList]);
+
   const loadData = async () => {
     try {
       const currentUser = await base44.auth.me();

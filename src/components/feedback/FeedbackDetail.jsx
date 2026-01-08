@@ -196,7 +196,7 @@ export default function FeedbackDetail({
           {/* Roadmap link */}
           {feedback.roadmap_item_id && (
             <a
-              href={`${window.location.origin}${createPageUrl('Roadmap')}?item=${feedback.roadmap_item_id}`}
+              href={`${createPageUrl('Roadmap')}?item=${feedback.roadmap_item_id}`}
               className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center gap-2 hover:bg-purple-100 transition-colors"
             >
               <Map className="h-4 w-4 text-purple-600" />

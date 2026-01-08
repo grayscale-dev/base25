@@ -97,7 +97,7 @@ export default function RoadmapItemModal({
         
         // If checkbox is checked and status is shipped, create changelog entry
         if (status === 'shipped' && addToChangelog) {
-          await base44.entities.ChangelogEntry.create({
+          const entry = await base44.entities.ChangelogEntry.create({
             workspace_id: workspaceId,
             roadmap_item_id: item.id,
             title,
@@ -105,6 +105,15 @@ export default function RoadmapItemModal({
             release_date: new Date().toISOString().split('T')[0],
             tags: item.tags || [],
             visibility: 'public'
+          });
+
+          // Add to doc queue
+          await base44.entities.DocQueue.create({
+            workspace_id: workspaceId,
+            changelog_entry_id: entry.id,
+            title,
+            status: 'pending',
+            doc_page_ids: []
           });
         }
       }
@@ -290,7 +299,7 @@ export default function RoadmapItemModal({
                     {linkedFeedback.map(fb => (
                       <a
                         key={fb.id}
-                        href={`${window.location.origin}/feedback?id=${fb.id}`}
+                        href={`${createPageUrl('Feedback')}?id=${fb.id}`}
                         className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
                       >
                         <MessageSquare className="h-4 w-4 text-slate-400" />
@@ -304,7 +313,7 @@ export default function RoadmapItemModal({
               {/* Changelog Link */}
               {changelogEntry && (
                 <a
-                  href={`${window.location.origin}${createPageUrl('Changelog')}`}
+                  href={createPageUrl('Changelog')}
                   className="flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
                 >
                   <Sparkles className="h-4 w-4 text-purple-600" />

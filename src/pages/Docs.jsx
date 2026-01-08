@@ -10,6 +10,7 @@ import DocEditor from '@/components/docs/DocEditor';
 import DocViewer from '@/components/docs/DocViewer';
 import DocSidebar from '@/components/docs/DocSidebar';
 import QuestionsPanel from '@/components/docs/QuestionsPanel';
+import DocQueuePanel from '@/components/docs/DocQueuePanel';
 
 export default function Docs() {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ export default function Docs() {
   const [editing, setEditing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showQuestionsPanel, setShowQuestionsPanel] = useState(false);
+  const [showDocQueue, setShowDocQueue] = useState(false);
 
   const isStaff = ['support', 'admin'].includes(role);
 
@@ -129,7 +131,7 @@ export default function Docs() {
         />
 
         {isStaff && (
-          <div className="p-4 border-t border-slate-200 mt-auto">
+          <div className="p-4 border-t border-slate-200 mt-auto space-y-2">
             <Button
               onClick={() => setShowQuestionsPanel(!showQuestionsPanel)}
               variant="outline"
@@ -137,6 +139,14 @@ export default function Docs() {
             >
               <MessageSquare className="h-4 w-4 mr-2" />
               Customer Questions
+            </Button>
+            <Button
+              onClick={() => setShowDocQueue(!showDocQueue)}
+              variant="outline"
+              className="w-full"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Doc Queue
             </Button>
           </div>
         )}
@@ -180,6 +190,16 @@ export default function Docs() {
         <QuestionsPanel
           workspaceId={workspace?.id}
           onClose={() => setShowQuestionsPanel(false)}
+        />
+      )}
+
+      {/* Doc Queue Panel */}
+      {showDocQueue && isStaff && (
+        <DocQueuePanel
+          workspaceId={workspace?.id}
+          docs={docs}
+          onClose={() => setShowDocQueue(false)}
+          onRefresh={loadDocs}
         />
       )}
     </div>

@@ -92,12 +92,21 @@ export default function Changelog() {
     setCreating(true);
     try {
       const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
-      await base44.entities.ChangelogEntry.create({
+      const entry = await base44.entities.ChangelogEntry.create({
         workspace_id: workspaceId,
         title: newEntry.title,
         description: newEntry.description,
         release_date: newEntry.release_date,
         visibility: 'public'
+      });
+
+      // Add to doc queue
+      await base44.entities.DocQueue.create({
+        workspace_id: workspaceId,
+        changelog_entry_id: entry.id,
+        title: newEntry.title,
+        status: 'pending',
+        doc_page_ids: []
       });
 
       setShowCreateModal(false);
@@ -199,7 +208,7 @@ export default function Changelog() {
               {/* Roadmap Link */}
               {entry.roadmapItem && (
                 <a
-                  href={`${window.location.origin}${createPageUrl('Roadmap')}?item=${entry.roadmap_item_id}`}
+                  href={`${createPageUrl('Roadmap')}?item=${entry.roadmap_item_id}`}
                   className="inline-flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors mb-4"
                 >
                   <Map className="h-4 w-4 text-purple-600" />
