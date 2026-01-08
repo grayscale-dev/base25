@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Folder, Plus, LogOut, User, Settings, Shield } from 'lucide-react';
+import { Folder, Plus, LogOut, User, Settings, Shield, Key } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -34,7 +34,16 @@ export default function WorkspaceSelector() {
 
   const loadData = async () => {
     try {
-      const currentUser = await base44.auth.me();
+      // Ensure user is authenticated for management portal
+      let currentUser;
+      try {
+        currentUser = await base44.auth.me();
+      } catch (error) {
+        // Not authenticated, redirect to login
+        base44.auth.redirectToLogin(window.location.origin + createPageUrl('WorkspaceSelector'));
+        return;
+      }
+      
       setUser(currentUser);
 
       // Check if user is tenant admin
@@ -171,13 +180,18 @@ export default function WorkspaceSelector() {
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-12">
         <div className="mb-8">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg mb-4">
+            <Settings className="h-4 w-4 text-purple-600" />
+            <span className="text-sm font-medium text-purple-700">Admin Portal - Management Access</span>
+          </div>
+          
           <div className="flex items-start justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 mb-2">
                 Workspace Management
               </h1>
               <p className="text-slate-500">
-                Choose a workspace to manage or create a new one.
+                Select a workspace to manage settings, moderate content, and configure the portal.
               </p>
             </div>
             {isTenantAdmin && (
@@ -195,13 +209,27 @@ export default function WorkspaceSelector() {
                   <Shield className="h-5 w-5 text-purple-600" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-purple-900 mb-1">Admin Controls</h3>
+                  <h3 className="font-semibold text-purple-900 mb-1">Full Administrative Access</h3>
                   <p className="text-sm text-purple-700 mb-3">
-                    You have full administrative access. You can create new workspaces, manage all settings, and configure access controls.
+                    As a tenant admin, you can create workspaces, manage all settings, configure permissions, and moderate all content across the platform.
                   </p>
-                  <div className="flex items-center gap-2 text-sm text-purple-600">
-                    <Settings className="h-4 w-4" />
-                    <span>Settings and controls available within each workspace</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div className="flex items-center gap-2 text-purple-600">
+                      <Plus className="h-4 w-4" />
+                      <span>Create & delete workspaces</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-purple-600">
+                      <Settings className="h-4 w-4" />
+                      <span>Configure workspace settings</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-purple-600">
+                      <Shield className="h-4 w-4" />
+                      <span>Manage user access & roles</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-purple-600">
+                      <Key className="h-4 w-4" />
+                      <span>API tokens & integrations</span>
+                    </div>
                   </div>
                 </div>
               </div>

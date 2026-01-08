@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Folder, ArrowLeft } from 'lucide-react';
+import { Folder, ArrowLeft, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
@@ -13,6 +13,8 @@ export default function PublicWorkspaceSelector() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Mark this as public access
+    sessionStorage.setItem('isPublicAccess', 'true');
     loadPublicWorkspaces();
   }, []);
 
@@ -73,11 +75,15 @@ export default function PublicWorkspaceSelector() {
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-12">
         <div className="mb-8">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+            <Eye className="h-4 w-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-700">Customer Portal - Public Access</span>
+          </div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
             Select a Workspace
           </h1>
           <p className="text-slate-500">
-            Browse public workspaces to view feedback, roadmap, and changelog.
+            Browse public workspaces to view feedback, roadmap, and changelog. No login required.
           </p>
         </div>
 
