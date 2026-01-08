@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { 
   ArrowLeft, ThumbsUp, Clock, User, Paperclip, 
-  Tag, AlertCircle, Link as LinkIcon, Plus, Edit2, Send, Map 
+  Tag, AlertCircle, Link as LinkIcon, Plus, Edit2, Send, Map, Sparkles 
 } from 'lucide-react';
 import AddToRoadmapModal from './AddToRoadmapModal';
+import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
@@ -194,10 +195,13 @@ export default function FeedbackDetail({
 
           {/* Roadmap link */}
           {feedback.roadmap_item_id && (
-            <div className="mt-4 p-3 bg-blue-50 rounded-xl flex items-center gap-2">
-              <LinkIcon className="h-4 w-4 text-blue-600" />
-              <span className="text-sm text-blue-700">This feedback is on the roadmap</span>
-            </div>
+            <a
+              href={`${window.location.origin}${createPageUrl('Roadmap')}?item=${feedback.roadmap_item_id}`}
+              className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center gap-2 hover:bg-purple-100 transition-colors"
+            >
+              <Map className="h-4 w-4 text-purple-600" />
+              <span className="text-sm text-purple-900 font-medium">This feedback is on the roadmap →</span>
+            </a>
           )}
         </div>
 
