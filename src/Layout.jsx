@@ -127,9 +127,13 @@ export default function Layout({ children, currentPageName }) {
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="h-auto p-2 hover:bg-slate-100">
                       <div className="flex items-center gap-3">
-                        <div className="p-1.5 bg-slate-900 rounded-lg">
-                          <Folder className="h-4 w-4 text-white" />
-                        </div>
+                        {workspace.logo_url ? (
+                          <img src={workspace.logo_url} alt={workspace.name} className="h-8 w-8 object-contain rounded-lg" />
+                        ) : (
+                          <div className="p-1.5 rounded-lg" style={{ backgroundColor: workspace.primary_color || '#0f172a' }}>
+                            <Folder className="h-4 w-4 text-white" />
+                          </div>
+                        )}
                         <span className="font-semibold text-slate-900 hidden sm:inline">
                           {workspace.name}
                         </span>
@@ -162,7 +166,7 @@ export default function Layout({ children, currentPageName }) {
                 </DropdownMenu>
               ) : (
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-slate-900 rounded-lg">
+                  <div className="p-1.5 rounded-lg" style={{ backgroundColor: workspace?.primary_color || '#0f172a' }}>
                     <Folder className="h-4 w-4 text-white" />
                   </div>
                   <span className="font-semibold text-slate-900">Portal</span>
@@ -179,10 +183,11 @@ export default function Layout({ children, currentPageName }) {
                     <Link
                       key={item.page}
                       to={createPageUrl(item.page)}
+                      style={active ? { backgroundColor: `${workspace?.primary_color || '#0f172a'}15` } : {}}
                       className={cn(
                         'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
                         active 
-                          ? 'bg-slate-100 text-slate-900' 
+                          ? 'text-slate-900' 
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                       )}
                     >

@@ -190,20 +190,19 @@ export default function Changelog() {
               </p>
 
               {/* Links Panel */}
-              {isAdmin && (
-                <LinksPanel
-                  workspaceId={workspace?.id}
-                  itemType="changelog"
-                  itemId={entry.id}
-                  links={{
-                    roadmap_item_ids: entry.roadmap_item_ids || [],
-                    feedback_ids: entry.feedback_ids || [],
-                    doc_page_ids: entry.doc_page_ids || []
-                  }}
-                  onUpdate={loadChangelog}
-                  isStaff={isAdmin}
-                />
-              )}
+              <LinksPanel
+                workspaceId={workspace?.id}
+                itemType="changelog"
+                itemId={entry.id}
+                links={{
+                  roadmap_item_ids: entry.roadmap_item_ids || [],
+                  feedback_ids: entry.feedback_ids || [],
+                  doc_page_ids: entry.doc_page_ids || [],
+                  support_thread_ids: entry.support_thread_ids || []
+                }}
+                onUpdate={loadChangelog}
+                isStaff={isAdmin}
+              />
             </div>
           ))}
         </div>

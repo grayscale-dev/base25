@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Send, Paperclip, X, User, Shield, Clock, Lock, UserPlus } from 'lucide-react';
 import LinksPanel from '@/components/common/LinksPanel';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -297,18 +298,12 @@ export default function SupportThreadDetail({
                       {workspaceName} Team
                     </Badge>
                   )}
-                  <span className={cn(
-                    'text-xs',
-                    isOwnMessage && !isInternal ? 'text-slate-300' : 'text-slate-400'
-                  )}>
+                  <span className="text-xs text-slate-400">
                     {format(new Date(message.created_date), 'MMM d, h:mm a')}
                   </span>
                 </div>
                 
-                <p className={cn(
-                  'whitespace-pre-wrap text-sm',
-                  isOwnMessage && !isInternal ? 'text-white' : 'text-slate-700'
-                )}>
+                <p className="whitespace-pre-wrap text-sm text-slate-700">
                   {message.content}
                 </p>
                 
@@ -320,10 +315,7 @@ export default function SupportThreadDetail({
                         href={file.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={cn(
-                          'flex items-center gap-2 text-sm underline',
-                          isOwnMessage && !isInternal ? 'text-slate-300' : 'text-blue-600'
-                        )}
+                        className="flex items-center gap-2 text-sm underline text-blue-600"
                       >
                         <Paperclip className="h-3 w-3" />
                         {file.name}
