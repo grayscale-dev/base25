@@ -144,7 +144,7 @@ export default function Layout({ children, currentPageName }) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-64">
-                    {workspaces.map((ws) => (
+                    {!isPublicAccess && workspaces.map((ws) => (
                       <DropdownMenuItem 
                         key={ws.id} 
                         onClick={() => handleWorkspaceSwitch(ws)}
@@ -156,8 +156,8 @@ export default function Layout({ children, currentPageName }) {
                           <span className="ml-auto text-xs text-slate-400">Current</span>
                         )}
                       </DropdownMenuItem>
-                      ))}
-                      {!isPublicAccess && (
+                    ))}
+                    {!isPublicAccess && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
@@ -166,17 +166,15 @@ export default function Layout({ children, currentPageName }) {
                           </Link>
                         </DropdownMenuItem>
                       </>
-                      )}
-                      {isPublicAccess && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem asChild>
-                          <Link to={createPageUrl('Landing')} className="cursor-pointer">
-                            Back to Home
-                          </Link>
-                        </DropdownMenuItem>
-                      </>
-                      )}
+                    )}
+                    {isPublicAccess && (
+                      <DropdownMenuItem asChild>
+                        <Link to={createPageUrl('Landing')} className="cursor-pointer">
+                          <ArrowLeft className="h-4 w-4 mr-2" />
+                          Back to Home
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
