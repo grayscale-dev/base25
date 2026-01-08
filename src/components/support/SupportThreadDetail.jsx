@@ -400,10 +400,11 @@ export default function SupportThreadDetail({
             <Button 
               onClick={handleSendMessage}
               disabled={!messageContent.trim() || sending}
+              style={!isInternalNote ? { backgroundColor: JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').primary_color || '#0f172a' } : {}}
               className={cn(
                 isInternalNote 
                   ? 'bg-amber-500 hover:bg-amber-600' 
-                  : 'bg-slate-900 hover:bg-slate-800'
+                  : 'hover:opacity-90 text-white'
               )}
             >
               {sending ? 'Sending...' : (

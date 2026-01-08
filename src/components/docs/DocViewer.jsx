@@ -138,7 +138,8 @@ export default function DocViewer({ doc, onRefresh, isStaff }) {
             <Button
               onClick={handlePostComment}
               disabled={!newComment.trim() || posting}
-              className="bg-slate-900 hover:bg-slate-800"
+              style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').primary_color || '#0f172a' }}
+              className="hover:opacity-90 text-white"
             >
               <Send className="h-4 w-4 mr-2" />
               {posting ? 'Posting...' : 'Post Comment'}
