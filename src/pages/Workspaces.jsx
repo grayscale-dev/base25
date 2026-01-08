@@ -209,7 +209,7 @@ export default function Workspaces() {
                 alt="Nexus" 
                 className="h-8 w-8 object-contain"
               />
-              <span className="text-lg font-semibold text-slate-900">Your Boards</span>
+              <span className="text-lg font-semibold text-slate-900">nexus</span>
             </div>
           
           <div className="flex items-center gap-3">
