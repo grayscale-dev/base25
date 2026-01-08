@@ -27,7 +27,7 @@ export default function Landing() {
         let tenantMember = await base44.entities.TenantMember.filter({ user_id: user.id })[0]
         tenantMember.is_tenant_admin = true
       }
-      createPageUrl('WorkspaceSelector')
+      navigate(createPageUrl('WorkspaceSelector'));
     } catch (error) {
       // Not authenticated, redirect to login then to WorkspaceSelector
       base44.auth.redirectToLogin(window.location.origin + createPageUrl('WorkspaceSelector'));
