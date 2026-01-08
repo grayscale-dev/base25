@@ -21,21 +21,7 @@ export default function Landing() {
     sessionStorage.removeItem('isPublicAccess');
     
     try {
-      const user = await base44.auth.me();
-      if (user) {
-        let tenantMembers = await base44.entities.TenantMember.filter({ user_id: user.id });
-        let tenantMember = tenantMembers.length > 0 ? tenantMembers[0] : null;
-
-        if (tenantMember && !tenantMember.is_tenant_admin) {
-          // Only update if it exists and is not already admin
-          await base44.entities.TenantMember.update(tenantMember.id, { is_tenant_admin: true });
-        } else if (!tenantMember) {
-          // If no TenantMember exists, create one
-          // This part of the logic might already be in WorkspaceSelector.js
-          // If not, it needs to be handled here or ensure WorkspaceSelector.js handles new users
-          console.warn("No TenantMember found for user, consider creating one if this path is for new users.");
-        }
-      }
+      await base44.auth.me();
       navigate(createPageUrl('WorkspaceSelector'));
     } catch (error) {
       base44.auth.redirectToLogin(window.location.origin + createPageUrl('WorkspaceSelector'));

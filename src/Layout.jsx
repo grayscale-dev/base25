@@ -213,22 +213,36 @@ export default function Layout({ children, currentPageName }) {
 
             {/* Right: User menu & Admin links */}
             <div className="flex items-center gap-2">
-              {isAdmin && (
-                <div className="hidden md:flex items-center gap-1">
-                  <Link to={createPageUrl('ApiDocs')}>
-                    <Button variant="ghost" size="sm" className="text-slate-600">
-                      <Key className="h-4 w-4 mr-2" />
-                      API
-                    </Button>
-                  </Link>
-                  <Link to={createPageUrl('WorkspaceSettings')}>
-                    <Button variant="ghost" size="sm" className="text-slate-600">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Settings
-                    </Button>
-                  </Link>
-                </div>
-              )}
+              {!isPublicAccess && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      sessionStorage.setItem('isPublicAccess', 'true');
+                      navigate(createPageUrl('Feedback'));
+                    }}
+                    className="hidden md:flex"
+                  >
+                    Switch to Customer View
+                  </Button>
+                )}
+
+                {isAdmin && (
+                  <div className="hidden md:flex items-center gap-1">
+                    <Link to={createPageUrl('ApiDocs')}>
+                      <Button variant="ghost" size="sm" className="text-slate-600">
+                        <Key className="h-4 w-4 mr-2" />
+                        API
+                      </Button>
+                    </Link>
+                    <Link to={createPageUrl('WorkspaceSettings')}>
+                      <Button variant="ghost" size="sm" className="text-slate-600">
+                        <Settings className="h-4 w-4 mr-2" />
+                        Settings
+                      </Button>
+                    </Link>
+                  </div>
+                )}
 
               {user && !isPublicAccess && (
                 <DropdownMenu>

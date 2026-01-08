@@ -23,7 +23,6 @@ export default function WorkspaceSelector() {
   const [workspaces, setWorkspaces] = useState([]);
   const [workspaceRoles, setWorkspaceRoles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isTenantAdmin, setIsTenantAdmin] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWorkspace, setNewWorkspace] = useState({ name: '', slug: '', description: '' });
   const [creating, setCreating] = useState(false);
@@ -46,15 +45,15 @@ export default function WorkspaceSelector() {
       
       setUser(currentUser);
 
-      // Check if user is tenant admin
+      // Ensure user has a TenantMember record
       let tenantMembers = await base44.entities.TenantMember.filter({ user_id: currentUser.id });
-      
+
       // If user doesn't have a TenantMember record, create one
       if (tenantMembers.length === 0) {
         // Get or create a default tenant
         let tenants = await base44.entities.Tenant.filter({});
         let tenant;
-        
+
         if (tenants.length === 0) {
           // Create a default tenant if none exists
           tenant = await base44.entities.Tenant.create({
@@ -65,21 +64,16 @@ export default function WorkspaceSelector() {
         } else {
           tenant = tenants[0];
         }
-        
-        // Create TenantMember with admin privileges for users accessing admin portal
-        const newMember = await base44.entities.TenantMember.create({
+
+        // Create TenantMember - all authenticated users can create workspaces
+        await base44.entities.TenantMember.create({
           tenant_id: tenant.id,
           user_id: currentUser.id,
           email: currentUser.email,
-          is_tenant_admin: currentUser.role === 'admin', // Make tenant admin if they're system admin
+          is_tenant_admin: true, // All users can create workspaces (join-first model)
           status: 'active'
         });
-        
-        tenantMembers = [newMember];
       }
-      
-      const tenantAdmin = tenantMembers.find(tm => tm.is_tenant_admin);
-      setIsTenantAdmin(!!tenantAdmin);
 
       // Load workspace roles
       const roles = await base44.entities.WorkspaceRole.filter({ 
@@ -182,12 +176,7 @@ export default function WorkspaceSelector() {
           </div>
           
           <div className="flex items-center gap-3">
-            {isTenantAdmin && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg">
-                <Shield className="h-4 w-4 text-purple-600" />
-                <span className="text-sm font-medium text-purple-700">Tenant Admin</span>
-              </div>
-            )}
+
             {user && (
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <User className="h-4 w-4" />
@@ -210,70 +199,31 @@ export default function WorkspaceSelector() {
       {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-12">
         <div className="mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg mb-4">
-            <Settings className="h-4 w-4 text-purple-600" />
-            <span className="text-sm font-medium text-purple-700">Admin Portal - Management Access</span>
-          </div>
-          
           <div className="flex items-start justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 mb-2">
-                Workspace Management
+                Your Workspaces
               </h1>
               <p className="text-slate-500">
-                Select a workspace to manage settings, moderate content, and configure the portal.
+                Select a workspace to manage or create a new one to get started.
               </p>
             </div>
-            {isTenantAdmin && (
-              <Button onClick={() => setShowCreateModal(true)} className="bg-slate-900 hover:bg-slate-800">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Workspace
-              </Button>
-            )}
+            <Button onClick={() => setShowCreateModal(true)} className="bg-slate-900 hover:bg-slate-800">
+              <Plus className="h-4 w-4 mr-2" />
+              Create Workspace
+            </Button>
           </div>
           
-          {isTenantAdmin && (
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <Shield className="h-5 w-5 text-purple-600" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-purple-900 mb-1">Full Administrative Access</h3>
-                  <p className="text-sm text-purple-700 mb-3">
-                    As a tenant admin, you can create workspaces, manage all settings, configure permissions, and moderate all content across the platform.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                    <div className="flex items-center gap-2 text-purple-600">
-                      <Plus className="h-4 w-4" />
-                      <span>Create & delete workspaces</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-purple-600">
-                      <Settings className="h-4 w-4" />
-                      <span>Configure workspace settings</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-purple-600">
-                      <Shield className="h-4 w-4" />
-                      <span>Manage user access & roles</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-purple-600">
-                      <Key className="h-4 w-4" />
-                      <span>API tokens & integrations</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+
         </div>
 
         {workspaces.length === 0 ? (
           <EmptyState
             icon={Folder}
-            title="No workspaces available"
-            description={isTenantAdmin ? "Get started by creating your first workspace." : "You don't have access to any workspaces yet. Contact your administrator to request access."}
-            action={isTenantAdmin ? () => setShowCreateModal(true) : undefined}
-            actionLabel={isTenantAdmin ? "Create Workspace" : undefined}
+            title="No workspaces yet"
+            description="Get started by creating your first workspace or wait to be invited to an existing one."
+            action={() => setShowCreateModal(true)}
+            actionLabel="Create Workspace"
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
