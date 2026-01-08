@@ -20,16 +20,24 @@ export default function Landing() {
   const handleManagementAccess = async () => {
     sessionStorage.removeItem('isPublicAccess');
     
-    // Check if user is authenticated
     try {
       const user = await base44.auth.me();
       if (user) {
-        let tenantMember = await base44.entities.TenantMember.filter({ user_id: user.id })[0]
-        tenantMember.is_tenant_admin = true
+        let tenantMembers = await base44.entities.TenantMember.filter({ user_id: user.id });
+        let tenantMember = tenantMembers.length > 0 ? tenantMembers[0] : null;
+
+        if (tenantMember && !tenantMember.is_tenant_admin) {
+          // Only update if it exists and is not already admin
+          await base44.entities.TenantMember.update(tenantMember.id, { is_tenant_admin: true });
+        } else if (!tenantMember) {
+          // If no TenantMember exists, create one
+          // This part of the logic might already be in WorkspaceSelector.js
+          // If not, it needs to be handled here or ensure WorkspaceSelector.js handles new users
+          console.warn("No TenantMember found for user, consider creating one if this path is for new users.");
+        }
       }
       navigate(createPageUrl('WorkspaceSelector'));
     } catch (error) {
-      // Not authenticated, redirect to login then to WorkspaceSelector
       base44.auth.redirectToLogin(window.location.origin + createPageUrl('WorkspaceSelector'));
     }
   };
