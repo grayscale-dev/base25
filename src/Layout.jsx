@@ -36,6 +36,7 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPublicViewing, setIsPublicViewing] = useState(false);
   const [noAccessMessage, setNoAccessMessage] = useState(null);
+  const [showNoAccessDialog, setShowNoAccessDialog] = useState(false);
 
   // Public pages that don't need auth or workspace context
   const publicPages = ['Home', 'About', 'Pricing'];
@@ -156,7 +157,7 @@ export default function Layout({ children, currentPageName }) {
             onClick={() => navigate(createPageUrl('Workspaces'))}
             className="bg-slate-900 hover:bg-slate-800"
           >
-            Go to My Boards
+            View My Boards
           </Button>
         </div>
       </div>
@@ -221,7 +222,7 @@ export default function Layout({ children, currentPageName }) {
                     <DropdownMenuItem asChild>
                       <Link to={createPageUrl('Workspaces')} className="cursor-pointer">
                         <ArrowLeft className="h-4 w-4 mr-2" />
-                        All boards
+                        View all boards
                       </Link>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
