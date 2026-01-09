@@ -29,7 +29,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "ApiDocs",
+    mainPage: "Home",
     Pages: PAGES,
     Layout: __Layout,
 };
