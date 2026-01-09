@@ -227,7 +227,7 @@ function computeMessages(isPublicAccess, user, role, permissions) {
   // Unauthenticated public viewer
   if (isPublicAccess && !user) {
     return {
-      loginPrompt: 'Login to contribute feedback and interact with this board',
+      loginPrompt: 'Log in to contribute feedback and interact with this board',
       accessDenied: null
     };
   }
@@ -236,7 +236,7 @@ function computeMessages(isPublicAccess, user, role, permissions) {
   if (isPublicAccess && user) {
     return {
       loginPrompt: null,
-      accessDenied: "You don't have permission to contribute to this board. Contact the admin to request access."
+      accessDenied: "You have read-only access to this board. To contribute, contact the board admin to request access."
     };
   }
 

@@ -576,11 +576,11 @@ export default function WorkspaceSettings() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Individual Access</CardTitle>
-                <CardDescription>Manage specific user access</CardDescription>
+                <CardDescription>Grant access to specific users</CardDescription>
               </div>
               <Button variant="outline" onClick={() => setShowAddMember(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Member
+                Grant Access
               </Button>
             </CardHeader>
             <CardContent>
@@ -661,7 +661,7 @@ export default function WorkspaceSettings() {
       <Dialog open={showAddMember} onOpenChange={setShowAddMember}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Member</DialogTitle>
+            <DialogTitle>Grant Board Access</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -691,7 +691,7 @@ export default function WorkspaceSettings() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowAddMember(false)}>Cancel</Button>
             <Button onClick={handleAddMember} className="bg-slate-900 hover:bg-slate-800">
-              Add Member
+              Grant Access
             </Button>
           </DialogFooter>
         </DialogContent>
