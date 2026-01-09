@@ -102,13 +102,13 @@ export default function About() {
           <h2 className="text-3xl font-bold text-slate-900 mb-6">Our Story</h2>
           <div className="prose prose-lg text-slate-600">
             <p className="mb-4">
-              Nexus was born from a simple frustration: managing customer feedback shouldn't be complicated. Teams were drowning in emails, spreadsheets, and disconnected tools, losing valuable insights in the chaos.
+              At Grayscale Development, we needed a tool to collect customer feedback, provide support, document our products, and share our roadmap transparently. We looked at existing solutions but found them either too complicated, too expensive, or missing key features.
             </p>
             <p className="mb-4">
-              We built Nexus to bring everything together—feedback, roadmaps, documentation, and support—in one intuitive platform. Now teams can focus on what matters: building great products and delighting their customers.
+              So we built Nexus—a platform that brings together everything teams need to stay connected with their customers. We use it ourselves every day, and we're proud to maintain and continuously improve it.
             </p>
             <p>
-              Today, Nexus powers customer collaboration for teams worldwide, helping them ship faster and build better by staying connected to the people who matter most.
+              What started as an internal tool has grown into a product we're excited to share with other teams who value customer collaboration and transparent communication.
             </p>
           </div>
         </div>

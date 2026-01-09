@@ -6,50 +6,53 @@ import { createPageUrl } from '@/utils';
 export default function Pricing() {
   const plans = [
     {
-      name: 'Starter',
-      price: 'Free',
-      description: 'Perfect for small teams getting started',
+      name: 'Small Team',
+      price: '$50',
+      period: '/month',
+      description: 'Perfect for teams of 1-20 employees',
       features: [
-        'Up to 3 boards',
-        'Unlimited feedback',
-        'Basic roadmap',
-        'Community support',
-        'Public documentation'
+        'Up to 20 team members',
+        'Unlimited boards',
+        'Unlimited feedback & support threads',
+        'Product roadmap',
+        'Changelog & documentation',
+        'Custom branding',
+        'Email support'
       ],
       cta: 'Get Started',
       highlighted: false
     },
     {
-      name: 'Pro',
-      price: '$29',
+      name: 'Growing Team',
+      price: '$150',
       period: '/month',
-      description: 'For growing teams that need more',
+      description: 'For teams of 21-100 employees',
       features: [
-        'Unlimited boards',
-        'Advanced roadmap features',
-        'Custom branding',
-        'Priority support',
+        'Up to 100 team members',
+        'Everything in Small Team',
         'Advanced analytics',
         'API access',
-        'Team collaboration'
+        'Priority support',
+        'Custom integrations',
+        'Team collaboration tools'
       ],
-      cta: 'Start Free Trial',
+      cta: 'Get Started',
       highlighted: true
     },
     {
       name: 'Enterprise',
       price: 'Custom',
-      description: 'For organizations with specific needs',
+      description: 'For organizations with 100+ employees',
       features: [
-        'Everything in Pro',
+        'Unlimited team members',
+        'Everything in Growing Team',
         'SSO & advanced security',
         'Dedicated account manager',
-        'Custom integrations',
         'SLA guarantee',
         'Training & onboarding',
         'White-label options'
       ],
-      cta: 'Contact Sales',
+      cta: 'Request Quote',
       highlighted: false
     }
   ];
