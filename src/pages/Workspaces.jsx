@@ -380,5 +380,6 @@ export default function Workspaces() {
         </Dialog>
       </main>
     </div>
+    </ProtectedRoute>
   );
 }
