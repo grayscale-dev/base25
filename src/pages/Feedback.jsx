@@ -40,18 +40,40 @@ export default function Feedback() {
   const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
-    const storedRole = sessionStorage.getItem('currentRole');
+    // Get workspace from URL params or sessionStorage
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get('slug');
     
-    if (!storedWorkspace) {
-      navigate(createPageUrl('Workspaces'));
-      return;
+    if (slug) {
+      loadWorkspaceBySlug(slug);
+    } else {
+      const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+      const storedRole = sessionStorage.getItem('currentRole');
+      
+      if (!storedWorkspace) {
+        navigate(createPageUrl('Workspaces'));
+        return;
+      }
+      
+      setWorkspace(JSON.parse(storedWorkspace));
+      setRole(storedRole || 'viewer');
+      loadData();
     }
-    
-    setWorkspace(JSON.parse(storedWorkspace));
-    setRole(storedRole || 'viewer');
-    loadData();
   }, []);
+  
+  const loadWorkspaceBySlug = async (slug) => {
+    try {
+      const workspaces = await base44.entities.Workspace.filter({ slug });
+      if (workspaces[0]) {
+        setWorkspace(workspaces[0]);
+        const storedRole = sessionStorage.getItem('currentRole') || 'viewer';
+        setRole(storedRole);
+        loadData(workspaces[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load workspace:', error);
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -64,12 +86,23 @@ export default function Feedback() {
     }
   }, [feedbackList]);
 
-  const loadData = async () => {
+  const loadData = async (workspaceIdOverride = null) => {
     try {
-      const currentUser = await base44.auth.me();
-      setUser(currentUser);
+      // Try to get authenticated user (may fail for public viewers)
+      try {
+        const currentUser = await base44.auth.me();
+        setUser(currentUser);
+      } catch (error) {
+        // Not authenticated - public viewing mode
+        setUser(null);
+      }
       
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedWorkspaceId');
+      if (!workspaceId) {
+        setLoading(false);
+        return;
+      }
+      
       const feedback = await base44.entities.Feedback.filter(
         { workspace_id: workspaceId },
         '-created_date'
@@ -123,8 +156,9 @@ export default function Feedback() {
     }
   };
 
-  const canCreateFeedback = ['contributor', 'support', 'admin'].includes(role);
-  const isStaff = ['support', 'admin'].includes(role);
+  const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+  const canCreateFeedback = ['contributor', 'support', 'admin'].includes(role) && !isPublicAccess;
+  const isStaff = ['support', 'admin'].includes(role) && !isPublicAccess;
 
   // Filter feedback
   const filteredFeedback = feedbackList.filter(fb => {
@@ -162,8 +196,15 @@ export default function Feedback() {
   }
 
   return (
-    <ProtectedRoute>
     <div className="space-y-6">
+      {/* Public viewing banner */}
+      {isPublicAccess && !user && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
+          <p className="text-blue-900">
+            👀 You're viewing this board in read-only mode. <button onClick={() => base44.auth.redirectToLogin(window.location.href)} className="underline font-medium">Login</button> to contribute feedback and interact.
+          </p>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -264,7 +305,6 @@ export default function Feedback() {
           />
         </DialogContent>
       </Dialog>
-      </div>
-      </ProtectedRoute>
-      );
-      }
+    </div>
+  );
+}
