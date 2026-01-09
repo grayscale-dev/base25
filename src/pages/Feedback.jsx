@@ -126,7 +126,7 @@ export default function Feedback() {
 
   const handleFeedbackClick = async (feedback) => {
     const feedbackResponses = await loadFeedbackResponses(feedback.id);
-    setSelectedFeedback({ feedback, responses: feedbackResponses });
+    setSelectedFeedback({ feedback, responses: feedbackResponses, slug: workspace?.slug });
   };
 
   const handleFormSuccess = () => {
@@ -176,6 +176,7 @@ export default function Feedback() {
         feedback={selectedFeedback.feedback}
         responses={selectedFeedback.responses}
         workspaceName={workspace?.name}
+        workspaceSlug={selectedFeedback.slug}
         isStaff={permissions.isStaff}
         onBack={() => setSelectedFeedback(null)}
         onUpdate={handleFeedbackUpdate}

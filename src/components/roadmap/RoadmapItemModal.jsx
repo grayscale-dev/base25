@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, MessageSquare, Plus, Edit2, Trash2, Send, Sparkles } from 'lucide-react';
 import { createPageUrl } from '@/utils';
+import { boardUrl } from '@/components/utils/boardUrl';
 import LinksPanel from '@/components/common/LinksPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,7 @@ export default function RoadmapItemModal({
   onClose, 
   isStaff,
   workspaceId,
+  workspaceSlug,
   onSave,
   linkedFeedback = []
 }) {
@@ -311,6 +313,7 @@ export default function RoadmapItemModal({
               {item && (
                 <LinksPanel
                   workspaceId={workspaceId}
+                  workspaceSlug={workspaceSlug || JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').slug}
                   itemType="roadmap"
                   itemId={item.id}
                   links={{

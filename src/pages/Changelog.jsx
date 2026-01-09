@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Sparkles, Calendar, Plus, Map } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
+import { boardUrl } from '@/components/utils/boardUrl';
 import { format } from 'date-fns';
 import Badge from '@/components/common/Badge';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -201,6 +202,7 @@ export default function Changelog() {
               {/* Links Panel */}
               <LinksPanel
                 workspaceId={workspace?.id}
+                workspaceSlug={workspace?.slug}
                 itemType="changelog"
                 itemId={entry.id}
                 links={{

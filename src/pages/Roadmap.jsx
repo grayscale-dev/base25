@@ -183,6 +183,7 @@ export default function Roadmap() {
         onClose={handleModalClose}
         isStaff={permissions.isStaff}
         workspaceId={workspace?.id}
+        workspaceSlug={workspace?.slug}
         onSave={handleSave}
       />
     </div>

@@ -6,6 +6,7 @@ import {
 import AddToRoadmapModal from './AddToRoadmapModal';
 import LinksPanel from '@/components/common/LinksPanel';
 import { createPageUrl } from '@/utils';
+import { boardUrl } from '@/components/utils/boardUrl';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
@@ -43,6 +44,7 @@ export default function FeedbackDetail({
   feedback, 
   responses, 
   workspaceName,
+  workspaceSlug,
   isStaff, 
   onBack, 
   onUpdate,
@@ -218,6 +220,7 @@ export default function FeedbackDetail({
           {/* Links Panel */}
           <LinksPanel
             workspaceId={sessionStorage.getItem('selectedWorkspaceId')}
+            workspaceSlug={workspaceSlug || sessionStorage.getItem('selectedWorkspace')?.slug}
             itemType="feedback"
             itemId={feedback.id}
             links={{
