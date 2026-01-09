@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/collapsible';
 import { base44 } from '@/api/base44Client';
 import { cn } from '@/lib/utils';
+import { useProfileGuard } from '@/components/auth/useProfileGuard';
 
 const feedbackTypes = [
   { value: 'bug', label: 'Bug Report', emoji: '🐛' },
@@ -27,6 +28,7 @@ const feedbackTypes = [
 ];
 
 export default function FeedbackForm({ workspaceId, onSuccess, onCancel, allowAttachments = true }) {
+  const { guardAction, ProfileGuard } = useProfileGuard();
   const [title, setTitle] = useState('');
   const [type, setType] = useState('');
   const [description, setDescription] = useState('');
@@ -69,38 +71,44 @@ export default function FeedbackForm({ workspaceId, onSuccess, onCancel, allowAt
 
     setSubmitting(true);
     try {
-      const user = await base44.auth.me();
-      const feedbackData = {
-        workspace_id: workspaceId,
-        title,
-        type,
-        description,
-        submitter_id: user.id,
-        submitter_email: user.email,
-        status: 'open',
-        visibility: 'public',
-        vote_count: 0,
-      };
+      await guardAction(async () => {
+        const user = await base44.auth.me();
+        const feedbackData = {
+          workspace_id: workspaceId,
+          title,
+          type,
+          description,
+          submitter_id: user.id,
+          submitter_email: user.email,
+          status: 'open',
+          visibility: 'public',
+          vote_count: 0,
+        };
 
-      if (stepsToReproduce) feedbackData.steps_to_reproduce = stepsToReproduce;
-      if (expectedBehavior) feedbackData.expected_behavior = expectedBehavior;
-      if (actualBehavior) feedbackData.actual_behavior = actualBehavior;
-      if (environment.browser || environment.os || environment.version) {
-        feedbackData.environment = environment;
-      }
-      if (attachments.length > 0) feedbackData.attachments = attachments;
+        if (stepsToReproduce) feedbackData.steps_to_reproduce = stepsToReproduce;
+        if (expectedBehavior) feedbackData.expected_behavior = expectedBehavior;
+        if (actualBehavior) feedbackData.actual_behavior = actualBehavior;
+        if (environment.browser || environment.os || environment.version) {
+          feedbackData.environment = environment;
+        }
+        if (attachments.length > 0) feedbackData.attachments = attachments;
 
-      await base44.entities.Feedback.create(feedbackData);
-      onSuccess?.();
+        await base44.entities.Feedback.create(feedbackData);
+        onSuccess?.();
+      });
     } catch (error) {
-      console.error('Failed to submit feedback:', error);
+      if (error.message !== 'Profile completion cancelled') {
+        console.error('Failed to submit feedback:', error);
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <>
+      <ProfileGuard />
+      <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
         <div>
           <Label htmlFor="title" className="text-sm font-medium text-slate-700">

@@ -12,8 +12,10 @@ import {
 } from '@/components/ui/dialog';
 import { base44 } from '@/api/base44Client';
 import { cn } from '@/lib/utils';
+import { useProfileGuard } from '@/components/auth/useProfileGuard';
 
 export default function NewThreadModal({ isOpen, onClose, workspaceId, onSuccess }) {
+  const { guardAction, ProfileGuard } = useProfileGuard();
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -50,39 +52,43 @@ export default function NewThreadModal({ isOpen, onClose, workspaceId, onSuccess
 
     setSubmitting(true);
     try {
-      const user = await base44.auth.me();
-      
-      // Create thread
-      const thread = await base44.entities.SupportThread.create({
-        workspace_id: workspaceId,
-        subject,
-        status: 'open',
-        priority: 'medium',
-        requester_id: user.id,
-        requester_email: user.email,
-        last_message_at: new Date().toISOString(),
-        message_count: 1,
-      });
+      await guardAction(async () => {
+        const user = await base44.auth.me();
+        
+        // Create thread
+        const thread = await base44.entities.SupportThread.create({
+          workspace_id: workspaceId,
+          subject,
+          status: 'open',
+          priority: 'medium',
+          requester_id: user.id,
+          requester_email: user.email,
+          last_message_at: new Date().toISOString(),
+          message_count: 1,
+        });
 
-      // Create first message
-      await base44.entities.SupportMessage.create({
-        thread_id: thread.id,
-        workspace_id: workspaceId,
-        content: message,
-        author_id: user.id,
-        author_email: user.email,
-        is_internal_note: false,
-        is_staff_reply: false,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      });
+        // Create first message
+        await base44.entities.SupportMessage.create({
+          thread_id: thread.id,
+          workspace_id: workspaceId,
+          content: message,
+          author_id: user.id,
+          author_email: user.email,
+          is_internal_note: false,
+          is_staff_reply: false,
+          attachments: attachments.length > 0 ? attachments : undefined,
+        });
 
-      setSubject('');
-      setMessage('');
-      setAttachments([]);
-      onSuccess?.(thread);
-      onClose();
+        setSubject('');
+        setMessage('');
+        setAttachments([]);
+        onSuccess?.(thread);
+        onClose();
+      });
     } catch (error) {
-      console.error('Failed to create thread:', error);
+      if (error.message !== 'Profile completion cancelled') {
+        console.error('Failed to create thread:', error);
+      }
     } finally {
       setSubmitting(false);
     }
