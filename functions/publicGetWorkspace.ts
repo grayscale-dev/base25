@@ -20,6 +20,10 @@ import { applyRateLimit, addCacheHeaders, RATE_LIMITS } from './rateLimiter.js';
  */
 Deno.serve(async (req) => {
   try {
+    // Apply rate limiting (60 req/min per IP)
+    const rateLimitResponse = applyRateLimit(req, RATE_LIMITS.PUBLIC_API);
+    if (rateLimitResponse) return rateLimitResponse;
+    
     const base44 = createClientFromRequest(req);
     const url = new URL(req.url);
     const payload = await req.json();
@@ -47,7 +51,7 @@ Deno.serve(async (req) => {
     }
 
     // Return whitelisted fields only
-    return Response.json({
+    const response = Response.json({
       id: workspace.id,
       name: workspace.name,
       slug: workspace.slug,
@@ -57,6 +61,9 @@ Deno.serve(async (req) => {
       visibility: workspace.visibility,
       support_enabled: workspace.support_enabled || false
     });
+    
+    // Cache for 5 minutes (workspace metadata rarely changes)
+    return addCacheHeaders(response, 300);
 
   } catch (error) {
     console.error('Public workspace fetch error:', error);
