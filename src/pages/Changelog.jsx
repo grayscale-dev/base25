@@ -139,14 +139,9 @@ export default function Changelog() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-purple-100 rounded-lg">
-            <Sparkles className="h-6 w-6 text-purple-600" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Changelog</h1>
-            <p className="text-slate-500 mt-1">See what's new and improved</p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Changelog</h1>
+          <p className="text-slate-500 mt-1">See what's new and improved</p>
         </div>
         {isAdmin && (
           <Button
