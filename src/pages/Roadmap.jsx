@@ -23,18 +23,39 @@ export default function Roadmap() {
   const [newItemStatus, setNewItemStatus] = useState('planned');
 
   useEffect(() => {
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
-    const storedRole = sessionStorage.getItem('currentRole');
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get('slug');
     
-    if (!storedWorkspace) {
-      navigate(createPageUrl('Workspaces'));
-      return;
+    if (slug) {
+      loadWorkspaceBySlug(slug);
+    } else {
+      const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+      const storedRole = sessionStorage.getItem('currentRole');
+      
+      if (!storedWorkspace) {
+        navigate(createPageUrl('Workspaces'));
+        return;
+      }
+      
+      setWorkspace(JSON.parse(storedWorkspace));
+      setRole(storedRole || 'viewer');
+      loadData();
     }
-    
-    setWorkspace(JSON.parse(storedWorkspace));
-    setRole(storedRole || 'viewer');
-    loadData();
   }, []);
+  
+  const loadWorkspaceBySlug = async (slug) => {
+    try {
+      const workspaces = await base44.entities.Workspace.filter({ slug });
+      if (workspaces[0]) {
+        setWorkspace(workspaces[0]);
+        const storedRole = sessionStorage.getItem('currentRole') || 'viewer';
+        setRole(storedRole);
+        loadData(workspaces[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load workspace:', error);
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -47,9 +68,13 @@ export default function Roadmap() {
     }
   }, [items]);
 
-  const loadData = async () => {
+  const loadData = async (workspaceIdOverride = null) => {
     try {
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedWorkspaceId');
+      if (!workspaceId) {
+        setLoading(false);
+        return;
+      }
       
       // Load roadmap items
       const roadmapItems = await base44.entities.RoadmapItem.filter(
@@ -124,8 +149,17 @@ export default function Roadmap() {
     );
   }
 
+  const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+  
   return (
     <div className="space-y-6">
+      {isPublicAccess && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
+          <p className="text-blue-900">
+            👀 Viewing roadmap in read-only mode. <button onClick={() => base44.auth.redirectToLogin(window.location.href)} className="underline font-medium">Login</button> to contribute.
+          </p>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
