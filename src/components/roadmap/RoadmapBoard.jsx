@@ -42,13 +42,22 @@ export default function RoadmapBoard({ items, isStaff, onItemClick, onCreate, on
     const newOrder = destination.index;
 
     try {
-      await base44.entities.RoadmapItem.update(itemId, {
-        status: newStatus,
-        display_order: newOrder,
+      // Use backend function to enforce auth + role + NAME_REQUIRED
+      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      await base44.functions.invoke('updateRoadmapItem', {
+        item_id: itemId,
+        workspace_id: workspaceId,
+        updates: {
+          status: newStatus,
+          display_order: newOrder,
+        }
       });
       onUpdate?.();
     } catch (error) {
       console.error('Failed to update roadmap item:', error);
+      if (error.response?.data?.code === 'NAME_REQUIRED') {
+        alert('Please set your display name before moving roadmap items.');
+      }
     }
   };
 
