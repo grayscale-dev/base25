@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { addCacheHeaders } from './rateLimiter.js';
+import { applyRateLimit, addCacheHeaders, RATE_LIMITS } from './rateLimiter.js';
 
 /**
  * Public API: Get roadmap items for a workspace
@@ -28,6 +28,10 @@ import { addCacheHeaders } from './rateLimiter.js';
  */
 Deno.serve(async (req) => {
   try {
+    // Apply rate limiting (60 req/min per IP)
+    const rateLimitResponse = await applyRateLimit(req, RATE_LIMITS.PUBLIC_API);
+    if (rateLimitResponse) return rateLimitResponse;
+    
     const base44 = createClientFromRequest(req);
     const payload = await req.json();
     const { workspace_id, status } = payload;
