@@ -84,7 +84,8 @@ Deno.serve(async (req) => {
         id: u.id,
         content: u.content,
         update_type: u.update_type,
-        created_date: u.created_date
+        created_date: u.created_date,
+        author_label: `${workspaces[0].name} Team`
       }))
     });
 
