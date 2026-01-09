@@ -37,6 +37,7 @@ export default function Support() {
     // Context is set by Board router via sessionStorage
     const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
     const storedRole = sessionStorage.getItem('currentRole');
+    const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
     
     if (!storedWorkspace) {
       navigate(createPageUrl('Home'));
@@ -44,7 +45,9 @@ export default function Support() {
     }
     
     const ws = JSON.parse(storedWorkspace);
-    if (!ws.support_enabled) {
+    
+    // Support is never accessible to public viewers
+    if (isPublicAccess || !ws.support_enabled) {
       navigate(createPageUrl('Feedback'));
       return;
     }
@@ -56,13 +59,9 @@ export default function Support() {
 
   const loadData = async (workspaceIdOverride = null) => {
     try {
-      // Try to get authenticated user
-      try {
-        const currentUser = await base44.auth.me();
-        setUser(currentUser);
-      } catch (error) {
-        setUser(null);
-      }
+      // Support requires authentication
+      const currentUser = await base44.auth.me();
+      setUser(currentUser);
       
       const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedWorkspaceId');
       if (!workspaceId) {
@@ -87,6 +86,8 @@ export default function Support() {
       setThreads(threadList);
     } catch (error) {
       console.error('Failed to load support threads:', error);
+      // If auth fails, redirect to login
+      base44.auth.redirectToLogin(window.location.href);
     } finally {
       setLoading(false);
     }
@@ -169,14 +170,6 @@ export default function Support() {
 
   return (
     <div className="space-y-6">
-      {isPublicAccess && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
-          <p className="text-blue-900">
-            👀 Viewing support in read-only mode. <button onClick={() => base44.auth.redirectToLogin(window.location.href)} className="underline font-medium">Login</button> to create requests and get help.
-          </p>
-        </div>
-      )}
-      
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
