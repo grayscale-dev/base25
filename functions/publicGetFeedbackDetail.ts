@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
       tags: feedback.tags || [],
       vote_count: feedback.vote_count || 0,
       created_date: feedback.created_date,
-      submitter_email: anonymizeEmail(feedback.submitter_email),
+      author_display_name: 'Community Member',
       response_count: publicResponses.length,
       responses: publicResponses.map(r => ({
         id: r.id,
@@ -118,9 +118,9 @@ Deno.serve(async (req) => {
         author_role: r.author_role || 'user',
         attachments: r.attachments || [],
         created_date: r.created_date,
-        author_email: r.is_official 
+        author_label: r.is_official 
           ? `${workspaces[0].name} Team` 
-          : anonymizeEmail(r.author_email || feedback.submitter_email)
+          : 'Community Member'
       }))
     });
     
@@ -132,10 +132,3 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
-
-function anonymizeEmail(email) {
-  if (!email) return 'Anonymous';
-  const [user, domain] = email.split('@');
-  if (user.length <= 2) return `${user[0]}***@${domain}`;
-  return `${user.substring(0, 2)}***@${domain}`;
-}

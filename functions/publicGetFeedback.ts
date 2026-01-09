@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
       vote_count: item.vote_count || 0,
       response_count: responseCounts[item.id] || 0,
       created_date: item.created_date,
-      submitter_email: anonymizeEmail(item.submitter_email)
+      author_display_name: 'Community Member'
     }));
 
     const response = Response.json({
@@ -110,10 +110,3 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
-
-function anonymizeEmail(email) {
-  if (!email) return 'Anonymous';
-  const [user, domain] = email.split('@');
-  if (user.length <= 2) return `${user[0]}***@${domain}`;
-  return `${user.substring(0, 2)}***@${domain}`;
-}
