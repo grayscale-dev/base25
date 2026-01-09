@@ -93,7 +93,7 @@ export default function Workspaces() {
         setWorkspaces(activeWorkspaces);
       }
     } catch (error) {
-      console.error('Failed to load workspaces:', error);
+      console.error('Failed to load boards:', error);
     } finally {
       setLoading(false);
     }
@@ -108,7 +108,7 @@ export default function Workspaces() {
     navigate(createPageUrl('Feedback'));
   };
 
-  const handleJoinWorkflow = async () => {
+  const handleJoinBoard = async () => {
     if (!joinLink.trim()) return;
 
     setJoining(true);
@@ -143,7 +143,7 @@ export default function Workspaces() {
     }
   };
 
-  const handleCreateWorkflow = async () => {
+  const handleCreateBoard = async () => {
     if (!newWorkspace.name || !newWorkspace.slug) return;
     
     setCreating(true);
@@ -174,8 +174,8 @@ export default function Workspaces() {
       setNewWorkspace({ name: '', slug: '', description: '' });
       loadData();
     } catch (error) {
-      console.error('Failed to create workspace:', error);
-      alert('Failed to create workflow. Please try again.');
+      console.error('Failed to create board:', error);
+      alert('Failed to create board. Please try again.');
     } finally {
       setCreating(false);
     }
@@ -194,7 +194,7 @@ export default function Workspaces() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <LoadingSpinner size="lg" text="Loading your workspaces..." />
+        <LoadingSpinner size="lg" text="Loading your boards..." />
       </div>
     );
   }
@@ -300,7 +300,7 @@ export default function Workspaces() {
                   placeholder="Paste invite link or enter board code"
                   className="mt-1.5"
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleJoinWorkflow();
+                    if (e.key === 'Enter') handleJoinBoard();
                   }}
                 />
                 <p className="text-xs text-slate-500 mt-2">
@@ -318,11 +318,11 @@ export default function Workspaces() {
                   Cancel
                 </Button>
                 <Button 
-                  onClick={handleJoinWorkflow}
+                  onClick={handleJoinBoard}
                   disabled={!joinLink.trim() || joining}
                   className="bg-slate-900 hover:bg-slate-800"
                 >
-                  {joining ? 'Processing...' : 'Continue'}
+                  {joining ? 'Joining...' : 'Continue'}
                 </Button>
               </div>
             </div>
@@ -368,7 +368,7 @@ export default function Workspaces() {
                   Cancel
                 </Button>
                 <Button 
-                  onClick={handleCreateWorkflow}
+                  onClick={handleCreateBoard}
                   disabled={!newWorkspace.name || !newWorkspace.slug || creating}
                   className="bg-slate-900 hover:bg-slate-800"
                 >
