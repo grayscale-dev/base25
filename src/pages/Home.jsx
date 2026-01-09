@@ -25,7 +25,7 @@ export default function Home() {
     
     setSubmitting(true);
     try {
-      await base44.entities.WaitlistSignup.create(formData);
+      await base44.functions.invoke('publicWaitlistSignup', formData);
       setSubmitted(true);
       setFormData({
         first_name: '',
