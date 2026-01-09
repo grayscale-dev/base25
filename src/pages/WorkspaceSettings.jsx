@@ -155,7 +155,7 @@ export default function WorkspaceSettings() {
       setNewMemberRole('viewer');
       setShowAddMember(false);
       loadAccessData(workspace.id);
-      alert(`Access granted to ${newMemberEmail}. They can join using the workspace invite link.`);
+      alert(`Access granted to ${newMemberEmail}. They can now log in to access this board.`);
     } catch (error) {
       console.error('Failed to add member:', error);
       alert('Failed to grant access. Please try again.');
@@ -206,7 +206,7 @@ export default function WorkspaceSettings() {
   };
 
   const handleCopyUrl = () => {
-    const url = `${window.location.origin}${createPageUrl('JoinWorkspace')}?workspace=${workspace.slug}`;
+    const url = `${window.location.origin}/board/${workspace.slug}/feedback`;
     navigator.clipboard.writeText(url);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2000);
@@ -329,10 +329,10 @@ export default function WorkspaceSettings() {
                 </div>
               </div>
               <div>
-                <Label>Board Invite URL</Label>
+                <Label>Public Board URL</Label>
                 <div className="mt-1.5 max-w-md flex gap-2">
                   <Input 
-                    value={`${window.location.origin}${createPageUrl('JoinWorkspace')}?workspace=${workspace?.slug || ''}`}
+                    value={`${window.location.origin}/board/${workspace?.slug || ''}/feedback`}
                     readOnly
                     className="font-mono text-sm"
                   />
@@ -346,7 +346,9 @@ export default function WorkspaceSettings() {
                   </Button>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  Share this URL to allow users to join your board
+                  {visibility === 'public' 
+                    ? 'Anyone can view this board. To contribute, users must log in and have access.' 
+                    : 'Private board—only users with access can view. To contribute, users must log in.'}
                 </p>
               </div>
             </CardContent>
