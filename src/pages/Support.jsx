@@ -34,31 +34,66 @@ export default function Support() {
   const [viewMode, setViewMode] = useState('all'); // 'my' or 'all' for staff
 
   useEffect(() => {
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
-    const storedRole = sessionStorage.getItem('currentRole');
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get('slug');
     
-    if (!storedWorkspace) {
-      navigate(createPageUrl('WorkspaceSelector'));
-      return;
-    }
-    
-    const ws = JSON.parse(storedWorkspace);
-    if (!ws.support_enabled) {
-      navigate(createPageUrl('Feedback'));
-      return;
-    }
-    
-    setWorkspace(ws);
-    setRole(storedRole || 'viewer');
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const currentUser = await base44.auth.me();
-      setUser(currentUser);
+    if (slug) {
+      loadWorkspaceBySlug(slug);
+    } else {
+      const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+      const storedRole = sessionStorage.getItem('currentRole');
       
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      if (!storedWorkspace) {
+        navigate(createPageUrl('Workspaces'));
+        return;
+      }
+      
+      const ws = JSON.parse(storedWorkspace);
+      if (!ws.support_enabled) {
+        navigate(createPageUrl('Feedback'));
+        return;
+      }
+      
+      setWorkspace(ws);
+      setRole(storedRole || 'viewer');
+      loadData();
+    }
+  }, []);
+  
+  const loadWorkspaceBySlug = async (slug) => {
+    try {
+      const workspaces = await base44.entities.Workspace.filter({ slug });
+      if (workspaces[0]) {
+        const ws = workspaces[0];
+        if (!ws.support_enabled) {
+          navigate(createPageUrl('Feedback') + `?slug=${slug}`);
+          return;
+        }
+        setWorkspace(ws);
+        const storedRole = sessionStorage.getItem('currentRole') || 'viewer';
+        setRole(storedRole);
+        loadData(ws.id);
+      }
+    } catch (error) {
+      console.error('Failed to load workspace:', error);
+    }
+  };
+
+  const loadData = async (workspaceIdOverride = null) => {
+    try {
+      // Try to get authenticated user
+      try {
+        const currentUser = await base44.auth.me();
+        setUser(currentUser);
+      } catch (error) {
+        setUser(null);
+      }
+      
+      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedWorkspaceId');
+      if (!workspaceId) {
+        setLoading(false);
+        return;
+      }
       const storedRole = sessionStorage.getItem('currentRole');
       const isStaff = ['support', 'admin'].includes(storedRole);
       
@@ -159,6 +194,14 @@ export default function Support() {
 
   return (
     <div className="space-y-6">
+      {isPublicAccess && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
+          <p className="text-blue-900">
+            👀 Viewing support in read-only mode. <button onClick={() => base44.auth.redirectToLogin(window.location.href)} className="underline font-medium">Login</button> to create requests and get help.
+          </p>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

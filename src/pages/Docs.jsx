@@ -25,21 +25,43 @@ export default function Docs() {
   const [showQuestionsPanel, setShowQuestionsPanel] = useState(false);
   const [showDocQueue, setShowDocQueue] = useState(false);
 
-  const isStaff = ['support', 'admin'].includes(role);
+  const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+  const isStaff = ['support', 'admin'].includes(role) && !isPublicAccess;
 
   useEffect(() => {
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
-    const storedRole = sessionStorage.getItem('currentRole');
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get('slug');
     
-    if (!storedWorkspace) {
-      navigate(createPageUrl('Workspaces'));
-      return;
+    if (slug) {
+      loadWorkspaceBySlug(slug);
+    } else {
+      const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+      const storedRole = sessionStorage.getItem('currentRole');
+      
+      if (!storedWorkspace) {
+        navigate(createPageUrl('Workspaces'));
+        return;
+      }
+      
+      setWorkspace(JSON.parse(storedWorkspace));
+      setRole(storedRole || 'viewer');
+      loadDocs();
     }
-    
-    setWorkspace(JSON.parse(storedWorkspace));
-    setRole(storedRole || 'viewer');
-    loadDocs();
   }, []);
+  
+  const loadWorkspaceBySlug = async (slug) => {
+    try {
+      const workspaces = await base44.entities.Workspace.filter({ slug });
+      if (workspaces[0]) {
+        setWorkspace(workspaces[0]);
+        const storedRole = sessionStorage.getItem('currentRole') || 'viewer';
+        setRole(storedRole);
+        loadDocs(workspaces[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load workspace:', error);
+    }
+  };
 
   useEffect(() => {
     const docSlug = searchParams.get('doc');
@@ -51,9 +73,13 @@ export default function Docs() {
     }
   }, [searchParams, docs]);
 
-  const loadDocs = async () => {
+  const loadDocs = async (workspaceIdOverride = null) => {
     try {
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedWorkspaceId');
+      if (!workspaceId) {
+        setLoading(false);
+        return;
+      }
       const docPages = await base44.entities.DocPage.filter(
         { workspace_id: workspaceId, is_published: true },
         'order'
