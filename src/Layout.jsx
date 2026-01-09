@@ -34,11 +34,20 @@ export default function Layout({ children, currentPageName }) {
   const [role, setRole] = useState('viewer');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Pages that don't need workspace context
+  // Public pages that don't need auth or workspace context
+  const publicPages = ['Home', 'About', 'Pricing'];
+  const isPublicPage = publicPages.includes(currentPageName);
+  
+  // Pages that need auth but not workspace context
   const noWorkspacePages = ['Workspaces', 'JoinWorkspace'];
-  const needsWorkspace = !noWorkspacePages.includes(currentPageName);
+  const needsWorkspace = !noWorkspacePages.includes(currentPageName) && !isPublicPage;
 
   useEffect(() => {
+    // Skip loading context for public pages
+    if (isPublicPage) {
+      return;
+    }
+    
     // Redirect to workspaces if no workspace is selected
     if (needsWorkspace && !sessionStorage.getItem('selectedWorkspace')) {
       navigate(createPageUrl('Workspaces'));
@@ -103,8 +112,8 @@ export default function Layout({ children, currentPageName }) {
   const isAdmin = role === 'admin';
   const isStaff = ['support', 'admin'].includes(role);
 
-  // No layout for workspaces hub, join page, or landing page
-  if (['Workspaces', 'JoinWorkspace', 'Home'].includes(currentPageName)) {
+  // No layout for public pages, workspaces hub, or join page
+  if (['Home', 'About', 'Pricing', 'Workspaces', 'JoinWorkspace'].includes(currentPageName)) {
     return children;
   }
 
