@@ -53,12 +53,12 @@ export function BoardProvider({ children }) {
 
   const loadBoardContext = async () => {
     try {
-      // PRIMARY: Resolve from URL slug parameter
-      const params = new URLSearchParams(window.location.search);
-      const slug = params.get('slug');
+      // PRIMARY: Resolve from URL path params (/board/:slug/:section)
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const slug = pathParts[0] === 'board' ? pathParts[1] : null;
 
       if (!slug) {
-        // No slug in URL - cannot resolve board
+        // No slug in URL path - cannot resolve board
         setState(prev => ({ ...prev, loading: false }));
         return;
       }
