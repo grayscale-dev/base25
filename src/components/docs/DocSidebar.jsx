@@ -39,9 +39,9 @@ export default function DocSidebar({ docs, selectedDoc, onSelect, isStaff, onRef
 
     setCreating(true);
     try {
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = sessionStorage.getItem('selectedBoardId');
       await base44.entities.DocPage.create({
-        workspace_id: workspaceId,
+        board_id: workspaceId,
         title: newDoc.title,
         slug: newDoc.slug,
         type: newDoc.type,

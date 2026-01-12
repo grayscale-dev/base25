@@ -29,7 +29,7 @@ export default function DocQueuePanel({ workspaceId, docs, onClose, onRefresh })
   const loadQueue = async () => {
     try {
       const items = await base44.entities.DocQueue.filter(
-        { workspace_id: workspaceId },
+        { board_id: workspaceId },
         '-created_date'
       );
       setQueue(items);
@@ -76,7 +76,7 @@ export default function DocQueuePanel({ workspaceId, docs, onClose, onRefresh })
     try {
       const slug = newDocTitle.toLowerCase().replace(/\s+/g, '-');
       const doc = await base44.entities.DocPage.create({
-        workspace_id: workspaceId,
+        board_id: workspaceId,
         title: newDocTitle,
         slug,
         content: `# ${newDocTitle}\n\nDocumentation for this feature.`,

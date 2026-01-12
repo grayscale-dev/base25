@@ -1,232 +1,192 @@
 import { Link } from 'react-router-dom';
-import { Check, ArrowRight } from 'lucide-react';
+import { Check, ArrowRight, Sparkles, ShieldCheck, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
 
 export default function Pricing() {
-  const plans = [
-    {
-      name: 'Small Team',
-      price: '$50',
-      period: '/month',
-      description: 'Perfect for teams of 1-20 employees',
-      features: [
-        'Up to 20 team members',
-        'Unlimited boards',
-        'Unlimited feedback & support threads',
-        'Product roadmap',
-        'Changelog & documentation',
-        'Custom branding',
-        'Email support'
-      ],
-      cta: 'Get Started',
-      highlighted: false
-    },
-    {
-      name: 'Growing Team',
-      price: '$150',
-      period: '/month',
-      description: 'For teams of 21-100 employees',
-      features: [
-        'Up to 100 team members',
-        'Everything in Small Team',
-        'Advanced analytics',
-        'API access',
-        'Priority support',
-        'Custom integrations',
-        'Team collaboration tools'
-      ],
-      cta: 'Get Started',
-      highlighted: true
-    },
-    {
-      name: 'Enterprise',
-      price: 'Custom',
-      description: 'For organizations with 100+ employees',
-      features: [
-        'Unlimited team members',
-        'Everything in Growing Team',
-        'SSO & advanced security',
-        'Dedicated account manager',
-        'SLA guarantee',
-        'Training & onboarding',
-        'White-label options'
-      ],
-      cta: 'Request Quote',
-      highlighted: false
-    }
-  ];
+  const services = ['Feedback', 'Roadmap', 'Changelog', 'Docs', 'Support'];
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-amber-200/40 blur-3xl" />
+        <div className="absolute top-40 -left-40 h-[28rem] w-[28rem] rounded-full bg-cyan-200/40 blur-3xl" />
+      </div>
+
+      <header className="relative border-b border-slate-200 bg-white/70 backdrop-blur">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link to={createPageUrl('Home')} className="flex items-center gap-2">
-            <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695ee36fb2c36c191b58c83e/678f5e1e6_create-a-svg-like-these-except-it-is-rock-on-symbo.png" 
-              alt="Nexus" 
+            <img
+              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695ee36fb2c36c191b58c83e/678f5e1e6_create-a-svg-like-these-except-it-is-rock-on-symbo.png"
+              alt="Nexus"
               className="h-8 w-8 object-contain"
             />
-            <span className="text-lg font-bold text-slate-900">Nexus</span>
+            <span className="text-lg font-semibold tracking-tight">Nexus</span>
           </Link>
-          
-          <nav className="hidden md:flex items-center gap-8">
-            <Link to={createPageUrl('About')} className="text-sm font-medium text-slate-600 hover:text-slate-900">About</Link>
-            <Link to={createPageUrl('Pricing')} className="text-sm font-medium text-slate-900">Pricing</Link>
-          </nav>
-          
+
           <div className="flex items-center gap-3">
             <Link to={createPageUrl('Workspaces')}>
               <Button variant="outline" size="sm">Sign In</Button>
             </Link>
             <Link to={createPageUrl('Workspaces')}>
-              <Button size="sm" className="bg-slate-900 hover:bg-slate-800">Get Started</Button>
+              <Button size="sm" className="bg-slate-900 hover:bg-slate-800 text-white">
+                Start free trial
+              </Button>
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-5xl md:text-6xl font-bold text-slate-900 mb-6">
-            Simple, transparent pricing
-          </h1>
-          <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-            Choose the plan that fits your team. All plans include unlimited users.
-          </p>
-        </div>
-      </section>
+      <main className="relative">
+        <section className="px-6 py-16">
+          <div className="max-w-5xl mx-auto text-center space-y-6">
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700">
+              <Sparkles className="h-4 w-4" />
+              Invite-only beta • Trial starts after access is granted
+            </div>
+            <h1 className="text-4xl md:text-6xl font-semibold tracking-tight">
+              Pay for what you enable, not what you read.
+            </h1>
+            <p className="text-lg md:text-xl text-slate-600 max-w-3xl mx-auto">
+              Every board starts with 50 interactions per day included. We only charge for
+              write actions after that, and only for the services you turn on.
+            </p>
 
-      {/* Pricing Cards */}
-      <section className="pb-20 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid md:grid-cols-3 gap-8">
-            {plans.map((plan, index) => (
-              <div
-                key={index}
-                className={`rounded-2xl p-8 ${
-                  plan.highlighted
-                    ? 'bg-slate-900 text-white border-2 border-slate-900 shadow-2xl scale-105'
-                    : 'bg-white border-2 border-slate-200'
-                }`}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+              <a
+                href="mailto:beta@nexus.app?subject=Nexus%20Beta%20Access"
+                className="inline-flex"
               >
-                <h3 className={`text-2xl font-bold mb-2 ${plan.highlighted ? 'text-white' : 'text-slate-900'}`}>
-                  {plan.name}
-                </h3>
-                <p className={`text-sm mb-6 ${plan.highlighted ? 'text-slate-300' : 'text-slate-600'}`}>
-                  {plan.description}
-                </p>
-                
-                <div className="mb-6">
-                  <span className={`text-5xl font-bold ${plan.highlighted ? 'text-white' : 'text-slate-900'}`}>
-                    {plan.price}
-                  </span>
-                  {plan.period && (
-                    <span className={plan.highlighted ? 'text-slate-300' : 'text-slate-500'}>
-                      {plan.period}
-                    </span>
-                  )}
-                </div>
+                <Button variant="outline" size="lg">
+                  Request access
+                </Button>
+              </a>
+              <Link to={createPageUrl('Workspaces')}>
+                <Button size="lg" className="bg-slate-900 hover:bg-slate-800 text-white">
+                  Start free trial
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
 
-                <Link to={createPageUrl('Workspaces')}>
-                  <Button
-                    className={`w-full mb-8 ${
-                      plan.highlighted
-                        ? 'bg-white text-slate-900 hover:bg-slate-100'
-                        : 'bg-slate-900 text-white hover:bg-slate-800'
-                    }`}
+        <section className="px-6 pb-16">
+          <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-8">
+            <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+              <div className="flex items-center gap-3 text-slate-900">
+                <ShieldCheck className="h-6 w-6 text-emerald-600" />
+                <h2 className="text-2xl font-semibold">Core pricing</h2>
+              </div>
+              <p className="text-slate-600 mt-3">
+                After the 7-day trial, each enabled service is $5 per month.
+              </p>
+              <div className="mt-6 grid gap-4">
+                {services.map((service) => (
+                  <div
+                    key={service}
+                    className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3"
                   >
-                    {plan.cta}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
+                    <span className="font-medium">{service}</span>
+                    <span className="text-sm text-slate-500">$5 / month</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                Free setup • 7-day trial starts after beta access is granted.
+              </div>
+            </div>
 
-                <ul className="space-y-4">
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <Check className={`h-5 w-5 flex-shrink-0 ${
-                        plan.highlighted ? 'text-green-400' : 'text-green-600'
-                      }`} />
-                      <span className={`text-sm ${plan.highlighted ? 'text-slate-200' : 'text-slate-600'}`}>
-                        {feature}
-                      </span>
-                    </li>
-                  ))}
+            <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+              <div className="flex items-center gap-3 text-slate-900">
+                <Zap className="h-6 w-6 text-cyan-600" />
+                <h2 className="text-2xl font-semibold">Usage pricing</h2>
+              </div>
+              <p className="text-slate-600 mt-3">
+                We only count authenticated write actions (new data). Reads are always free.
+              </p>
+              <div className="mt-6 space-y-4">
+                <div className="rounded-2xl border border-slate-200 px-5 py-4">
+                  <p className="text-sm text-slate-500">Included every day</p>
+                  <p className="text-3xl font-semibold text-slate-900">50 interactions</p>
+                  <p className="text-sm text-slate-500">Per board, resets daily</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 px-5 py-4">
+                  <p className="text-sm text-slate-500">Overage</p>
+                  <p className="text-3xl font-semibold text-slate-900">$0.002</p>
+                  <p className="text-sm text-slate-500">Per interaction</p>
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-slate-200 pt-6">
+                <p className="text-sm font-medium text-slate-700 mb-3">Counted interactions</p>
+                <ul className="space-y-2 text-sm text-slate-600">
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-600 mt-0.5" />
+                    Feedback posts, comments, votes
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-600 mt-0.5" />
+                    Roadmap items, votes, and comments
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-600 mt-0.5" />
+                    Changelog entries and reactions
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-600 mt-0.5" />
+                    Docs pages, edits, and comments
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-600 mt-0.5" />
+                    Support tickets and replies
+                  </li>
                 </ul>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ Section */}
-      <section className="py-20 px-6 bg-slate-50">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold text-slate-900 text-center mb-12">
-            Frequently Asked Questions
-          </h2>
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl p-6 border border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                Can I change plans later?
-              </h3>
-              <p className="text-slate-600">
-                Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately.
-              </p>
-            </div>
-            <div className="bg-white rounded-xl p-6 border border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                Is there a free trial?
-              </h3>
-              <p className="text-slate-600">
-                Yes, the Pro plan comes with a 14-day free trial. No credit card required.
-              </p>
-            </div>
-            <div className="bg-white rounded-xl p-6 border border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                What payment methods do you accept?
-              </h3>
-              <p className="text-slate-600">
-                We accept all major credit cards, PayPal, and can arrange invoicing for Enterprise customers.
-              </p>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* CTA Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-bold text-slate-900 mb-6">
-            Ready to transform your feedback process?
-          </h2>
-          <p className="text-xl text-slate-600 mb-8">
-            Start with our free plan, no credit card required
-          </p>
-          <Link to={createPageUrl('Workspaces')}>
-            <Button size="lg" className="bg-slate-900 hover:bg-slate-800">
-              Get Started Free
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-          </Link>
-        </div>
-      </section>
+        <section className="px-6 pb-20">
+          <div className="max-w-6xl mx-auto rounded-3xl border border-slate-200 bg-slate-900 text-white p-10">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <div>
+                <h2 className="text-3xl font-semibold">Invite-only beta</h2>
+                <p className="text-slate-300 mt-2 max-w-2xl">
+                  We onboard a limited number of teams each week to keep support tight. Request access to
+                  start your 7-day trial when you’re approved.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <a href="mailto:beta@nexus.app?subject=Nexus%20Beta%20Access">
+                  <Button variant="outline" className="border-white text-white hover:bg-white/10">
+                    Request access
+                  </Button>
+                </a>
+                <Link to={createPageUrl('Workspaces')}>
+                  <Button className="bg-white text-slate-900 hover:bg-slate-100">
+                    Start free trial
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 py-12 px-6">
+      <footer className="border-t border-slate-200 py-12 px-6 bg-white">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695ee36fb2c36c191b58c83e/678f5e1e6_create-a-svg-like-these-except-it-is-rock-on-symbo.png" 
-              alt="Nexus" 
+            <img
+              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695ee36fb2c36c191b58c83e/678f5e1e6_create-a-svg-like-these-except-it-is-rock-on-symbo.png"
+              alt="Nexus"
               className="h-6 w-6 object-contain"
             />
             <span className="font-semibold text-slate-900">nexus</span>
           </div>
           <p className="text-sm text-slate-500">
-            © 2026 Nexus. All rights reserved.
+            © 2026 Nexus. Invite-only beta.
           </p>
         </div>
       </footer>

@@ -164,7 +164,7 @@ export default function ApiDocs() {
   const [expandedEndpoint, setExpandedEndpoint] = useState(null);
 
   useEffect(() => {
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+    const storedWorkspace = sessionStorage.getItem('selectedBoard');
     const storedRole = sessionStorage.getItem('currentRole');
     
     if (!storedWorkspace || storedRole !== 'admin') {
@@ -178,8 +178,8 @@ export default function ApiDocs() {
 
   const loadTokens = async () => {
     try {
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
-      const tokenData = await base44.entities.ApiToken.filter({ workspace_id: workspaceId });
+      const workspaceId = sessionStorage.getItem('selectedBoardId');
+      const tokenData = await base44.entities.ApiToken.filter({ board_id: workspaceId });
       setTokens(tokenData);
     } catch (error) {
       console.error('Failed to load tokens:', error);
@@ -192,7 +192,7 @@ export default function ApiDocs() {
     if (!newTokenName || newTokenPerms.length === 0) return;
 
     try {
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = sessionStorage.getItem('selectedBoardId');
       const user = await base44.auth.me();
       
       // Generate a random token
@@ -200,7 +200,7 @@ export default function ApiDocs() {
         .map(b => b.toString(16).padStart(2, '0')).join('');
       
       await base44.entities.ApiToken.create({
-        workspace_id: workspaceId,
+        board_id: workspaceId,
         name: newTokenName,
         token_hash: tokenValue, // In production, this should be hashed
         token_prefix: tokenValue.slice(0, 12),
@@ -266,7 +266,7 @@ export default function ApiDocs() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">API Documentation</h1>
         <p className="text-slate-500 mt-1">
-          Integrate with your workspace using the REST API
+          Integrate with your board using the REST API
         </p>
       </div>
 
@@ -318,7 +318,7 @@ export default function ApiDocs() {
             <CardContent>
               <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
                 <code className="text-sm text-slate-100">
-                  https://api.yourplatform.com/v1/workspaces/{workspace?.id}
+                  https://api.yourplatform.com/v1/boards/{workspace?.id}
                 </code>
               </div>
             </CardContent>
@@ -415,7 +415,7 @@ export default function ApiDocs() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>API Tokens</CardTitle>
-                <CardDescription>Manage API tokens for this workspace</CardDescription>
+                <CardDescription>Manage API tokens for this board</CardDescription>
               </div>
               <Button onClick={() => setShowCreateToken(true)} className="bg-slate-900 hover:bg-slate-800">
                 <Plus className="h-4 w-4 mr-2" />

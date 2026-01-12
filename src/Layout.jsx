@@ -75,7 +75,7 @@ export default function Layout({ children, currentPageName }) {
 
     if (needsWorkspace) {
       // Read workspace context from sessionStorage (set by Board router)
-      const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+      const storedWorkspace = sessionStorage.getItem('selectedBoard');
       const storedRole = sessionStorage.getItem('currentRole');
       const storedIsPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
       
@@ -101,12 +101,12 @@ export default function Layout({ children, currentPageName }) {
       // Load user workspaces for switcher (if authenticated with role)
       if (isAuthenticated && !storedIsPublicAccess) {
         try {
-          const allRoles = await base44.entities.WorkspaceRole.filter({ user_id: currentUser.id });
+          const allRoles = await base44.entities.BoardRole.filter({ user_id: currentUser.id });
           if (allRoles.length > 0) {
-            const workspaceIds = [...new Set(allRoles.map(r => r.workspace_id))];
+            const workspaceIds = [...new Set(allRoles.map(r => r.board_id))];
             const wsData = await Promise.all(
               workspaceIds.map(async (id) => {
-                const results = await base44.entities.Workspace.filter({ id });
+                const results = await base44.entities.Board.filter({ id });
                 return results[0];
               })
             );
@@ -121,8 +121,8 @@ export default function Layout({ children, currentPageName }) {
 
   const handleWorkspaceSwitch = (ws) => {
     const role = workspaces.find(w => w.id === ws.id);
-    sessionStorage.setItem('selectedWorkspaceId', ws.id);
-    sessionStorage.setItem('selectedWorkspace', JSON.stringify(ws));
+    sessionStorage.setItem('selectedBoardId', ws.id);
+    sessionStorage.setItem('selectedBoard', JSON.stringify(ws));
     setWorkspace(ws);
     window.location.reload(); // Reload to refresh role context
   };

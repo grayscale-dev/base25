@@ -74,7 +74,7 @@ export default function FeedbackForm({ workspaceId, onSuccess, onCancel, allowAt
       await guardAction(async () => {
         const user = await base44.auth.me();
         const feedbackData = {
-          workspace_id: workspaceId,
+          board_id: workspaceId,
           title,
           type,
           description,

@@ -43,10 +43,10 @@ export default function RoadmapBoard({ items, isStaff, onItemClick, onCreate, on
 
     try {
       // Use backend function to enforce auth + role + NAME_REQUIRED
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = sessionStorage.getItem('selectedBoardId');
       await base44.functions.invoke('updateRoadmapItem', {
         item_id: itemId,
-        workspace_id: workspaceId,
+        board_id: workspaceId,
         updates: {
           status: newStatus,
           display_order: newOrder,

@@ -30,9 +30,9 @@ export default function DocViewer({ doc, onRefresh, isStaff }) {
   const loadComments = async () => {
     if (!doc?.id) return;
     try {
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = sessionStorage.getItem('selectedBoardId');
       const docComments = await base44.entities.DocComment.filter(
-        { workspace_id: workspaceId, doc_page_id: doc.id },
+        { board_id: workspaceId, doc_page_id: doc.id },
         'created_date'
       );
       setComments(docComments);
@@ -46,9 +46,9 @@ export default function DocViewer({ doc, onRefresh, isStaff }) {
 
     setPosting(true);
     try {
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = sessionStorage.getItem('selectedBoardId');
       await base44.entities.DocComment.create({
-        workspace_id: workspaceId,
+        board_id: workspaceId,
         doc_page_id: doc.id,
         content: newComment,
         author_id: user.id,
@@ -81,7 +81,7 @@ export default function DocViewer({ doc, onRefresh, isStaff }) {
       {/* Links Panel */}
       <div className="mt-6">
         <LinksPanel
-          workspaceId={doc.workspace_id}
+          workspaceId={doc.board_id}
           itemType="docs"
           itemId={doc.id}
           links={{
@@ -138,7 +138,7 @@ export default function DocViewer({ doc, onRefresh, isStaff }) {
             <Button
               onClick={handlePostComment}
               disabled={!newComment.trim() || posting}
-              style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').primary_color || '#0f172a' }}
+              style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedBoard') || '{}').primary_color || '#0f172a' }}
               className="hover:opacity-90 text-white"
             >
               <Send className="h-4 w-4 mr-2" />

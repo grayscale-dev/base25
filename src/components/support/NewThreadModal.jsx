@@ -57,7 +57,7 @@ export default function NewThreadModal({ isOpen, onClose, workspaceId, onSuccess
         
         // Create thread
         const thread = await base44.entities.SupportThread.create({
-          workspace_id: workspaceId,
+          board_id: workspaceId,
           subject,
           status: 'open',
           priority: 'medium',
@@ -70,7 +70,7 @@ export default function NewThreadModal({ isOpen, onClose, workspaceId, onSuccess
         // Create first message
         await base44.entities.SupportMessage.create({
           thread_id: thread.id,
-          workspace_id: workspaceId,
+          board_id: workspaceId,
           content: message,
           author_id: user.id,
           author_email: user.email,
@@ -184,7 +184,7 @@ export default function NewThreadModal({ isOpen, onClose, workspaceId, onSuccess
             <Button 
               type="submit" 
               disabled={!subject || !message || submitting}
-              style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').primary_color || '#0f172a' }}
+              style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedBoard') || '{}').primary_color || '#0f172a' }}
               className="hover:opacity-90 text-white"
             >
               {submitting ? 'Creating...' : (

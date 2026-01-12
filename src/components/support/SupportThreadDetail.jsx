@@ -89,7 +89,7 @@ export default function SupportThreadDetail({
       const user = await base44.auth.me();
       await base44.entities.SupportMessage.create({
         thread_id: thread.id,
-        workspace_id: thread.workspace_id,
+        board_id: thread.board_id,
         content: messageContent,
         author_id: user.id,
         author_email: user.email,
@@ -140,8 +140,8 @@ export default function SupportThreadDetail({
     if (!participantEmail.trim()) return;
     
     try {
-      const roles = await base44.entities.WorkspaceRole.filter({ 
-        workspace_id: thread.workspace_id, 
+      const roles = await base44.entities.BoardRole.filter({ 
+        board_id: thread.board_id, 
         email: participantEmail 
       });
       
@@ -246,7 +246,7 @@ export default function SupportThreadDetail({
       {isStaff && (
         <div className="mb-6">
           <LinksPanel
-            workspaceId={thread.workspace_id}
+            workspaceId={thread.board_id}
             itemType="support"
             itemId={thread.id}
             links={{
@@ -400,7 +400,7 @@ export default function SupportThreadDetail({
             <Button 
               onClick={handleSendMessage}
               disabled={!messageContent.trim() || sending}
-              style={!isInternalNote ? { backgroundColor: JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').primary_color || '#0f172a' } : {}}
+              style={!isInternalNote ? { backgroundColor: JSON.parse(sessionStorage.getItem('selectedBoard') || '{}').primary_color || '#0f172a' } : {}}
               className={cn(
                 isInternalNote 
                   ? 'bg-amber-500 hover:bg-amber-600' 

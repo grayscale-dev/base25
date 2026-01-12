@@ -20,19 +20,44 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 export default function Workspaces() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [workspaces, setWorkspaces] = useState([]);
-  const [workspaceRoles, setWorkspaceRoles] = useState([]);
+  const [boards, setBoards] = useState([]);
+  const [boardRoles, setBoardRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [joinLink, setJoinLink] = useState('');
   const [joining, setJoining] = useState(false);
-  const [newWorkspace, setNewWorkspace] = useState({ name: '', slug: '', description: '' });
+  const [newBoard, setNewBoard] = useState({ name: '', slug: '', description: '' });
   const [creating, setCreating] = useState(false);
+  const [slugStatus, setSlugStatus] = useState({ checking: false, available: null, message: '' });
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!newBoard.slug) {
+      setSlugStatus({ checking: false, available: null, message: '' });
+      return;
+    }
+
+    const handle = setTimeout(async () => {
+      setSlugStatus({ checking: true, available: null, message: '' });
+      try {
+        const { data } = await base44.functions.invoke('checkBoardSlug', { slug: newBoard.slug });
+        if (data?.available) {
+          setSlugStatus({ checking: false, available: true, message: 'Slug is available' });
+        } else {
+          setSlugStatus({ checking: false, available: false, message: 'Slug is already in use' });
+        }
+      } catch (error) {
+        console.error('Failed to check slug:', error);
+        setSlugStatus({ checking: false, available: null, message: 'Unable to check slug' });
+      }
+    }, 400);
+
+    return () => clearTimeout(handle);
+  }, [newBoard.slug]);
 
   const loadData = async () => {
     try {
@@ -48,49 +73,22 @@ export default function Workspaces() {
       
       setUser(currentUser);
 
-      // Ensure user has a TenantMember record
-      let tenantMembers = await base44.entities.TenantMember.filter({ user_id: currentUser.id });
-
-      if (tenantMembers.length === 0) {
-        // Get or create a default tenant
-        let tenants = await base44.entities.Tenant.filter({});
-        let tenant;
-
-        if (tenants.length === 0) {
-          tenant = await base44.entities.Tenant.create({
-            name: 'Default Organization',
-            slug: 'default',
-            status: 'active'
-          });
-        } else {
-          tenant = tenants[0];
-        }
-
-        await base44.entities.TenantMember.create({
-          tenant_id: tenant.id,
-          user_id: currentUser.id,
-          email: currentUser.email,
-          is_tenant_admin: false,
-          status: 'active'
-        });
-      }
-
-      // Load workspace roles
-      const roles = await base44.entities.WorkspaceRole.filter({ 
+      // Load board roles
+      const roles = await base44.entities.BoardRole.filter({ 
         user_id: currentUser.id 
       });
-      setWorkspaceRoles(roles);
+      setBoardRoles(roles);
 
       if (roles.length > 0) {
-        const workspaceIds = [...new Set(roles.map(r => r.workspace_id).filter(Boolean))];
-        const workspacesData = await Promise.all(
-          workspaceIds.map(async (id) => {
-            const results = await base44.entities.Workspace.filter({ id });
+        const boardIds = [...new Set(roles.map(r => r.board_id).filter(Boolean))];
+        const boardsData = await Promise.all(
+          boardIds.map(async (id) => {
+            const results = await base44.entities.Board.filter({ id });
             return results[0];
           })
         );
-        const activeWorkspaces = workspacesData.filter(w => w && w.status === 'active');
-        setWorkspaces(activeWorkspaces);
+        const activeBoards = boardsData.filter(board => board && board.status === 'active');
+        setBoards(activeBoards);
       }
     } catch (error) {
       console.error('Failed to load boards:', error);
@@ -99,13 +97,13 @@ export default function Workspaces() {
     }
   };
 
-  const handleSelectWorkspace = (workspace) => {
-    // Store selected workspace and navigate to canonical board route
-    const role = workspaceRoles.find(r => r.workspace_id === workspace.id);
-    sessionStorage.setItem('selectedWorkspaceId', workspace.id);
-    sessionStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
+  const handleSelectBoard = (board) => {
+    // Store selected board and navigate to canonical board route
+    const role = boardRoles.find(r => r.board_id === board.id);
+    sessionStorage.setItem('selectedBoardId', board.id);
+    sessionStorage.setItem('selectedBoard', JSON.stringify(board));
     sessionStorage.setItem('currentRole', role?.role || 'viewer');
-    navigate(`/board/${workspace.slug}/feedback`);
+    navigate(`/board/${board.slug}/feedback`);
   };
 
   const handleJoinBoard = async () => {
@@ -117,12 +115,12 @@ export default function Workspaces() {
       let slug;
       
       // Handle full URL or just slug
-      if (joinLink.includes('workspace=')) {
+      if (joinLink.includes('board=')) {
         const url = new URL(joinLink);
-        slug = url.searchParams.get('workspace');
+        slug = url.searchParams.get('board');
       } else if (joinLink.startsWith('http')) {
         const url = new URL(joinLink);
-        slug = url.searchParams.get('workspace');
+        slug = url.searchParams.get('board');
       } else {
         // Assume it's just a slug
         slug = joinLink.trim();
@@ -135,7 +133,7 @@ export default function Workspaces() {
       }
 
       // Navigate to join page
-      navigate(createPageUrl('JoinWorkspace') + `?workspace=${slug}`);
+      navigate(createPageUrl('JoinWorkspace') + `?board=${slug}`);
     } catch (error) {
       console.error('Failed to parse join link:', error);
       alert('Invalid join link format');
@@ -144,34 +142,20 @@ export default function Workspaces() {
   };
 
   const handleCreateBoard = async () => {
-    if (!newWorkspace.name || !newWorkspace.slug) return;
+    if (!newBoard.name || !newBoard.slug) return;
     
     setCreating(true);
     try {
-      const tenantMembers = await base44.entities.TenantMember.filter({ user_id: user.id });
-      const tenantMember = tenantMembers[0];
-      
-      const workspace = await base44.entities.Workspace.create({
-        tenant_id: tenantMember.tenant_id,
-        name: newWorkspace.name,
-        slug: newWorkspace.slug,
-        description: newWorkspace.description,
+      const { data: board } = await base44.functions.invoke('createBoard', {
+        name: newBoard.name,
+        slug: newBoard.slug,
+        description: newBoard.description,
         visibility: 'restricted',
-        support_enabled: true,
-        status: 'active'
-      });
-
-      // Assign current user as admin
-      await base44.entities.WorkspaceRole.create({
-        workspace_id: workspace.id,
-        user_id: user.id,
-        email: user.email,
-        role: 'admin',
-        assigned_via: 'explicit'
+        support_enabled: true
       });
 
       setShowCreateModal(false);
-      setNewWorkspace({ name: '', slug: '', description: '' });
+      setNewBoard({ name: '', slug: '', description: '' });
       loadData();
     } catch (error) {
       console.error('Failed to create board:', error);
@@ -186,8 +170,8 @@ export default function Workspaces() {
     base44.auth.logout();
   };
 
-  const getRoleForWorkspace = (workspaceId) => {
-    const role = workspaceRoles.find(r => r.workspace_id === workspaceId);
+  const getRoleForBoard = (boardId) => {
+    const role = boardRoles.find(r => r.board_id === boardId);
     return role?.role || 'viewer';
   };
 
@@ -244,8 +228,8 @@ export default function Workspaces() {
                 Your Boards
               </h1>
               <p className="text-slate-500">
-                {workspaces.length > 0 
-                  ? `You have access to ${workspaces.length} board${workspaces.length === 1 ? '' : 's'}`
+                {boards.length > 0 
+                  ? `You have access to ${boards.length} board${boards.length === 1 ? '' : 's'}`
                   : 'Join or create a board to get started'}
               </p>
             </div>
@@ -272,14 +256,14 @@ export default function Workspaces() {
         </div>
 
         {/* Boards Grid */}
-        {workspaces.length > 0 && (
+        {boards.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {workspaces.map((workspace) => (
+            {boards.map((board) => (
               <WorkspaceCard
-                key={workspace.id}
-                workspace={workspace}
-                role={getRoleForWorkspace(workspace.id)}
-                onClick={() => handleSelectWorkspace(workspace)}
+                key={board.id}
+                workspace={board}
+                role={getRoleForBoard(board.id)}
+                onClick={() => handleSelectBoard(board)}
               />
             ))}
           </div>
@@ -339,8 +323,8 @@ export default function Workspaces() {
               <div>
                 <Label>Board Name</Label>
                 <Input
-                  value={newWorkspace.name}
-                  onChange={(e) => setNewWorkspace({ ...newWorkspace, name: e.target.value })}
+                  value={newBoard.name}
+                  onChange={(e) => setNewBoard({ ...newBoard, name: e.target.value })}
                   placeholder="e.g., Product Feedback"
                   className="mt-1.5"
                 />
@@ -348,17 +332,22 @@ export default function Workspaces() {
               <div>
                 <Label>Slug (URL-friendly)</Label>
                 <Input
-                  value={newWorkspace.slug}
-                  onChange={(e) => setNewWorkspace({ ...newWorkspace, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
+                  value={newBoard.slug}
+                  onChange={(e) => setNewBoard({ ...newBoard, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
                   placeholder="e.g., product-feedback"
                   className="mt-1.5"
                 />
+                {slugStatus.message && (
+                  <p className={`text-xs mt-2 ${slugStatus.available === false ? 'text-red-600' : 'text-slate-500'}`}>
+                    {slugStatus.checking ? 'Checking...' : slugStatus.message}
+                  </p>
+                )}
               </div>
               <div>
                 <Label>Description (Optional)</Label>
                 <Textarea
-                  value={newWorkspace.description}
-                  onChange={(e) => setNewWorkspace({ ...newWorkspace, description: e.target.value })}
+                  value={newBoard.description}
+                  onChange={(e) => setNewBoard({ ...newBoard, description: e.target.value })}
                   placeholder="Brief description of this board"
                   className="mt-1.5"
                 />
@@ -369,7 +358,7 @@ export default function Workspaces() {
                 </Button>
                 <Button 
                   onClick={handleCreateBoard}
-                  disabled={!newWorkspace.name || !newWorkspace.slug || creating}
+                  disabled={!newBoard.name || !newBoard.slug || creating || slugStatus.available === false || slugStatus.checking}
                   className="bg-slate-900 hover:bg-slate-800"
                 >
                   {creating ? 'Creating...' : 'Create Board'}

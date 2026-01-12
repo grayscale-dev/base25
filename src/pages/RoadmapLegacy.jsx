@@ -10,7 +10,7 @@ export default function RoadmapLegacy() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const workspace = sessionStorage.getItem('selectedWorkspace');
+    const workspace = sessionStorage.getItem('selectedBoard');
     
     if (workspace) {
       const ws = JSON.parse(workspace);

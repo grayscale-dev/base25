@@ -5,10 +5,9 @@ const UserContext = createContext(null);
 
 export function UserProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [tenants, setTenants] = useState([]);
-  const [workspaces, setWorkspaces] = useState([]);
-  const [workspaceRoles, setWorkspaceRoles] = useState([]);
-  const [currentWorkspace, setCurrentWorkspace] = useState(null);
+  const [boards, setBoards] = useState([]);
+  const [boardRoles, setBoardRoles] = useState([]);
+  const [currentBoard, setCurrentBoard] = useState(null);
   const [currentRole, setCurrentRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
@@ -22,39 +21,26 @@ export function UserProvider({ children }) {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
 
-      // Load tenant memberships
-      const membershipData = await base44.entities.TenantMember.filter({ 
+      // Load board roles
+      const rolesData = await base44.entities.BoardRole.filter({ 
         user_id: currentUser.id 
       });
-      
-      if (membershipData.length > 0) {
-        const tenantIds = [...new Set(membershipData.map(m => m.tenant_id).filter(Boolean))];
-        const tenantsData = await Promise.all(
-          tenantIds.map(id => base44.entities.Tenant.filter({ id }))
-        );
-        setTenants(tenantsData.flat().filter(t => t.status === 'active'));
-      }
+      setBoardRoles(rolesData);
 
-      // Load workspace roles
-      const rolesData = await base44.entities.WorkspaceRole.filter({ 
-        user_id: currentUser.id 
-      });
-      setWorkspaceRoles(rolesData);
-
-      // Load accessible workspaces
+      // Load accessible boards
       if (rolesData.length > 0) {
-        const workspaceIds = [...new Set(rolesData.map(r => r.workspace_id).filter(Boolean))];
-        const workspacesData = await Promise.all(
-          workspaceIds.map(id => base44.entities.Workspace.filter({ id }))
+        const boardIds = [...new Set(rolesData.map(r => r.board_id).filter(Boolean))];
+        const boardsData = await Promise.all(
+          boardIds.map(id => base44.entities.Board.filter({ id }))
         );
-        const activeWorkspaces = workspacesData.flat().filter(w => w.status === 'active');
-        setWorkspaces(activeWorkspaces);
+        const activeBoards = boardsData.flat().filter(board => board.status === 'active');
+        setBoards(activeBoards);
 
-        // Auto-select if only one workspace
-        if (activeWorkspaces.length === 1) {
-          const ws = activeWorkspaces[0];
-          const role = rolesData.find(r => r.workspace_id === ws.id);
-          setCurrentWorkspace(ws);
+        // Auto-select if only one board
+        if (activeBoards.length === 1) {
+          const board = activeBoards[0];
+          const role = rolesData.find(r => r.board_id === board.id);
+          setCurrentBoard(board);
           setCurrentRole(role?.role || 'viewer');
         }
       }
@@ -67,9 +53,9 @@ export function UserProvider({ children }) {
     }
   };
 
-  const selectWorkspace = (workspace) => {
-    setCurrentWorkspace(workspace);
-    const role = workspaceRoles.find(r => r.workspace_id === workspace.id);
+  const selectBoard = (board) => {
+    setCurrentBoard(board);
+    const role = boardRoles.find(r => r.board_id === board.id);
     setCurrentRole(role?.role || 'viewer');
   };
 
@@ -94,14 +80,13 @@ export function UserProvider({ children }) {
 
   const value = {
     user,
-    tenants,
-    workspaces,
-    workspaceRoles,
-    currentWorkspace,
+    boards,
+    boardRoles,
+    currentBoard,
     currentRole,
     loading,
     initialized,
-    selectWorkspace,
+    selectBoard,
     hasPermission,
     isStaff,
     isAdmin,

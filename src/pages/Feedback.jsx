@@ -65,7 +65,7 @@ export default function Feedback() {
       // Use public endpoint if unauthenticated or public access
       if (!user || isPublicAccess) {
         const { data } = await base44.functions.invoke('publicGetFeedback', {
-          workspace_id: workspaceId
+          board_id: workspaceId
         });
         
         if (data && data.items) {
@@ -81,14 +81,14 @@ export default function Feedback() {
       } else {
         // Authenticated user with role
         const feedback = await base44.entities.Feedback.filter(
-          { workspace_id: workspaceId },
+          { board_id: workspaceId },
           '-created_date'
         );
         setFeedbackList(feedback);
 
         // Load response counts
         const allResponses = await base44.entities.FeedbackResponse.filter(
-          { workspace_id: workspaceId }
+          { board_id: workspaceId }
         );
         const responseCounts = {};
         allResponses.forEach(r => {
@@ -110,14 +110,14 @@ export default function Feedback() {
     if (!user || isPublicAccess) {
       const { data } = await base44.functions.invoke('publicGetFeedbackDetail', {
         feedback_id: feedbackId,
-        workspace_id: workspaceId
+        board_id: workspaceId
       });
       
       return data?.responses || [];
     } else {
       // Authenticated user with role
       const feedbackResponses = await base44.entities.FeedbackResponse.filter(
-        { feedback_id: feedbackId, workspace_id: workspaceId },
+        { feedback_id: feedbackId, board_id: workspaceId },
         'created_date'
       );
       return feedbackResponses;

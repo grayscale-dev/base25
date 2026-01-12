@@ -84,7 +84,7 @@ export default function RoadmapItemModal({
       if (isNew) {
         // Use backend function to enforce auth + role + NAME_REQUIRED
         await base44.functions.invoke('createRoadmapItem', {
-          workspace_id: workspaceId,
+          board_id: workspaceId,
           title,
           description,
           status,
@@ -95,7 +95,7 @@ export default function RoadmapItemModal({
         // Use backend function to enforce auth + role + NAME_REQUIRED
         await base44.functions.invoke('updateRoadmapItem', {
           item_id: item.id,
-          workspace_id: workspaceId,
+          board_id: workspaceId,
           updates: {
             title,
             description,
@@ -107,7 +107,7 @@ export default function RoadmapItemModal({
         // If checkbox is checked and status is shipped, create changelog entry
         if (status === 'shipped' && addToChangelog) {
           const entry = await base44.entities.ChangelogEntry.create({
-            workspace_id: workspaceId,
+            board_id: workspaceId,
             roadmap_item_id: item.id,
             title,
             description,
@@ -118,7 +118,7 @@ export default function RoadmapItemModal({
 
           // Add to doc queue
           await base44.entities.DocQueue.create({
-            workspace_id: workspaceId,
+            board_id: workspaceId,
             changelog_entry_id: entry.id,
             title,
             status: 'pending',
@@ -147,7 +147,7 @@ export default function RoadmapItemModal({
         // Use backend function to enforce auth + role + NAME_REQUIRED
         await base44.functions.invoke('createRoadmapUpdate', {
           roadmap_item_id: item.id,
-          workspace_id: workspaceId,
+          board_id: workspaceId,
           content: updateContent,
           update_type: 'progress',
         });
@@ -274,7 +274,7 @@ export default function RoadmapItemModal({
                 <Button 
                   onClick={handleSave} 
                   disabled={!title || saving}
-                  style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').primary_color || '#0f172a' }}
+                  style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedBoard') || '{}').primary_color || '#0f172a' }}
                   className="hover:opacity-90 text-white"
                 >
                   {saving ? 'Saving...' : (isNew ? 'Create Item' : 'Save Changes')}
@@ -313,7 +313,7 @@ export default function RoadmapItemModal({
               {item && (
                 <LinksPanel
                   workspaceId={workspaceId}
-                  workspaceSlug={workspaceSlug || JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').slug}
+                  workspaceSlug={workspaceSlug || JSON.parse(sessionStorage.getItem('selectedBoard') || '{}').slug}
                   itemType="roadmap"
                   itemId={item.id}
                   links={{
@@ -358,7 +358,7 @@ export default function RoadmapItemModal({
                         onClick={handlePostUpdate}
                         disabled={!updateContent.trim() || postingUpdate}
                         size="sm"
-                        style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').primary_color || '#0f172a' }}
+                        style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedBoard') || '{}').primary_color || '#0f172a' }}
                         className="hover:opacity-90 text-white"
                       >
                         <Send className="h-4 w-4 mr-1" />

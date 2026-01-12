@@ -71,14 +71,14 @@ export default function Board() {
       try {
         let workspace = null;
         try {
-          const { data } = await base44.functions.invoke('publicGetWorkspace', {
+          const { data } = await base44.functions.invoke('publicGetBoard', {
             slug: boardSlug
           });
           workspace = data;
         } catch (publicError) {
           const status = publicError?.status || publicError?.response?.status;
           if (status === 403) {
-            const results = await base44.entities.Workspace.filter({ slug: boardSlug });
+            const results = await base44.entities.Board.filter({ slug: boardSlug });
             workspace = results[0] || null;
           } else {
             throw publicError;
@@ -100,8 +100,8 @@ export default function Board() {
           user = await base44.auth.me();
 
           // Check if user has a role in this workspace
-          const roles = await base44.entities.WorkspaceRole.filter({
-            workspace_id: workspace.id,
+          const roles = await base44.entities.BoardRole.filter({
+            board_id: workspace.id,
             user_id: user.id
           });
 
@@ -125,8 +125,8 @@ export default function Board() {
         }
 
         // Store workspace context in sessionStorage for layout and components
-        sessionStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
-        sessionStorage.setItem('selectedWorkspaceId', workspace.id);
+        sessionStorage.setItem('selectedBoard', JSON.stringify(workspace));
+        sessionStorage.setItem('selectedBoardId', workspace.id);
         sessionStorage.setItem('currentRole', role);
         sessionStorage.setItem('isPublicAccess', isPublicAccess.toString());
 

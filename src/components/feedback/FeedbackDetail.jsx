@@ -76,7 +76,7 @@ export default function FeedbackDetail({
         
         await base44.entities.FeedbackResponse.create({
           feedback_id: feedback.id,
-          workspace_id: feedback.workspace_id,
+          board_id: feedback.board_id,
           content: replyContent,
           author_id: user.id,
           is_official: isStaff,
@@ -219,8 +219,8 @@ export default function FeedbackDetail({
 
           {/* Links Panel */}
           <LinksPanel
-            workspaceId={sessionStorage.getItem('selectedWorkspaceId')}
-            workspaceSlug={workspaceSlug || sessionStorage.getItem('selectedWorkspace')?.slug}
+            workspaceId={sessionStorage.getItem('selectedBoardId')}
+            workspaceSlug={workspaceSlug || sessionStorage.getItem('selectedBoard')?.slug}
             itemType="feedback"
             itemId={feedback.id}
             links={{
@@ -375,7 +375,7 @@ export default function FeedbackDetail({
         isOpen={showAddToRoadmap}
         onClose={() => setShowAddToRoadmap(false)}
         feedback={feedback}
-        workspaceId={feedback.workspace_id}
+        workspaceId={feedback.board_id}
         onSuccess={onUpdate}
       />
     </div>

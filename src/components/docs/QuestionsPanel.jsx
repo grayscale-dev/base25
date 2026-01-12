@@ -17,7 +17,7 @@ export default function QuestionsPanel({ workspaceId, onClose }) {
   const loadQuestions = async () => {
     try {
       const allComments = await base44.entities.DocComment.filter(
-        { workspace_id: workspaceId, is_question: true },
+        { board_id: workspaceId, is_question: true },
         '-created_date'
       );
       setQuestions(allComments);

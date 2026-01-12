@@ -65,7 +65,7 @@ export function BoardProvider({ children }) {
       }
 
       // Check sessionStorage cache first (optimization)
-      const cachedWorkspace = sessionStorage.getItem('selectedWorkspace');
+      const cachedWorkspace = sessionStorage.getItem('selectedBoard');
       const cachedSlug = cachedWorkspace ? JSON.parse(cachedWorkspace).slug : null;
 
       let workspace;
@@ -79,7 +79,7 @@ export function BoardProvider({ children }) {
         isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
       } else {
         // Cache miss or different slug - resolve from API
-        const response = await base44.functions.invoke('publicGetWorkspace', { slug });
+        const response = await base44.functions.invoke('publicGetBoard', { slug });
         
         if (!response.data) {
           setState(prev => ({ ...prev, loading: false }));
@@ -94,8 +94,8 @@ export function BoardProvider({ children }) {
           user = await base44.auth.me();
           
           // Check if user has a role
-          const roles = await base44.entities.WorkspaceRole.filter({
-            workspace_id: workspace.id,
+          const roles = await base44.entities.BoardRole.filter({
+            board_id: workspace.id,
             user_id: user.id
           });
 
@@ -115,8 +115,8 @@ export function BoardProvider({ children }) {
         }
 
         // Cache in sessionStorage for optimization
-        sessionStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
-        sessionStorage.setItem('selectedWorkspaceId', workspace.id);
+        sessionStorage.setItem('selectedBoard', JSON.stringify(workspace));
+        sessionStorage.setItem('selectedBoardId', workspace.id);
         sessionStorage.setItem('currentRole', role);
         sessionStorage.setItem('isPublicAccess', isPublicAccess.toString());
       }

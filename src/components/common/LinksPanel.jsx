@@ -97,19 +97,19 @@ export default function LinksPanel({
     let items = [];
     switch(type) {
       case 'feedback':
-        items = await base44.entities.Feedback.filter({ workspace_id: workspaceId }, '-created_date');
+        items = await base44.entities.Feedback.filter({ board_id: workspaceId }, '-created_date');
         break;
       case 'roadmap':
-        items = await base44.entities.RoadmapItem.filter({ workspace_id: workspaceId }, 'display_order');
+        items = await base44.entities.RoadmapItem.filter({ board_id: workspaceId }, 'display_order');
         break;
       case 'changelog':
-        items = await base44.entities.ChangelogEntry.filter({ workspace_id: workspaceId }, '-release_date');
+        items = await base44.entities.ChangelogEntry.filter({ board_id: workspaceId }, '-release_date');
         break;
       case 'docs':
-        items = await base44.entities.DocPage.filter({ workspace_id: workspaceId, type: 'page' }, 'order');
+        items = await base44.entities.DocPage.filter({ board_id: workspaceId, type: 'page' }, 'order');
         break;
       case 'support':
-        items = await base44.entities.SupportThread.filter({ workspace_id: workspaceId }, '-created_date');
+        items = await base44.entities.SupportThread.filter({ board_id: workspaceId }, '-created_date');
         items = items.map(t => ({ ...t, title: t.subject }));
         break;
     }

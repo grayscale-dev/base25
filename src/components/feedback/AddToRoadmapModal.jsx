@@ -48,7 +48,7 @@ export default function AddToRoadmapModal({
 
   const loadExistingItems = async () => {
     try {
-      const items = await base44.entities.RoadmapItem.filter({ workspace_id: workspaceId });
+      const items = await base44.entities.RoadmapItem.filter({ board_id: workspaceId });
       setExistingItems(items);
     } catch (error) {
       console.error('Failed to load roadmap items:', error);
@@ -65,7 +65,7 @@ export default function AddToRoadmapModal({
       if (mode === 'new') {
         // Create new roadmap item
         const newItem = await base44.entities.RoadmapItem.create({
-          workspace_id: workspaceId,
+          board_id: workspaceId,
           title,
           description,
           status,
@@ -218,7 +218,7 @@ export default function AddToRoadmapModal({
             <Button 
               onClick={handleSave}
               disabled={(mode === 'new' && !title) || (mode === 'existing' && !selectedItemId) || saving}
-              style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedWorkspace') || '{}').primary_color || '#0f172a' }}
+              style={{ backgroundColor: JSON.parse(sessionStorage.getItem('selectedBoard') || '{}').primary_color || '#0f172a' }}
               className="hover:opacity-90 text-white"
             >
               {saving ? 'Saving...' : (

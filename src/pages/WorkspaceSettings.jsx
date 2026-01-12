@@ -59,7 +59,7 @@ export default function WorkspaceSettings() {
   
   // Access management
   const [members, setMembers] = useState([]);
-  const [accessRules, setAccessRules] = useState([]);
+  const [accessRules, setBoardAccessRules] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showAddRule, setShowAddRule] = useState(false);
   const [newMemberEmail, setNewMemberEmail] = useState('');
@@ -69,7 +69,7 @@ export default function WorkspaceSettings() {
   const [copiedUrl, setCopiedUrl] = useState(false);
 
   useEffect(() => {
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+    const storedWorkspace = sessionStorage.getItem('selectedBoard');
     const storedRole = sessionStorage.getItem('currentRole');
     
     if (!storedWorkspace || storedRole !== 'admin') {
@@ -95,11 +95,11 @@ export default function WorkspaceSettings() {
   const loadAccessData = async (workspaceId) => {
     try {
       const [rolesData, rulesData] = await Promise.all([
-        base44.entities.WorkspaceRole.filter({ workspace_id: workspaceId }),
-        base44.entities.AccessRule.filter({ workspace_id: workspaceId })
+        base44.entities.BoardRole.filter({ board_id: workspaceId }),
+        base44.entities.BoardAccessRule.filter({ board_id: workspaceId })
       ]);
       setMembers(rolesData);
-      setAccessRules(rulesData);
+      setBoardAccessRules(rulesData);
     } catch (error) {
       console.error('Failed to load access data:', error);
     } finally {
@@ -147,7 +147,7 @@ export default function WorkspaceSettings() {
       
       // Check uniqueness
       try {
-        const existing = await base44.entities.Workspace.filter({ slug });
+        const existing = await base44.entities.Board.filter({ slug });
         if (existing.length > 0 && existing[0].id !== workspace.id) {
           setSlugError('This slug is already taken by another board');
           return;
@@ -161,7 +161,7 @@ export default function WorkspaceSettings() {
     
     setSaving(true);
     try {
-      await base44.entities.Workspace.update(workspace.id, {
+      await base44.entities.Board.update(workspace.id, {
         name,
         slug,
         description,
@@ -174,8 +174,8 @@ export default function WorkspaceSettings() {
       
       // Update session storage
       const updatedWorkspace = { ...workspace, name, slug, description, visibility, support_enabled: supportEnabled, settings, logo_url: logoUrl, primary_color: primaryColor };
-      sessionStorage.setItem('selectedWorkspace', JSON.stringify(updatedWorkspace));
-      sessionStorage.setItem('selectedWorkspaceId', updatedWorkspace.id);
+      sessionStorage.setItem('selectedBoard', JSON.stringify(updatedWorkspace));
+      sessionStorage.setItem('selectedBoardId', updatedWorkspace.id);
       setWorkspace(updatedWorkspace);
       
       // If slug changed, navigate to new URL
@@ -199,11 +199,11 @@ export default function WorkspaceSettings() {
       // Check for existing role
       const existing = members.find(m => m.email === newMemberEmail);
       if (existing) {
-        await base44.entities.WorkspaceRole.update(existing.id, { role: newMemberRole });
+        await base44.entities.BoardRole.update(existing.id, { role: newMemberRole });
       } else {
         // Create role with placeholder user_id - will be linked when user joins
-        await base44.entities.WorkspaceRole.create({
-          workspace_id: workspace.id,
+        await base44.entities.BoardRole.create({
+          board_id: workspace.id,
           user_id: newMemberEmail, // Use email as placeholder until user registers
           email: newMemberEmail,
           role: newMemberRole,
@@ -226,7 +226,7 @@ export default function WorkspaceSettings() {
     if (!confirm('Remove this member\'s access?')) return;
     
     try {
-      await base44.entities.WorkspaceRole.delete(memberId);
+      await base44.entities.BoardRole.delete(memberId);
       loadAccessData(workspace.id);
     } catch (error) {
       console.error('Failed to remove member:', error);
@@ -237,8 +237,8 @@ export default function WorkspaceSettings() {
     if (!newRulePattern || !workspace) return;
     
     try {
-      await base44.entities.AccessRule.create({
-        workspace_id: workspace.id,
+      await base44.entities.BoardAccessRule.create({
+        board_id: workspace.id,
         pattern: newRulePattern,
         pattern_type: 'domain',
         default_role: newRuleRole,
@@ -258,7 +258,7 @@ export default function WorkspaceSettings() {
     if (!confirm('Remove this access rule?')) return;
     
     try {
-      await base44.entities.AccessRule.delete(ruleId);
+      await base44.entities.BoardAccessRule.delete(ruleId);
       loadAccessData(workspace.id);
     } catch (error) {
       console.error('Failed to remove rule:', error);
@@ -304,6 +304,9 @@ export default function WorkspaceSettings() {
             Configure your board and manage access
           </p>
         </div>
+        <Button variant="outline" onClick={() => navigate(createPageUrl('Billing'))}>
+          Billing
+        </Button>
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
@@ -485,7 +488,7 @@ export default function WorkspaceSettings() {
               onClick={async () => {
                 if (!confirm('Are you sure you want to delete this board? This action cannot be undone and will remove all data including feedback, roadmap items, and documentation.')) return;
                 try {
-                  await base44.entities.Workspace.update(workspace.id, { status: 'archived' });
+                  await base44.entities.Board.update(workspace.id, { status: 'archived' });
                   sessionStorage.clear();
                   navigate(createPageUrl('Workspaces'));
                 } catch (error) {

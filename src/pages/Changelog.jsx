@@ -38,7 +38,7 @@ export default function Changelog() {
 
   useEffect(() => {
     // Context is set by Board router via sessionStorage
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+    const storedWorkspace = sessionStorage.getItem('selectedBoard');
     const storedRole = sessionStorage.getItem('currentRole');
     
     if (!storedWorkspace) {
@@ -53,13 +53,13 @@ export default function Changelog() {
 
   const loadChangelog = async (workspaceIdOverride = null) => {
     try {
-      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedBoardId');
       if (!workspaceId) {
         setLoading(false);
         return;
       }
       const changelogEntries = await base44.entities.ChangelogEntry.filter(
-        { workspace_id: workspaceId, visibility: 'public' },
+        { board_id: workspaceId, visibility: 'public' },
         '-release_date'
       );
 
@@ -99,9 +99,9 @@ export default function Changelog() {
 
     setCreating(true);
     try {
-      const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = sessionStorage.getItem('selectedBoardId');
       const entry = await base44.entities.ChangelogEntry.create({
-        workspace_id: workspaceId,
+        board_id: workspaceId,
         title: newEntry.title,
         description: newEntry.description,
         release_date: newEntry.release_date,
@@ -110,7 +110,7 @@ export default function Changelog() {
 
       // Add to doc queue
       await base44.entities.DocQueue.create({
-        workspace_id: workspaceId,
+        board_id: workspaceId,
         changelog_entry_id: entry.id,
         title: newEntry.title,
         status: 'pending',

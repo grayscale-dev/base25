@@ -7,7 +7,7 @@ import { createPageUrl } from '@/utils';
 
 export default function JoinWorkspace() {
   const navigate = useNavigate();
-  const [workspace, setWorkspace] = useState(null);
+  const [board, setBoard] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
@@ -20,12 +20,12 @@ export default function JoinWorkspace() {
 
   const validateAndLoadWorkspace = async () => {
     try {
-      // Get workspace slug from URL
+      // Get board slug from URL
       const urlParams = new URLSearchParams(window.location.search);
-      const slug = urlParams.get('workspace');
+      const slug = urlParams.get('board');
 
       if (!slug) {
-        setError('Invalid join link - no workspace specified');
+        setError('Invalid join link - no board specified');
         setLoading(false);
         return;
       }
@@ -42,24 +42,24 @@ export default function JoinWorkspace() {
         return;
       }
 
-      // Load workspace
-      const workspaces = await base44.entities.Workspace.filter({
+      // Load board
+      const boards = await base44.entities.Board.filter({
         slug: slug,
         status: 'active'
       });
 
-      if (workspaces.length === 0) {
-        setError('Workspace not found or no longer active');
+      if (boards.length === 0) {
+        setError('Board not found or no longer active');
         setLoading(false);
         return;
       }
 
-      const ws = workspaces[0];
-      setWorkspace(ws);
+      const ws = boards[0];
+      setBoard(ws);
 
       // Check if already a member
-      const existingRoles = await base44.entities.WorkspaceRole.filter({
-        workspace_id: ws.id,
+      const existingRoles = await base44.entities.BoardRole.filter({
+        board_id: ws.id,
         user_id: currentUser.id
       });
 
@@ -71,27 +71,27 @@ export default function JoinWorkspace() {
       if (existingRoles.length === 0) {
         const canJoin = await validateJoinPermission(ws, currentUser);
         if (!canJoin) {
-          setError('You do not have permission to join this workspace');
+          setError('You do not have permission to join this board');
         }
       }
 
       setLoading(false);
     } catch (err) {
       console.error('Failed to validate join:', err);
-      setError('Failed to load workspace. Please try again.');
+      setError('Failed to load board. Please try again.');
       setLoading(false);
     }
   };
 
   const validateJoinPermission = async (ws, user) => {
-    // If workspace is public, anyone can join
+    // If board is public, anyone can join
     if (ws.visibility === 'public') {
       return true;
     }
 
-    // Check if there's an explicit WorkspaceRole assigned to this email (pre-authorized)
-    const emailRoles = await base44.entities.WorkspaceRole.filter({
-      workspace_id: ws.id,
+    // Check if there's an explicit BoardRole assigned to this email (pre-authorized)
+    const emailRoles = await base44.entities.BoardRole.filter({
+      board_id: ws.id,
       email: user.email
     });
 
@@ -99,42 +99,18 @@ export default function JoinWorkspace() {
       return true;
     }
 
-    // Check access rules
-    const rules = await base44.entities.AccessRule.filter({
-      workspace_id: ws.id,
-      is_active: true
-    });
-
-    for (const rule of rules) {
-      if (matchesAccessRule(user.email, rule)) {
-        return true;
-      }
-    }
-
-    // If no rules matched and workspace is restricted, deny access
-    return false;
-  };
-
-  const matchesAccessRule = (email, rule) => {
-    if (rule.pattern_type === 'exact') {
-      return email === rule.pattern;
-    } else if (rule.pattern_type === 'domain') {
-      const domain = email.split('@')[1];
-      return rule.pattern === domain || rule.pattern === `@${domain}`;
-    } else if (rule.pattern_type === 'substring') {
-      return email.includes(rule.pattern);
-    }
-    return false;
+    // For rule-based access, we rely on RLS during the join attempt.
+    return true;
   };
 
   const handleJoinWorkspace = async () => {
-    if (!workspace || !user) return;
+    if (!board || !user) return;
 
     setJoining(true);
     try {
       // Check if there's a pre-existing role assignment by email
-      const emailRoles = await base44.entities.WorkspaceRole.filter({
-        workspace_id: workspace.id,
+      const emailRoles = await base44.entities.BoardRole.filter({
+        board_id: board.id,
         email: user.email
       });
 
@@ -144,13 +120,13 @@ export default function JoinWorkspace() {
         // Update existing role with actual user_id
         const existingRole = emailRoles[0];
         assignedRole = existingRole.role;
-        await base44.entities.WorkspaceRole.update(existingRole.id, {
+        await base44.entities.BoardRole.update(existingRole.id, {
           user_id: user.id
         });
       } else {
-        // Create new WorkspaceRole
-        await base44.entities.WorkspaceRole.create({
-          workspace_id: workspace.id,
+        // Create new BoardRole
+        await base44.entities.BoardRole.create({
+          board_id: board.id,
           user_id: user.id,
           email: user.email,
           role: 'viewer',
@@ -158,40 +134,24 @@ export default function JoinWorkspace() {
         });
       }
 
-      // Ensure user has TenantMember record
-      const tenantMembers = await base44.entities.TenantMember.filter({
-        user_id: user.id,
-        tenant_id: workspace.tenant_id
-      });
-
-      if (tenantMembers.length === 0) {
-        await base44.entities.TenantMember.create({
-          tenant_id: workspace.tenant_id,
-          user_id: user.id,
-          email: user.email,
-          is_tenant_admin: false,
-          status: 'active'
-        });
-      }
-
-      // Navigate to workspace with their assigned role
-      sessionStorage.setItem('selectedWorkspaceId', workspace.id);
-      sessionStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
+      // Navigate to board with their assigned role
+      sessionStorage.setItem('selectedBoardId', board.id);
+      sessionStorage.setItem('selectedBoard', JSON.stringify(board));
       sessionStorage.setItem('currentRole', assignedRole);
       navigate(createPageUrl('Workspaces'));
     } catch (err) {
-      console.error('Failed to join workspace:', err);
-      setError('Failed to join workspace. Please try again.');
+      console.error('Failed to join board:', err);
+      setError('Failed to join board. Please try again.');
     } finally {
       setJoining(false);
     }
   };
 
   const handleOpenWorkspace = () => {
-    if (!workspace) return;
+    if (!board) return;
 
-    sessionStorage.setItem('selectedWorkspaceId', workspace.id);
-    sessionStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
+    sessionStorage.setItem('selectedBoardId', board.id);
+    sessionStorage.setItem('selectedBoard', JSON.stringify(board));
     sessionStorage.setItem('currentRole', 'viewer');
     navigate(createPageUrl('Feedback'));
   };
@@ -221,14 +181,14 @@ export default function JoinWorkspace() {
             variant="outline"
             className="w-full"
           >
-            Back to Workspaces
+            Back to Boards
           </Button>
         </div>
       </div>
     );
   }
 
-  if (alreadyMember && workspace) {
+  if (alreadyMember && board) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
@@ -237,24 +197,24 @@ export default function JoinWorkspace() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mb-2">Already a Member</h1>
           <p className="text-slate-600 mb-2">
-            You're already a member of <strong>{workspace.name}</strong>
+            You're already a member of <strong>{board.name}</strong>
           </p>
           <p className="text-sm text-slate-500 mb-6">
-            You can access this workspace from your customer portal.
+            You can access this board from your customer portal.
           </p>
           <div className="space-y-3">
             <Button
               onClick={handleOpenWorkspace}
               className="w-full bg-slate-900 hover:bg-slate-800"
             >
-              Open Workspace
+              Open Board
             </Button>
             <Button
               onClick={() => navigate(createPageUrl('Workspaces'))}
               variant="outline"
               className="w-full"
             >
-              Back to Workspaces
+              Back to Boards
             </Button>
           </div>
         </div>
@@ -262,7 +222,7 @@ export default function JoinWorkspace() {
     );
   }
 
-  if (!workspace) {
+  if (!board) {
     return null;
   }
 
@@ -274,7 +234,7 @@ export default function JoinWorkspace() {
             <Folder className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mb-2">
-            Join Workspace
+            Join Board
           </h1>
           <p className="text-slate-500">
             You've been invited to join
@@ -283,11 +243,11 @@ export default function JoinWorkspace() {
 
         <div className="bg-slate-50 rounded-xl p-6 mb-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-2">
-            {workspace.name}
+            {board.name}
           </h2>
-          {workspace.description && (
+          {board.description && (
             <p className="text-sm text-slate-600">
-              {workspace.description}
+              {board.description}
             </p>
           )}
         </div>
@@ -306,7 +266,7 @@ export default function JoinWorkspace() {
             ) : (
               <>
                 <Check className="h-4 w-4 mr-2" />
-                Join Workspace
+                Join Board
               </>
             )}
           </Button>

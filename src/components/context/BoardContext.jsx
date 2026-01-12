@@ -64,7 +64,7 @@ export function BoardProvider({ children }) {
       }
 
       // Check sessionStorage cache first (optimization)
-      const cachedWorkspace = sessionStorage.getItem('selectedWorkspace');
+      const cachedWorkspace = sessionStorage.getItem('selectedBoard');
       const cachedSlug = cachedWorkspace ? JSON.parse(cachedWorkspace).slug : null;
 
       let workspace;
@@ -80,11 +80,11 @@ export function BoardProvider({ children }) {
         // Cache miss or different slug - resolve from API
         let workspaceResponse = null;
         try {
-          workspaceResponse = await base44.functions.invoke('publicGetWorkspace', { slug });
+          workspaceResponse = await base44.functions.invoke('publicGetBoard', { slug });
         } catch (publicError) {
           const status = publicError?.status || publicError?.response?.status;
           if (status === 403) {
-            const results = await base44.entities.Workspace.filter({ slug });
+            const results = await base44.entities.Board.filter({ slug });
             workspaceResponse = { data: results[0] || null };
           } else {
             throw publicError;
@@ -104,8 +104,8 @@ export function BoardProvider({ children }) {
           user = await base44.auth.me();
           
           // Check if user has a role
-          const roles = await base44.entities.WorkspaceRole.filter({
-            workspace_id: workspace.id,
+          const roles = await base44.entities.BoardRole.filter({
+            board_id: workspace.id,
             user_id: user.id
           });
 
@@ -125,8 +125,8 @@ export function BoardProvider({ children }) {
         }
 
         // Cache in sessionStorage for optimization
-        sessionStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
-        sessionStorage.setItem('selectedWorkspaceId', workspace.id);
+        sessionStorage.setItem('selectedBoard', JSON.stringify(workspace));
+        sessionStorage.setItem('selectedBoardId', workspace.id);
         sessionStorage.setItem('currentRole', role);
         sessionStorage.setItem('isPublicAccess', isPublicAccess.toString());
       }

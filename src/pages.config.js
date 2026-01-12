@@ -1,6 +1,7 @@
 import About from './pages/About';
 import ApiDocs from './pages/ApiDocs';
 import Board from './pages/Board';
+import Billing from './pages/Billing';
 import Changelog from './pages/Changelog';
 import Docs from './pages/Docs';
 import Feedback from './pages/Feedback';
@@ -23,6 +24,7 @@ export const PAGES = {
     "About": About,
     "ApiDocs": ApiDocs,
     "Board": Board,
+    "Billing": Billing,
     "Changelog": Changelog,
     "Docs": Docs,
     "Feedback": Feedback,

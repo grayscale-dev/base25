@@ -35,7 +35,7 @@ export default function Support() {
 
   useEffect(() => {
     // Context is set by Board router via sessionStorage
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+    const storedWorkspace = sessionStorage.getItem('selectedBoard');
     const storedRole = sessionStorage.getItem('currentRole');
     const isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
     
@@ -63,7 +63,7 @@ export default function Support() {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
       
-      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedBoardId');
       if (!workspaceId) {
         setLoading(false);
         return;
@@ -74,12 +74,12 @@ export default function Support() {
       let threadList;
       if (isStaff) {
         threadList = await base44.entities.SupportThread.filter(
-          { workspace_id: workspaceId },
+          { board_id: workspaceId },
           '-last_message_at'
         );
       } else {
         threadList = await base44.entities.SupportThread.filter(
-          { workspace_id: workspaceId, requester_id: currentUser.id },
+          { board_id: workspaceId, requester_id: currentUser.id },
           '-last_message_at'
         );
       }
@@ -94,9 +94,9 @@ export default function Support() {
   };
 
   const loadThreadMessages = async (threadId) => {
-    const workspaceId = sessionStorage.getItem('selectedWorkspaceId');
+    const workspaceId = sessionStorage.getItem('selectedBoardId');
     const threadMessages = await base44.entities.SupportMessage.filter(
-      { thread_id: threadId, workspace_id: workspaceId },
+      { thread_id: threadId, board_id: workspaceId },
       'created_date'
     );
     setMessages(threadMessages);

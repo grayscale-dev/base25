@@ -49,14 +49,14 @@ export default function Roadmap() {
       
       // Load roadmap items
       const roadmapItems = await base44.entities.RoadmapItem.filter(
-        { workspace_id: workspaceId },
+        { board_id: workspaceId },
         'display_order'
       );
       setItems(roadmapItems);
 
       // Load updates for each item
       const allUpdates = await base44.entities.RoadmapUpdate.filter(
-        { workspace_id: workspaceId },
+        { board_id: workspaceId },
         '-created_date'
       );
       const updatesByItem = {};
@@ -70,7 +70,7 @@ export default function Roadmap() {
 
       // Load linked feedback
       const feedbackItems = await base44.entities.Feedback.filter(
-        { workspace_id: workspaceId }
+        { board_id: workspaceId }
       );
       const feedbackByRoadmap = {};
       feedbackItems.forEach(fb => {

@@ -30,7 +30,7 @@ export default function Docs() {
 
   useEffect(() => {
     // Context is set by Board router via sessionStorage
-    const storedWorkspace = sessionStorage.getItem('selectedWorkspace');
+    const storedWorkspace = sessionStorage.getItem('selectedBoard');
     const storedRole = sessionStorage.getItem('currentRole');
     
     if (!storedWorkspace) {
@@ -55,13 +55,13 @@ export default function Docs() {
 
   const loadDocs = async (workspaceIdOverride = null) => {
     try {
-      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedWorkspaceId');
+      const workspaceId = workspaceIdOverride || sessionStorage.getItem('selectedBoardId');
       if (!workspaceId) {
         setLoading(false);
         return;
       }
       const docPages = await base44.entities.DocPage.filter(
-        { workspace_id: workspaceId, is_published: true },
+        { board_id: workspaceId, is_published: true },
         'order'
       );
       setDocs(docPages);
