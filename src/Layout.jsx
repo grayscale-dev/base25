@@ -40,7 +40,7 @@ export default function Layout({ children, currentPageName }) {
   const [showNoAccessDialog, setShowNoAccessDialog] = useState(false);
 
   // Public pages that don't need auth or workspace context
-  const publicPages = ['Home', 'About', 'Pricing'];
+  const publicPages = ['Home', 'About', 'Pricing', 'Features'];
   const isPublicPage = publicPages.includes(currentPageName);
   
   // Pages that need auth but not workspace context
@@ -140,7 +140,7 @@ export default function Layout({ children, currentPageName }) {
   const isStaff = ['support', 'admin'].includes(role) && !isPublicViewing;
 
   // No layout for public pages, workspaces hub, or join page
-  if (['Home', 'About', 'Pricing', 'Workspaces', 'JoinWorkspace'].includes(currentPageName)) {
+  if (['Home', 'About', 'Pricing', 'Features', 'Workspaces', 'JoinWorkspace'].includes(currentPageName)) {
     return children;
   }
   

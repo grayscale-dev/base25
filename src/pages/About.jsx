@@ -1,153 +1,151 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Users, Target, Zap, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
+import BetaAccessModal from '@/components/common/BetaAccessModal';
+import PublicHeader from '@/components/common/PublicHeader';
+import PublicFooter from '@/components/common/PublicFooter';
 
 export default function About() {
+  const [showBetaModal, setShowBetaModal] = useState(false);
+
+  useEffect(() => {
+    document.title = 'base25 - About';
+  }, []);
+
   const values = [
     {
       icon: Users,
       title: 'Community First',
-      description: 'We believe in building products with our users, not just for them. Every feature starts with your feedback.'
+      description: 'We believe in building products with our users, not just for them. Every feature starts with your feedback.',
+      iconBg: 'bg-amber-100',
+      iconColor: 'text-amber-600',
     },
     {
       icon: Target,
       title: 'Focused Development',
-      description: 'We prioritize what matters most. Our roadmap is transparent and driven by real user needs.'
+      description: 'We prioritize what matters most. Our roadmap is transparent and driven by real user needs.',
+      iconBg: 'bg-cyan-100',
+      iconColor: 'text-cyan-600',
     },
     {
       icon: Zap,
       title: 'Move Fast',
-      description: 'Ship quickly, iterate constantly. We deliver updates and improvements at lightning speed.'
+      description: 'Ship quickly, iterate constantly. We deliver updates and improvements at lightning speed.',
+      iconBg: 'bg-emerald-100',
+      iconColor: 'text-emerald-600',
     },
     {
       icon: Heart,
       title: 'Support Excellence',
-      description: 'Real people, real help. Our team is here to ensure your success every step of the way.'
+      description: 'Real people, real help. Our team is here to ensure your success every step of the way.',
+      iconBg: 'bg-rose-100',
+      iconColor: 'text-rose-600',
     }
   ];
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link to={createPageUrl('Home')} className="flex items-center gap-2">
-            <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695ee36fb2c36c191b58c83e/678f5e1e6_create-a-svg-like-these-except-it-is-rock-on-symbo.png" 
-              alt="Nexus" 
-              className="h-8 w-8 object-contain"
-            />
-            <span className="text-lg font-bold text-slate-900">Nexus</span>
-          </Link>
-          
-          <nav className="hidden md:flex items-center gap-8">
-            <Link to={createPageUrl('About')} className="text-sm font-medium text-slate-900">About</Link>
-            <Link to={createPageUrl('Pricing')} className="text-sm font-medium text-slate-600 hover:text-slate-900">Pricing</Link>
-          </nav>
-          
-          <div className="flex items-center gap-3">
-            <Link to={createPageUrl('Workspaces')}>
-              <Button variant="outline" size="sm">Sign In</Button>
-            </Link>
-            <Link to={createPageUrl('Workspaces')}>
-              <Button size="sm" className="bg-slate-900 hover:bg-slate-800">Get Started</Button>
-            </Link>
+    <div className="min-h-screen bg-slate-50 text-slate-900 relative">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-amber-200/40 blur-3xl" />
+        <div className="absolute top-40 -left-40 h-[28rem] w-[28rem] rounded-full bg-cyan-200/40 blur-3xl" />
+      </div>
+      <PublicHeader currentPage="About" onRequestAccess={() => setShowBetaModal(true)} />
+
+      <main className="bg-[#F8FAFC] relative z-0">
+        <div className="absolute inset-0 pointer-events-none z-0">
+          <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-amber-200/40 blur-3xl" />
+          <div className="absolute top-40 -left-40 h-[28rem] w-[28rem] rounded-full bg-cyan-200/40 blur-3xl" />
+        </div>
+        <div className="relative z-10">
+        {/* Hero Section */}
+        <section className="px-6 py-16">
+          <div className="max-w-4xl mx-auto text-center space-y-6 relative">
+            <h1 className="text-5xl md:text-6xl font-bold text-slate-900">
+              Built for teams who{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-cyan-500">
+                listen
+              </span>
+            </h1>
+            <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+              base25 is a customer feedback and collaboration platform designed to help teams build better products by staying connected with their users.
+            </p>
           </div>
-        </div>
-      </header>
+        </section>
 
-      {/* Hero Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-5xl md:text-6xl font-bold text-slate-900 mb-6">
-            Built for teams who listen
-          </h1>
-          <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-            Nexus is a customer feedback and collaboration platform designed to help teams build better products by staying connected with their users.
-          </p>
-        </div>
-      </section>
-
-      {/* Values Grid */}
-      <section className="py-20 px-6 bg-slate-50">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-slate-900 text-center mb-12">
-            What we stand for
-          </h2>
-          <div className="grid md:grid-cols-2 gap-8">
-            {values.map((value, index) => {
-              const Icon = value.icon;
-              return (
-                <div key={index} className="bg-white p-8 rounded-2xl border border-slate-200">
-                  <div className="h-12 w-12 rounded-xl bg-slate-900 flex items-center justify-center mb-4">
-                    <Icon className="h-6 w-6 text-white" />
+        {/* Values Grid */}
+        <section className="py-20 px-6">
+          <div className="max-w-6xl mx-auto">
+            <h2 className="text-3xl font-bold text-slate-900 text-center mb-12">
+              What we stand for
+            </h2>
+            <div className="grid md:grid-cols-2 gap-8">
+              {values.map((value, index) => {
+                const Icon = value.icon;
+                return (
+                  <div key={index} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <div className={`h-12 w-12 rounded-2xl flex items-center justify-center mb-4 ${value.iconBg}`}>
+                      <Icon className={`h-6 w-6 ${value.iconColor}`} />
+                    </div>
+                    <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                      {value.title}
+                    </h3>
+                    <p className="text-slate-600">
+                      {value.description}
+                    </p>
                   </div>
-                  <h3 className="text-xl font-semibold text-slate-900 mb-2">
-                    {value.title}
-                  </h3>
-                  <p className="text-slate-600">
-                    {value.description}
-                  </p>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Story Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold text-slate-900 mb-6">Our Story</h2>
-          <div className="prose prose-lg text-slate-600">
-            <p className="mb-4">
-              At Grayscale Development, we needed a tool to collect customer feedback, provide support, document our products, and share our roadmap transparently. We looked at existing solutions but found them either too complicated, too expensive, or missing key features.
-            </p>
-            <p className="mb-4">
-              So we built Nexus—a platform that brings together everything teams need to stay connected with their customers. We use it ourselves every day, and we're proud to maintain and continuously improve it.
-            </p>
-            <p>
-              What started as an internal tool has grown into a product we're excited to share with other teams who value customer collaboration and transparent communication.
-            </p>
+        {/* Story Section */}
+        <section className="py-20 px-6">
+          <div className="max-w-3xl mx-auto">
+            <h2 className="text-3xl font-bold text-slate-900 mb-6">Our Story</h2>
+            <div className="prose prose-lg text-slate-600">
+              <p className="mb-4">
+                At Grayscale Development, we needed a tool to collect customer feedback, provide support, document our products, and share our roadmap transparently. We looked at existing solutions but found them either too complicated, too expensive, or missing key features.
+              </p>
+              <p className="mb-4">
+                So we built base25—a platform that brings together everything teams need to stay connected with their customers. We use it ourselves every day, and we're proud to maintain and continuously improve it.
+              </p>
+              <p>
+                What started as an internal tool has grown into a product we're excited to share with other teams who value customer collaboration and transparent communication.
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* CTA Section */}
-      <section className="py-20 px-6 bg-slate-900">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-bold text-white mb-6">
-            Ready to get started?
-          </h2>
-          <p className="text-xl text-slate-300 mb-8">
-            Join teams who are building better products with Nexus
-          </p>
-          <Link to={createPageUrl('Workspaces')}>
-            <Button size="lg" className="bg-white text-slate-900 hover:bg-slate-100">
-              Start Free
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-          </Link>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-200 py-12 px-6">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695ee36fb2c36c191b58c83e/678f5e1e6_create-a-svg-like-these-except-it-is-rock-on-symbo.png" 
-              alt="Nexus" 
-              className="h-6 w-6 object-contain"
-            />
-            <span className="font-semibold text-slate-900">nexus</span>
+        {/* CTA Section */}
+        <section className="px-6 pb-20">
+          <div className="max-w-5xl mx-auto rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-900/80 text-white p-10 relative overflow-hidden shadow-xl">
+            <div className="absolute -top-12 -right-24 h-64 w-64 rounded-full bg-amber-400/20 blur-3xl" />
+            <div className="absolute -bottom-16 -left-24 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl" />
+            <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <div>
+                <h2 className="text-3xl font-semibold">Ready to get started?</h2>
+                <p className="text-slate-200 mt-2 max-w-2xl">
+                  Join teams who are building better products with base25.
+                </p>
+              </div>
+              <Button
+                className="bg-white text-slate-900 hover:bg-slate-100"
+                onClick={() => setShowBetaModal(true)}
+              >
+                Request access
+              </Button>
+            </div>
           </div>
-          <p className="text-sm text-slate-500">
-            © 2026 Nexus. All rights reserved.
-          </p>
+        </section>
         </div>
-      </footer>
+      </main>
+
+      <PublicFooter />
+
+      <BetaAccessModal open={showBetaModal} onOpenChange={setShowBetaModal} />
     </div>
   );
 }

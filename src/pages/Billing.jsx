@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
+import BetaAccessModal from '@/components/common/BetaAccessModal';
 
 const SERVICES = [
   { id: 'feedback', label: 'Feedback' },
@@ -24,8 +25,10 @@ export default function Billing() {
   const [selectedServices, setSelectedServices] = useState(new Set());
   const [startingTrial, setStartingTrial] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const [showBetaModal, setShowBetaModal] = useState(false);
 
   useEffect(() => {
+    document.title = 'base25 - Billing';
     const storedBoard = sessionStorage.getItem('selectedBoard');
     const storedRole = sessionStorage.getItem('currentRole');
 
@@ -167,11 +170,13 @@ export default function Billing() {
                   </p>
                 </div>
               </div>
-              <a href="mailto:beta@nexus.app?subject=Nexus%20Beta%20Access">
-                <Button variant="outline" className="border-amber-300 text-amber-800">
-                  Request access
-                </Button>
-              </a>
+              <Button
+                variant="outline"
+                className="border-amber-300 text-amber-800"
+                onClick={() => setShowBetaModal(true)}
+              >
+                Request access
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -260,6 +265,8 @@ export default function Billing() {
           </Card>
         </div>
       </div>
+
+      <BetaAccessModal open={showBetaModal} onOpenChange={setShowBetaModal} />
     </div>
   );
 }

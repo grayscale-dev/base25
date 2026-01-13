@@ -191,7 +191,7 @@ export default function Workspaces() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
               <img 
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695ee36fb2c36c191b58c83e/678f5e1e6_create-a-svg-like-these-except-it-is-rock-on-symbo.png" 
+                src="/base25-logo.png" 
                 alt="Nexus" 
                 className="h-8 w-8 object-contain"
               />

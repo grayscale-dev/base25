@@ -5,6 +5,7 @@ import Billing from './pages/Billing';
 import Changelog from './pages/Changelog';
 import Docs from './pages/Docs';
 import Feedback from './pages/Feedback';
+import Features from './pages/Features';
 import Home from './pages/Home';
 import JoinWorkspace from './pages/JoinWorkspace';
 import Pricing from './pages/Pricing';
@@ -28,6 +29,7 @@ export const PAGES = {
     "Changelog": Changelog,
     "Docs": Docs,
     "Feedback": Feedback,
+    "Features": Features,
     "Home": Home,
     "JoinWorkspace": JoinWorkspace,
     "Pricing": Pricing,
