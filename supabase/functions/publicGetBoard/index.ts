@@ -68,6 +68,12 @@ Deno.serve(async (req) => {
         token,
       );
       if (authError || !authData?.user) {
+        console.error("publicGetBoard auth failure", {
+          hasToken: Boolean(token),
+          errorMessage: authError?.message,
+          errorStatus: authError?.status,
+          errorName: authError?.name,
+        });
         return new Response(
           JSON.stringify({ error: "Unauthorized" }),
           {
