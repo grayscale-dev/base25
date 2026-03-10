@@ -62,11 +62,36 @@ function toAppUser(user: {
 export async function checkAuthentication(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
   const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/i);
-  const token = tokenMatch?.[1] ?? null;
+  const forwardedAuthHeader = req.headers.get("x-forwarded-authorization") ?? "";
+  const forwardedTokenMatch = forwardedAuthHeader.match(/^Bearer\s+(.+)$/i);
+  const fallbackToken = req.headers.get("x-user-access-token") ?? "";
+  const token = (tokenMatch?.[1] ?? forwardedTokenMatch?.[1] ?? fallbackToken) || null;
 
   const supabase = getSupabaseClient(req);
 
   if (!token) {
+    const gatewayAuthUserId = req.headers.get("x-supabase-auth-user") ??
+      req.headers.get("x-auth-user") ??
+      req.headers.get("x-sb-auth-user") ??
+      "";
+    if (gatewayAuthUserId) {
+      const { data: gatewayUserData, error: gatewayUserError } = await supabaseAdmin.auth.admin
+        .getUserById(gatewayAuthUserId);
+      if (!gatewayUserError && gatewayUserData?.user) {
+        return {
+          authenticated: true,
+          user: toAppUser(gatewayUserData.user),
+          supabase,
+        };
+      }
+    }
+
+    console.error("Auth token missing in function request", {
+      hasAuthorizationHeader: Boolean(authHeader),
+      hasForwardedAuthorizationHeader: Boolean(forwardedAuthHeader),
+      hasFallbackTokenHeader: Boolean(fallbackToken),
+      hasGatewayAuthUser: Boolean(gatewayAuthUserId),
+    });
     return { authenticated: false, user: null, supabase };
   }
 

@@ -798,6 +798,7 @@ export function createCustomClient() {
     const headers = {
       ...options.headers,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token ? { "x-user-access-token": token } : {}),
     };
 
     return await supabase.functions.invoke(name, {
