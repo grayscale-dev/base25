@@ -554,7 +554,7 @@ export class UserEntity extends CustomEntity {
     }
   }
 
-  async redirectToLogin(redirectTo = window.location.href) {
+  async redirectToLogin(redirectTo = `${window.location.origin}/workspaces`) {
     try {
       let provider = env.authProvider;
       if (!provider) {

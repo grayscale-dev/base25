@@ -338,7 +338,10 @@ export default function Layout({ children, currentPageName }) {
                 {/* Login prompt for public viewers */}
                 {isPublicViewing && !user && (
                   <Button 
-                    onClick={() => base44.auth.redirectToLogin(window.location.href)}
+                    onClick={() =>
+                      base44.auth.redirectToLogin(
+                        `${window.location.origin}/workspaces`
+                      )}
                     className="bg-slate-900 hover:bg-slate-800 text-white"
                   >
                     Login to Contribute
