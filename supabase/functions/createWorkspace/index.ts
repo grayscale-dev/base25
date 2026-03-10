@@ -11,6 +11,13 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   try {
+    console.log("createWorkspace invoked", {
+      method: req.method,
+      hasAuthorization: Boolean(req.headers.get("Authorization")),
+      hasForwardedAuthorization: Boolean(req.headers.get("x-forwarded-authorization")),
+      hasUserAccessToken: Boolean(req.headers.get("x-user-access-token")),
+    });
+
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
     }
