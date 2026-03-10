@@ -1,10 +1,9 @@
 import "../src/index.css";
 import "primeicons/primeicons.css";
 import AppProviders from "@/components/AppProviders";
+import { getSiteBaseUrl } from "@/lib/site-url";
 
-const siteBaseUrl =
-  process.env.NEXT_PUBLIC_BASE44_APP_BASE_URL?.replace(/\/$/, "") ||
-  "https://base25.app";
+const siteBaseUrl = getSiteBaseUrl();
 
 export const metadata = {
   metadataBase: new URL(siteBaseUrl),

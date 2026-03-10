@@ -1,6 +1,6 @@
-const siteBaseUrl =
-  process.env.NEXT_PUBLIC_BASE44_APP_BASE_URL?.replace(/\/$/, "") ||
-  "https://base25.app";
+import { getSiteBaseUrl } from "@/lib/site-url";
+
+const siteBaseUrl = getSiteBaseUrl();
 
 export function buildMarketingMetadata({ title, description, path }) {
   const url = `${siteBaseUrl}${path}`;
