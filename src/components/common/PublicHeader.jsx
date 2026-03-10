@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import Link from '@/components/common/AppLink';
 import { publicRoutes } from '@/lib/public-routes';
+import { startWorkspaceLogin } from '@/lib/start-workspace-login';
 
 const navLinks = [
   { label: 'Home', page: 'home', to: publicRoutes.home },
@@ -16,6 +17,14 @@ const navLinks = [
 
 export default function PublicHeader({ currentPage = 'home' }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const handleWorkspaceAuthClick = async (event) => {
+    event?.preventDefault?.();
+    await startWorkspaceLogin();
+  };
+  const handleMobileAuthClick = async (event) => {
+    setMenuOpen(false);
+    await handleWorkspaceAuthClick(event);
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/70 backdrop-blur">
@@ -46,14 +55,16 @@ export default function PublicHeader({ currentPage = 'home' }) {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
-          <Link to={publicRoutes.workspaceHub}>
-            <Button variant="outline" size="sm">Sign In</Button>
-          </Link>
-          <Link to={publicRoutes.workspaceHub}>
-            <Button size="sm" className="bg-slate-900 hover:bg-slate-800 text-white">
-              Get Started
-            </Button>
-          </Link>
+          <Button variant="outline" size="sm" onClick={handleWorkspaceAuthClick}>
+            Sign In
+          </Button>
+          <Button
+            size="sm"
+            className="bg-slate-900 hover:bg-slate-800 text-white"
+            onClick={handleWorkspaceAuthClick}
+          >
+            Get Started
+          </Button>
         </div>
 
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
@@ -86,9 +97,7 @@ export default function PublicHeader({ currentPage = 'home' }) {
                 <Button variant="outline" className="w-full" asChild>
                   <Link
                     to={publicRoutes.workspaceHub}
-                    onClick={() => {
-                      setMenuOpen(false);
-                    }}
+                    onClick={handleMobileAuthClick}
                   >
                     Sign In
                   </Link>
@@ -96,9 +105,7 @@ export default function PublicHeader({ currentPage = 'home' }) {
                 <Button className="bg-slate-900 hover:bg-slate-800 text-white w-full" asChild>
                   <Link
                     to={publicRoutes.workspaceHub}
-                    onClick={() => {
-                      setMenuOpen(false);
-                    }}
+                    onClick={handleMobileAuthClick}
                   >
                     Get Started
                   </Link>
