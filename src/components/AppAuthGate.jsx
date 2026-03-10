@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ProfileCompletionModal from '@/components/auth/ProfileCompletionModal';
 
 export default function AppAuthGate({ children }) {
+  const pathname = usePathname();
   const {
     user,
     isLoadingAuth,
@@ -19,6 +21,8 @@ export default function AppAuthGate({ children }) {
   const requiresNameCompletion = Boolean(
     user && (!user.first_name?.trim() || !user.last_name?.trim())
   );
+  const isWorkspaceContentRoute = (pathname || '').startsWith('/workspace/');
+  const shouldShowProfileCompletion = requiresNameCompletion && isWorkspaceContentRoute;
 
   useEffect(() => {
     if (authError?.type === 'auth_required') {
@@ -46,7 +50,7 @@ export default function AppAuthGate({ children }) {
     <>
       {children}
       <ProfileCompletionModal
-        isOpen={requiresNameCompletion}
+        isOpen={shouldShowProfileCompletion}
         allowCancel={false}
         initialFirstName={user?.first_name || ''}
         initialLastName={user?.last_name || ''}
