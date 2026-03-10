@@ -57,16 +57,16 @@ function servicesFromSubscription(subscription: Stripe.Subscription) {
   return { enabled };
 }
 
-async function upsertBillingServices(boardId: string, enabledServices: string[]) {
+async function upsertBillingServices(workspaceId: string, enabledServices: string[]) {
   const ALL_SERVICES = ["feedback", "roadmap", "changelog"];
   const rows = ALL_SERVICES.map((service) => ({
-    board_id: boardId,
+    workspace_id: workspaceId,
     service,
     enabled: enabledServices.includes(service),
   }));
 
   const { error } = await supabaseAdmin.from("billing_services").upsert(rows, {
-    onConflict: "board_id,service",
+    onConflict: "workspace_id,service",
   });
   if (error) {
     console.error("Billing services upsert error:", error);
@@ -102,13 +102,13 @@ Deno.serve(async (req) => {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
-      const boardId = session.metadata?.board_id;
+      const workspaceId = session.metadata?.workspace_id;
       const subscriptionId = session.subscription as string | null;
       const customerId = session.customer as string | null;
 
-      if (boardId) {
+      if (workspaceId) {
         await supabaseAdmin.from("billing_customers").upsert({
-          board_id: boardId,
+          workspace_id: workspaceId,
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           status: "trialing",
@@ -118,18 +118,18 @@ Deno.serve(async (req) => {
 
     if (event.type.startsWith("customer.subscription")) {
       const subscription = event.data.object as Stripe.Subscription;
-      const boardId = subscription.metadata?.board_id;
-      if (!boardId) {
+      const workspaceId = subscription.metadata?.workspace_id;
+      if (!workspaceId) {
         return new Response(JSON.stringify({ received: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       const { enabled } = servicesFromSubscription(subscription);
-      await upsertBillingServices(boardId, enabled);
+      await upsertBillingServices(workspaceId, enabled);
 
       await supabaseAdmin.from("billing_customers").upsert({
-        board_id: boardId,
+        workspace_id: workspaceId,
         stripe_customer_id: subscription.customer as string,
         stripe_subscription_id: subscription.id,
         status: subscription.status,

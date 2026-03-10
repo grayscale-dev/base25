@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../_shared/supabase.ts";
-import { requireBoardReadAccess } from "../_shared/itemAccess.ts";
+import { requireWorkspaceReadAccess } from "../_shared/itemAccess.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 
 const corsHeaders = {
@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
       return json({ error: "item_id is required" }, 400);
     }
 
-    const access = await requireBoardReadAccess(req, payload);
+    const access = await requireWorkspaceReadAccess(req, payload);
     if (!access.success) {
       return json({ error: access.error }, access.status || 403);
     }
@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     let query = supabaseAdmin
       .from("item_activities")
       .select("*")
-      .eq("board_id", access.board.id)
+      .eq("workspace_id", access.workspace.id)
       .eq("item_id", itemId);
 
     if (access.isPublicAccess) {

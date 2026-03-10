@@ -40,7 +40,7 @@ export default function WorkspaceBillingPanel({ workspace }) {
       setLoadError("");
       setLoading(true);
       const { data } = await base44.functions.invoke("getBillingSummary", {
-        board_id: nextWorkspaceId,
+        workspace_id: nextWorkspaceId,
       });
       setSummary(data);
 
@@ -81,7 +81,7 @@ export default function WorkspaceBillingPanel({ workspace }) {
     setStartingTrial(true);
     try {
       const { data } = await base44.functions.invoke("createCheckoutSession", {
-        board_id: workspaceId,
+        workspace_id: workspaceId,
         enabled_services: services,
         success_url: window.location.href,
         cancel_url: window.location.href,
@@ -103,7 +103,7 @@ export default function WorkspaceBillingPanel({ workspace }) {
     setOpeningPortal(true);
     try {
       const { data } = await base44.functions.invoke("createBillingPortal", {
-        board_id: workspaceId,
+        workspace_id: workspaceId,
         return_url: window.location.href,
       });
       if (data?.url) {

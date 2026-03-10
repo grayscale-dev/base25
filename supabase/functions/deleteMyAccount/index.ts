@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
     const userEmail = authCheck.user.email || null;
 
     const cleanupTasks = [
-      supabaseAdmin.from("board_roles").delete().eq("user_id", userId),
+      supabaseAdmin.from("workspace_roles").delete().eq("user_id", userId),
       supabaseAdmin
         .from("items")
         .update({ submitter_id: null, submitter_email: null })

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { workspaceUrl } from "@/components/utils/boardUrl";
+import { workspaceUrl } from "@/components/utils/workspaceUrl";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { StatePanel } from "@/components/common/StateDisplay";
@@ -37,7 +37,7 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
         setLoadingItem(true);
         setItemError("");
         const rows = await base44.entities.Item.filter({
-          board_id: workspace.id,
+          workspace_id: workspace.id,
           id: itemId,
         });
         const item = rows?.[0];

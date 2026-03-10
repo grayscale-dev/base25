@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const boardId = payload?.board_id;
+    const workspaceId = payload?.workspace_id;
     const groupKey = payload?.group_key;
     const statusKey = payload?.status_key;
     const title = payload?.title;
@@ -32,14 +32,14 @@ Deno.serve(async (req) => {
     const tags = Array.isArray(payload?.tags) ? payload.tags : [];
     const visibility = payload?.visibility ?? "public";
 
-    if (!boardId || !isValidGroupKey(groupKey) || !statusKey || !title) {
+    if (!workspaceId || !isValidGroupKey(groupKey) || !statusKey || !title) {
       return json(
-        { error: "Missing required fields", required: ["board_id", "group_key", "status_key", "title"] },
+        { error: "Missing required fields", required: ["workspace_id", "group_key", "status_key", "title"] },
         400,
       );
     }
 
-    const auth = await authorizeWriteAction(req, boardId, "contributor");
+    const auth = await authorizeWriteAction(req, workspaceId, "contributor");
     if (!auth.success) {
       return auth.error;
     }
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     const { data: statusRow, error: statusError } = await supabaseAdmin
       .from("item_statuses")
       .select("id, is_active")
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .eq("group_key", groupKey)
       .eq("status_key", statusKey)
       .limit(1)
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     const { data: item, error: createError } = await supabaseAdmin
       .from("items")
       .insert({
-        board_id: boardId,
+        workspace_id: workspaceId,
         group_key: groupKey,
         status_key: statusKey,
         title: String(title).trim(),
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
     }
 
     await supabaseAdmin.from("item_activities").insert({
-      board_id: boardId,
+      workspace_id: workspaceId,
       item_id: item.id,
       activity_type: "system",
       content: "Item created",

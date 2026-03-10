@@ -23,16 +23,16 @@ Deno.serve(async (req) => {
     }
 
     const payload = await req.json();
-    const boardId = payload.board_id;
+    const workspaceId = payload.workspace_id;
 
-    if (!boardId) {
-      return new Response(JSON.stringify({ error: "Missing board_id" }), {
+    if (!workspaceId) {
+      return new Response(JSON.stringify({ error: "Missing workspace_id" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const adminCheck = await requireAdmin(boardId, authCheck.user.id);
+    const adminCheck = await requireAdmin(workspaceId, authCheck.user.id);
     if (!adminCheck.success) {
       return new Response(adminCheck.error.body, {
         status: adminCheck.error.status,
@@ -43,13 +43,13 @@ Deno.serve(async (req) => {
     const { data: billingRow } = await supabaseAdmin
       .from("billing_customers")
       .select("*")
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     const { data: services } = await supabaseAdmin
       .from("billing_services")
       .select("service, enabled")
-      .eq("board_id", boardId);
+      .eq("workspace_id", workspaceId);
 
     const enabledServices = (services || []).filter((s) => s.enabled);
 

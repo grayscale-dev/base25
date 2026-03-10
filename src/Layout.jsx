@@ -16,10 +16,10 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
-import { workspaceUrl } from '@/components/utils/boardUrl';
+import { workspaceUrl } from '@/components/utils/workspaceUrl';
 import { cn } from '@/lib/utils';
-import { BoardProvider } from '@/components/context/BoardContext';
-import { getBoardSession, setBoardSession } from '@/lib/board-session';
+import { WorkspaceProvider } from '@/components/context/WorkspaceContext';
+import { getWorkspaceSession, setWorkspaceSession } from '@/lib/workspace-session';
 import {
   getDefaultWorkspaceSection,
   resolveWorkspaceSection,
@@ -104,7 +104,7 @@ export default function Layout({ children, currentPageName }) {
         workspace: storedWorkspace,
         role: storedRole,
         isPublicAccess: storedIsPublicAccess,
-      } = getBoardSession();
+      } = getWorkspaceSession();
       
       if (!storedWorkspace) {
         if (location.pathname.startsWith('/workspace/')) {
@@ -136,12 +136,12 @@ export default function Layout({ children, currentPageName }) {
       // Load user workspaces for switcher (if authenticated with role)
       if (isAuthenticated && !storedIsPublicAccess) {
         try {
-          const allRoles = await base44.entities.BoardRole.filter({ user_id: currentUser.id });
+          const allRoles = await base44.entities.WorkspaceRole.filter({ user_id: currentUser.id });
           if (allRoles.length > 0) {
-            const workspaceIds = [...new Set(allRoles.map(r => r.board_id))];
+            const workspaceIds = [...new Set(allRoles.map(r => r.workspace_id))];
             const wsData = await Promise.all(
               workspaceIds.map(async (id) => {
-                const results = await base44.entities.Board.filter({ id });
+                const results = await base44.entities.Workspace.filter({ id });
                 return results[0];
               })
             );
@@ -158,8 +158,8 @@ export default function Layout({ children, currentPageName }) {
     let nextRole = 'viewer';
     if (user?.id) {
       try {
-        const roles = await base44.entities.BoardRole.filter({
-          board_id: ws.id,
+        const roles = await base44.entities.WorkspaceRole.filter({
+          workspace_id: ws.id,
           user_id: user.id,
         });
         nextRole = roles[0]?.role || 'viewer';
@@ -168,7 +168,7 @@ export default function Layout({ children, currentPageName }) {
       }
     }
 
-    setBoardSession({ workspace: ws, role: nextRole, isPublicAccess: false });
+    setWorkspaceSession({ workspace: ws, role: nextRole, isPublicAccess: false });
     setWorkspace(ws);
     setRole(nextRole);
     const requestedSection = pathSection || currentPageName?.toLowerCase() || 'items';
@@ -180,7 +180,7 @@ export default function Layout({ children, currentPageName }) {
 
   const handleLogout = () => {
     sessionStorage.clear();
-    base44.auth.logout();
+    base44.auth.logout(window.location.origin + createPageUrl('Home'));
   };
 
   const isAdmin = role === 'admin' && !isPublicViewing;
@@ -270,7 +270,7 @@ export default function Layout({ children, currentPageName }) {
                         <DropdownMenuItem
                           key={ws.id}
                           onClick={() => handleWorkspaceSwitch(ws)}
-                          className="cursor-pointer flex items-center"
+                          className="cursor-pointer flex w-full items-center"
                         >
                           {ws.logo_url ? (
                             <img src={ws.logo_url} alt={ws.name} className="h-4 w-4 mr-2 object-contain" />
@@ -441,9 +441,9 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <BoardProvider>
+        <WorkspaceProvider>
           {children}
-        </BoardProvider>
+        </WorkspaceProvider>
       </main>
     </div>
   );

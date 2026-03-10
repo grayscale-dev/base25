@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const boardId = payload?.board_id;
+    const workspaceId = payload?.workspace_id;
     const groupKey = payload?.group_key;
     const statusId = payload?.status_id;
     const label = String(payload?.label || "").trim();
@@ -40,20 +40,20 @@ Deno.serve(async (req) => {
     const displayOrder = Number(payload?.display_order ?? 0);
     const isActive = payload?.is_active ?? true;
 
-    if (!boardId || !isValidGroupKey(groupKey) || !label || !statusKey) {
+    if (!workspaceId || !isValidGroupKey(groupKey) || !label || !statusKey) {
       return json(
-        { error: "board_id, group_key, label, and status_key are required" },
+        { error: "workspace_id, group_key, label, and status_key are required" },
         400,
       );
     }
 
-    const auth = await authorizeWriteAction(req, boardId, "admin");
+    const auth = await authorizeWriteAction(req, workspaceId, "admin");
     if (!auth.success) return auth.error;
 
     const { data: duplicate } = await supabaseAdmin
       .from("item_statuses")
       .select("id")
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .eq("group_key", groupKey)
       .eq("status_key", statusKey)
       .neq("id", statusId || "")
@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
           })
           .eq("id", statusId)
       : supabaseAdmin.from("item_statuses").insert({
-          board_id: boardId,
+          workspace_id: workspaceId,
           group_key: groupKey,
           label,
           status_key: statusKey,

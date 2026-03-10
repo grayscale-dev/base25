@@ -1,24 +1,24 @@
 import {
   checkAuthentication,
-  getUserBoardRole,
-  verifyBoard,
+  getUserWorkspaceRole,
+  verifyWorkspace,
 } from "./authHelpers.ts";
 import { supabaseAdmin } from "./supabase.ts";
 
-export async function resolveBoardFromPayload(payload: Record<string, unknown>) {
-  const boardId = typeof payload.board_id === "string" ? payload.board_id : null;
+export async function resolveWorkspaceFromPayload(payload: Record<string, unknown>) {
+  const workspaceId = typeof payload.workspace_id === "string" ? payload.workspace_id : null;
   const slug = typeof payload.slug === "string" ? payload.slug : null;
 
-  if (boardId) {
-    return { boardId, board: null, error: null };
+  if (workspaceId) {
+    return { workspaceId, workspace: null, error: null };
   }
 
   if (!slug) {
-    return { boardId: null, board: null, error: "board_id or slug is required" };
+    return { workspaceId: null, workspace: null, error: "workspace_id or slug is required" };
   }
 
   const { data, error } = await supabaseAdmin
-    .from("boards")
+    .from("workspaces")
     .select("*")
     .eq("slug", slug)
     .eq("status", "active")
@@ -26,41 +26,41 @@ export async function resolveBoardFromPayload(payload: Record<string, unknown>) 
     .maybeSingle();
 
   if (error) {
-    console.error("resolveBoardFromPayload slug lookup error:", error);
-    return { boardId: null, board: null, error: "Unable to resolve board" };
+    console.error("resolveWorkspaceFromPayload slug lookup error:", error);
+    return { workspaceId: null, workspace: null, error: "Unable to resolve workspace" };
   }
 
   if (!data) {
-    return { boardId: null, board: null, error: "Board not found" };
+    return { workspaceId: null, workspace: null, error: "Workspace not found" };
   }
 
-  return { boardId: data.id as string, board: data, error: null };
+  return { workspaceId: data.id as string, workspace: data, error: null };
 }
 
-export async function requireBoardReadAccess(req: Request, payload: Record<string, unknown>) {
-  const boardLookup = await resolveBoardFromPayload(payload);
-  if (!boardLookup.boardId) {
+export async function requireWorkspaceReadAccess(req: Request, payload: Record<string, unknown>) {
+  const workspaceLookup = await resolveWorkspaceFromPayload(payload);
+  if (!workspaceLookup.workspaceId) {
     return {
       success: false,
       status: 400,
-      error: boardLookup.error || "Invalid board reference",
-      board: null,
+      error: workspaceLookup.error || "Invalid workspace reference",
+      workspace: null,
       user: null,
       role: null,
       isPublicAccess: false,
     };
   }
 
-  const boardCheck = boardLookup.board
-    ? { success: true, board: boardLookup.board, error: null }
-    : await verifyBoard(boardLookup.boardId);
+  const workspaceCheck = workspaceLookup.workspace
+    ? { success: true, workspace: workspaceLookup.workspace, error: null }
+    : await verifyWorkspace(workspaceLookup.workspaceId);
 
-  if (!boardCheck.success) {
+  if (!workspaceCheck.success) {
     return {
       success: false,
       status: 404,
-      error: "Board not found",
-      board: null,
+      error: "Workspace not found",
+      workspace: null,
       user: null,
       role: null,
       isPublicAccess: false,
@@ -69,10 +69,10 @@ export async function requireBoardReadAccess(req: Request, payload: Record<strin
 
   const authCheck = await checkAuthentication(req);
 
-  if (boardCheck.board.visibility === "public" && !authCheck.authenticated) {
+  if (workspaceCheck.workspace.visibility === "public" && !authCheck.authenticated) {
     return {
       success: true,
-      board: boardCheck.board,
+      workspace: workspaceCheck.workspace,
       user: null,
       role: null,
       isPublicAccess: true,
@@ -84,20 +84,20 @@ export async function requireBoardReadAccess(req: Request, payload: Record<strin
       success: false,
       status: 401,
       error: "Authentication required",
-      board: null,
+      workspace: null,
       user: null,
       role: null,
       isPublicAccess: false,
     };
   }
 
-  const role = await getUserBoardRole(boardLookup.boardId, authCheck.user.id);
-  if (!role && boardCheck.board.visibility !== "public") {
+  const role = await getUserWorkspaceRole(workspaceLookup.workspaceId, authCheck.user.id);
+  if (!role && workspaceCheck.workspace.visibility !== "public") {
     return {
       success: false,
       status: 403,
       error: "This workspace is not accessible",
-      board: null,
+      workspace: null,
       user: authCheck.user,
       role: null,
       isPublicAccess: false,
@@ -106,7 +106,7 @@ export async function requireBoardReadAccess(req: Request, payload: Record<strin
 
   return {
     success: true,
-    board: boardCheck.board,
+    workspace: workspaceCheck.workspace,
     user: authCheck.user,
     role: role || "viewer",
     isPublicAccess: !role,

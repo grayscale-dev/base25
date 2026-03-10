@@ -1,6 +1,9 @@
 #env
 .env
 .env.*
+!.env.profiles/
+!.env.profiles/.gitignore
+!.env.profiles/*.env.example
 
 # Logs
 logs

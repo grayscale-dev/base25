@@ -26,6 +26,11 @@ export const RATE_LIMITS = {
     maxRequests: 1,
     burst: 1,
   },
+  WRITE_ACTION: {
+    windowMs: 60000,
+    maxRequests: 120,
+    burst: 30,
+  },
   SIGNUP: {
     windowMs: 60000,
     maxRequests: 3,

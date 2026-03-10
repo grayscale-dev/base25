@@ -6,8 +6,8 @@ import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
 import PageLoadingState from '@/components/common/PageLoadingState';
 import { StatePanel } from '@/components/common/StateDisplay';
-import { setBoardSession } from '@/lib/board-session';
-import { workspaceDefaultUrl } from '@/components/utils/boardUrl';
+import { setWorkspaceSession } from '@/lib/workspace-session';
+import { workspaceDefaultUrl } from '@/components/utils/workspaceUrl';
 
 export default function JoinWorkspace() {
   const navigate = useNavigate();
@@ -48,7 +48,7 @@ export default function JoinWorkspace() {
       }
 
       // Load workspace
-      const workspaces = await base44.entities.Board.filter({
+      const workspaces = await base44.entities.Workspace.filter({
         slug: slug,
         status: 'active'
       });
@@ -63,8 +63,8 @@ export default function JoinWorkspace() {
       setWorkspace(ws);
 
       // Check if already a member
-      const existingRoles = await base44.entities.BoardRole.filter({
-        board_id: ws.id,
+      const existingRoles = await base44.entities.WorkspaceRole.filter({
+        workspace_id: ws.id,
         user_id: currentUser.id
       });
 
@@ -95,9 +95,9 @@ export default function JoinWorkspace() {
       return true;
     }
 
-    // Check if there's an explicit BoardRole assigned to this email (pre-authorized)
-    const emailRoles = await base44.entities.BoardRole.filter({
-      board_id: ws.id,
+    // Check if there's an explicit WorkspaceRole assigned to this email (pre-authorized)
+    const emailRoles = await base44.entities.WorkspaceRole.filter({
+      workspace_id: ws.id,
       email: user.email
     });
 
@@ -115,8 +115,8 @@ export default function JoinWorkspace() {
     setJoining(true);
     try {
       // Check if there's a pre-existing role assignment by email
-      const emailRoles = await base44.entities.BoardRole.filter({
-        board_id: workspace.id,
+      const emailRoles = await base44.entities.WorkspaceRole.filter({
+        workspace_id: workspace.id,
         email: user.email
       });
 
@@ -126,13 +126,13 @@ export default function JoinWorkspace() {
         // Update existing role with actual user_id
         const existingRole = emailRoles[0];
         assignedRole = existingRole.role;
-        await base44.entities.BoardRole.update(existingRole.id, {
+        await base44.entities.WorkspaceRole.update(existingRole.id, {
           user_id: user.id
         });
       } else {
-        // Create new BoardRole
-        await base44.entities.BoardRole.create({
-          board_id: workspace.id,
+        // Create new WorkspaceRole
+        await base44.entities.WorkspaceRole.create({
+          workspace_id: workspace.id,
           user_id: user.id,
           email: user.email,
           role: 'viewer',
@@ -141,7 +141,7 @@ export default function JoinWorkspace() {
       }
 
       // Navigate to workspace with assigned role
-      setBoardSession({ workspace, role: assignedRole });
+      setWorkspaceSession({ workspace, role: assignedRole });
       navigate(workspaceDefaultUrl(workspace.slug, assignedRole, false));
     } catch (err) {
       console.error('Failed to join workspace:', err);
@@ -155,7 +155,7 @@ export default function JoinWorkspace() {
     if (!workspace) return;
 
     const nextRole = memberRole || 'viewer';
-    setBoardSession({ workspace, role: nextRole });
+    setWorkspaceSession({ workspace, role: nextRole });
     navigate(workspaceDefaultUrl(workspace.slug, nextRole, false));
   };
 

@@ -22,14 +22,14 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const boardId = payload?.board_id;
+    const workspaceId = payload?.workspace_id;
     const itemId = payload?.item_id;
 
-    if (!boardId || !itemId) {
-      return json({ error: "board_id and item_id are required" }, 400);
+    if (!workspaceId || !itemId) {
+      return json({ error: "workspace_id and item_id are required" }, 400);
     }
 
-    const auth = await authorizeWriteAction(req, boardId, "admin");
+    const auth = await authorizeWriteAction(req, workspaceId, "admin");
     if (!auth.success) {
       return auth.error;
     }
@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     const { error } = await supabaseAdmin
       .from("items")
       .delete()
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .eq("id", itemId);
 
     if (error) {

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import RoutePage from "@/components/RoutePage";
-import Board from "@/screens/Board";
+import Workspace from "@/screens/Workspace";
 import { getWorkspacePageName, isWorkspaceSection } from "@/lib/workspace-sections";
 
 export default function WorkspaceSectionPage({ params }) {
@@ -18,7 +18,7 @@ export default function WorkspaceSectionPage({ params }) {
 
   return (
     <RoutePage currentPageName={pageName}>
-      <Board section={normalizedSection} />
+      <Workspace section={normalizedSection} />
     </RoutePage>
   );
 }

@@ -156,7 +156,7 @@ export default function WorkspaceApiPanel({ workspace }) {
     try {
       setLoadError("");
       setLoading(true);
-      const tokenData = await base44.entities.ApiToken.filter({ board_id: workspaceId });
+      const tokenData = await base44.entities.ApiToken.filter({ workspace_id: workspaceId });
       setTokens(tokenData || []);
     } catch (error) {
       console.error("Failed to load API tokens:", error);
@@ -176,7 +176,7 @@ export default function WorkspaceApiPanel({ workspace }) {
         .join("");
 
       await base44.entities.ApiToken.create({
-        board_id: workspaceId,
+        workspace_id: workspaceId,
         name: newTokenName,
         token_hash: tokenValue,
         token_prefix: tokenValue.slice(0, 12),

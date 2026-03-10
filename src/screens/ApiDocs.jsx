@@ -2,14 +2,14 @@ import { useEffect } from "react";
 import { useNavigate } from "@/lib/router";
 import { createPageUrl } from "@/utils";
 import PageLoadingState from "@/components/common/PageLoadingState";
-import { getBoardSession } from "@/lib/board-session";
-import { workspaceDefaultUrl } from "@/components/utils/boardUrl";
+import { getWorkspaceSession } from "@/lib/workspace-session";
+import { workspaceDefaultUrl } from "@/components/utils/workspaceUrl";
 
 export default function ApiDocs() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const { workspace: storedWorkspace, role: storedRole } = getBoardSession();
+    const { workspace: storedWorkspace, role: storedRole } = getWorkspaceSession();
 
     if (!storedWorkspace) {
       navigate(createPageUrl("Workspaces"), { replace: true });

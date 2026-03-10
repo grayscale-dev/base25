@@ -14,12 +14,12 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
-import { workspaceDefaultUrl } from '@/components/utils/boardUrl';
+import { workspaceDefaultUrl } from '@/components/utils/workspaceUrl';
 import WorkspaceCard from '@/components/workspace/WorkspaceCard';
 import PageLoadingState from '@/components/common/PageLoadingState';
 import { PageHeader, PageShell } from '@/components/common/PageScaffold';
 import { StatePanel } from '@/components/common/StateDisplay';
-import { setBoardSession } from '@/lib/board-session';
+import { setWorkspaceSession } from '@/lib/workspace-session';
 
 const getErrorStatus = (error) => {
   if (!error) return null;
@@ -29,15 +29,15 @@ const getErrorStatus = (error) => {
 export default function Workspaces() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [boards, setBoards] = useState([]);
-  const [boardRoles, setBoardRoles] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [workspaceRoles, setWorkspaceRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [joinLink, setJoinLink] = useState('');
   const [joinLinkError, setJoinLinkError] = useState('');
   const [joining, setJoining] = useState(false);
-  const [newBoard, setNewBoard] = useState({ name: '', slug: '', description: '' });
+  const [newWorkspace, setNewWorkspace] = useState({ name: '', slug: '', description: '' });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -48,12 +48,12 @@ export default function Workspaces() {
   }, []);
 
   useEffect(() => {
-    if (!showCreateModal || !newBoard.slug) {
+    if (!showCreateModal || !newWorkspace.slug) {
       setSlugStatus({ checking: false, available: null, message: '' });
       return;
     }
 
-    const normalizedSlug = newBoard.slug.trim();
+    const normalizedSlug = newWorkspace.slug.trim();
     if (!normalizedSlug) {
       setSlugStatus({ checking: false, available: null, message: '' });
       return;
@@ -63,7 +63,7 @@ export default function Workspaces() {
       setSlugStatus({ checking: true, available: null, message: '' });
       try {
         const { data } = await base44.functions.invoke(
-          'checkBoardSlug',
+          'checkWorkspaceSlug',
           { slug: normalizedSlug },
           { authMode: 'anon' }
         );
@@ -88,7 +88,7 @@ export default function Workspaces() {
     }, 400);
 
     return () => clearTimeout(handle);
-  }, [newBoard.slug, showCreateModal]);
+  }, [newWorkspace.slug, showCreateModal]);
 
   const loadData = async () => {
     try {
@@ -105,23 +105,23 @@ export default function Workspaces() {
       setUser(currentUser);
 
       // Load workspace roles
-      const roles = await base44.entities.BoardRole.filter({ 
+      const roles = await base44.entities.WorkspaceRole.filter({ 
         user_id: currentUser.id 
       });
-      setBoardRoles(roles);
+      setWorkspaceRoles(roles);
 
       if (roles.length > 0) {
-        const boardIds = [...new Set(roles.map(r => r.board_id).filter(Boolean))];
-        const boardsData = await Promise.all(
-          boardIds.map(async (id) => {
-            const results = await base44.entities.Board.filter({ id });
+        const workspaceIds = [...new Set(roles.map(r => r.workspace_id).filter(Boolean))];
+        const workspacesData = await Promise.all(
+          workspaceIds.map(async (id) => {
+            const results = await base44.entities.Workspace.filter({ id });
             return results[0];
           })
         );
-        const activeBoards = boardsData.filter(board => board && board.status === 'active');
-        setBoards(activeBoards);
+        const activeWorkspaces = workspacesData.filter((workspace) => workspace && workspace.status === 'active');
+        setWorkspaces(activeWorkspaces);
       } else {
-        setBoards([]);
+        setWorkspaces([]);
       }
     } catch (error) {
       console.error('Failed to load workspaces:', error);
@@ -131,15 +131,15 @@ export default function Workspaces() {
     }
   };
 
-  const handleSelectBoard = (board) => {
+  const handleSelectWorkspace = (workspace) => {
     // Store selected workspace and navigate to canonical workspace route
-    const boardRole = boardRoles.find(r => r.board_id === board.id);
-    const nextRole = boardRole?.role || 'viewer';
-    setBoardSession({ workspace: board, role: nextRole });
-    navigate(workspaceDefaultUrl(board.slug, nextRole, false));
+    const workspaceRole = workspaceRoles.find((entry) => entry.workspace_id === workspace.id);
+    const nextRole = workspaceRole?.role || 'viewer';
+    setWorkspaceSession({ workspace, role: nextRole });
+    navigate(workspaceDefaultUrl(workspace.slug, nextRole, false));
   };
 
-  const handleJoinBoard = async () => {
+  const handleJoinWorkspace = async () => {
     if (!joinLink.trim()) return;
 
     setJoinLinkError('');
@@ -184,24 +184,24 @@ export default function Workspaces() {
     }
   };
 
-  const handleCreateBoard = async () => {
-    if (!newBoard.name || !newBoard.slug) return;
+  const handleCreateWorkspace = async () => {
+    if (!newWorkspace.name || !newWorkspace.slug) return;
     
     setCreateError('');
     setCreating(true);
     try {
-      const { data: createdBoard } = await base44.functions.invoke('createBoard', {
-        name: newBoard.name,
-        slug: newBoard.slug,
-        description: newBoard.description,
+      const { data: createdWorkspace } = await base44.functions.invoke('createWorkspace', {
+        name: newWorkspace.name,
+        slug: newWorkspace.slug,
+        description: newWorkspace.description,
         visibility: 'restricted'
       }, { authMode: 'user' });
 
       setShowCreateModal(false);
-      setNewBoard({ name: '', slug: '', description: '' });
-      if (createdBoard?.slug) {
-        setBoardSession({ workspace: createdBoard, role: 'admin' });
-        navigate(workspaceDefaultUrl(createdBoard.slug, 'admin', false));
+      setNewWorkspace({ name: '', slug: '', description: '' });
+      if (createdWorkspace?.slug) {
+        setWorkspaceSession({ workspace: createdWorkspace, role: 'admin' });
+        navigate(workspaceDefaultUrl(createdWorkspace.slug, 'admin', false));
         return;
       }
       loadData();
@@ -223,8 +223,8 @@ export default function Workspaces() {
     base44.auth.logout(window.location.origin + createPageUrl('Home'));
   };
 
-  const getRoleForBoard = (boardId) => {
-    const role = boardRoles.find(r => r.board_id === boardId);
+  const getRoleForWorkspace = (workspaceId) => {
+    const role = workspaceRoles.find((entry) => entry.workspace_id === workspaceId);
     return role?.role || 'viewer';
   };
 
@@ -280,8 +280,8 @@ export default function Workspaces() {
               <PageHeader
                 title="Your Workspaces"
                 description={
-                  boards.length > 0
-                    ? `You have access to ${boards.length} workspace${boards.length === 1 ? '' : 's'}.`
+                  workspaces.length > 0
+                    ? `You have access to ${workspaces.length} workspace${workspaces.length === 1 ? '' : 's'}.`
                     : 'Join an existing workspace or create your first workspace to get started.'
                 }
                 actions={(
@@ -310,14 +310,14 @@ export default function Workspaces() {
               />
 
               {/* Workspaces Grid */}
-              {boards.length > 0 ? (
+              {workspaces.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {boards.map((board) => (
+                  {workspaces.map((workspace) => (
                     <WorkspaceCard
-                      key={board.id}
-                      workspace={board}
-                      role={getRoleForBoard(board.id)}
-                      onClick={() => handleSelectBoard(board)}
+                      key={workspace.id}
+                      workspace={workspace}
+                      role={getRoleForWorkspace(workspace.id)}
+                      onClick={() => handleSelectWorkspace(workspace)}
                     />
                   ))}
                 </div>
@@ -353,7 +353,7 @@ export default function Workspaces() {
                   placeholder="Paste invite link or workspace slug"
                   className="mt-1.5"
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleJoinBoard();
+                    if (e.key === 'Enter') handleJoinWorkspace();
                   }}
                 />
                 <p className="text-xs text-slate-500 mt-2">
@@ -375,7 +375,7 @@ export default function Workspaces() {
                   Cancel
                 </Button>
                   <Button 
-                    onClick={handleJoinBoard}
+                    onClick={handleJoinWorkspace}
                     disabled={!joinLink.trim() || joining}
                     className="bg-slate-900 hover:bg-slate-800"
                   >
@@ -404,8 +404,8 @@ export default function Workspaces() {
                 <div>
                   <Label>Workspace Name</Label>
                   <Input
-                    value={newBoard.name}
-                    onChange={(e) => setNewBoard({ ...newBoard, name: e.target.value })}
+                    value={newWorkspace.name}
+                    onChange={(e) => setNewWorkspace({ ...newWorkspace, name: e.target.value })}
                     placeholder="e.g., Product Team"
                     className="mt-1.5"
                   />
@@ -413,8 +413,8 @@ export default function Workspaces() {
                 <div>
                   <Label>Slug (URL-friendly)</Label>
                   <Input
-                    value={newBoard.slug}
-                    onChange={(e) => setNewBoard({ ...newBoard, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
+                    value={newWorkspace.slug}
+                    onChange={(e) => setNewWorkspace({ ...newWorkspace, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
                     placeholder="e.g., product-feedback"
                     className="mt-1.5"
                   />
@@ -427,8 +427,8 @@ export default function Workspaces() {
                 <div>
                   <Label>Description (Optional)</Label>
                   <Textarea
-                    value={newBoard.description}
-                    onChange={(e) => setNewBoard({ ...newBoard, description: e.target.value })}
+                    value={newWorkspace.description}
+                    onChange={(e) => setNewWorkspace({ ...newWorkspace, description: e.target.value })}
                     placeholder="Brief description of this workspace"
                     className="mt-1.5"
                   />
@@ -444,8 +444,8 @@ export default function Workspaces() {
                     Cancel
                   </Button>
                   <Button 
-                    onClick={handleCreateBoard}
-                    disabled={!newBoard.name || !newBoard.slug || creating || slugStatus.available === false || slugStatus.checking}
+                    onClick={handleCreateWorkspace}
+                    disabled={!newWorkspace.name || !newWorkspace.slug || creating || slugStatus.available === false || slugStatus.checking}
                     className="bg-slate-900 hover:bg-slate-800"
                   >
                     {creating ? 'Creating...' : 'Create Workspace'}

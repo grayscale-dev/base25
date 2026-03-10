@@ -24,15 +24,15 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const boardId = payload?.board_id;
+    const workspaceId = payload?.workspace_id;
     const itemId = payload?.item_id;
     const activityType = payload?.activity_type || "comment";
     const content = payload?.content;
     const metadata = payload?.metadata ?? {};
     const isInternalNote = Boolean(payload?.is_internal_note);
 
-    if (!boardId || !itemId || !content) {
-      return json({ error: "board_id, item_id, and content are required" }, 400);
+    if (!workspaceId || !itemId || !content) {
+      return json({ error: "workspace_id, item_id, and content are required" }, 400);
     }
     if (!ACTIVITY_TYPES.includes(activityType)) {
       return json({ error: "activity_type is invalid" }, 400);
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
       return json({ error: "Internal notes are supported only for comments" }, 400);
     }
 
-    const auth = await authorizeWriteAction(req, boardId, "contributor");
+    const auth = await authorizeWriteAction(req, workspaceId, "contributor");
     if (!auth.success) {
       return auth.error;
     }
@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       .from("items")
       .select("id")
       .eq("id", itemId)
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .limit(1)
       .maybeSingle();
 
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     const { data, error } = await supabaseAdmin
       .from("item_activities")
       .insert({
-        board_id: boardId,
+        workspace_id: workspaceId,
         item_id: itemId,
         activity_type: activityType,
         content: String(content).trim(),

@@ -1,105 +1,128 @@
-**Welcome to base25, go to www.base25.app to learn more**
+# base25
 
-## Local Development
+Enterprise feedback platform running on Next.js + Supabase (workspace-native contracts).
 
-- Node.js requirement: `>=18.18.0`
-- Install deps: `npm install`
-- Run app: `npm run dev`
-- Run lint checks: `npm run lint`
-- Run release preflight: `npm run verify:release`
-- Production build: `npm run build`
-- Start production server: `npm run start`
+## Environment Topology
 
-## Architecture
+This repo is designed for three execution modes:
 
-- System architecture and maintenance conventions: `ARCHITECTURE.md`
-- Release checklist and deploy runbook: `RELEASE_HANDOFF.md`
+1. Local app + local Supabase (`supabase start`)
+2. Local app + hosted Supabase test project
+3. Production app + hosted Supabase prod project
 
-### Environment Variables
+Hosted Supabase projects:
+- `test` (staging/integration)
+- `prod` (production)
 
-Use Next.js public env names:
+## Branch + Release Model
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_BASE44_APP_ID`
-- `NEXT_PUBLIC_BASE44_FUNCTIONS_VERSION`
-- `NEXT_PUBLIC_BASE44_APP_BASE_URL`
-- `NEXT_PUBLIC_AUTH_PROVIDER`
+- Default development branch: `main`
+- Production release branch: `master`
+- Test deploys: manual GitHub workflow dispatch (`deploy-test`), any ref
+- Prod deploys: automatic on push to `master` (`deploy-prod`)
 
-The migration includes compatibility for legacy `VITE_*` names through `next.config.mjs`.
+## Local Setup
 
-## Stripe Billing Setup
-
-This project ships with Stripe billing based on enabled services. Follow the steps below for initial setup.
-
-### 1) Create Stripe Products + Prices
-
-Create 3 prices in Stripe (Test mode first):
-
-- 3 service prices at **$25/month** (recurring):
-  - Feedback
-  - Roadmap
-  - Changelog
-
-Copy the **price IDs** for each service.
-
-### 2) Configure Stripe Customer Portal
-
-In Stripe Dashboard → Billing → Customer portal:
-- Enable the portal
-- Allow subscription + payment method management
-
-### 3) Create a Stripe Webhook
-
-Add a webhook endpoint:
-
-- Prod: `https://<project-ref>.supabase.co/functions/v1/stripeWebhook`
-- Local: `http://127.0.0.1:54321/functions/v1/stripeWebhook`
-
-Subscribe to events:
-- `checkout.session.completed`
-- `customer.subscription.created`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
-- `invoice.payment_failed`
-- `invoice.payment_succeeded`
-
-Copy the **Webhook signing secret**.
-
-### 4) Supabase Secrets
-
-Set these secrets for Edge Functions:
-
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_SERVICE_IDS` (JSON map or comma-delimited)
-
-Example for `STRIPE_PRICE_SERVICE_IDS`:
-```json
-{
-  "feedback": "price_...",
-  "roadmap": "price_...",
-  "changelog": "price_..."
-}
+1. Install dependencies:
+```bash
+npm install
 ```
 
-### 5) Deploy Edge Functions
-
-Deploy the billing-related functions:
-```
-supabase functions deploy createCheckoutSession
-supabase functions deploy createBillingPortal
-supabase functions deploy stripeWebhook
-supabase functions deploy getBillingSummary
+2. Create env profile files:
+```bash
+cp .env.profiles/local.env.example .env.profiles/local.env
+cp .env.profiles/remote-test.env.example .env.profiles/remote-test.env
 ```
 
-## GitHub Action: Supabase Deploy on Merge
+3. Switch env profile:
+```bash
+npm run env:local
+# or
+npm run env:remote-test
+```
 
-The repo includes a workflow at `.github/workflows/supabase-deploy.yml` that runs on push to `main`/`master` and:
-- runs `supabase db push --linked --yes`
-- deploys changed edge functions under `supabase/functions/` (or all functions when `_shared` changes)
+4. (Local Supabase mode) start Supabase:
+```bash
+supabase start
+```
 
-Required repository secrets:
+5. Run app:
+```bash
+npm run dev
+```
+
+## Quality + Verification
+
+```bash
+npm run lint
+npm run build
+npm run verify:release
+```
+
+`verify:release` enforces:
+- no Radix imports
+- no removed legacy feature surfaces
+- no legacy runtime contract references
+- no stale removed edge-function artifacts
+
+## Supabase (Workspace-Native)
+
+Canonical schema objects are workspace-native:
+- `workspaces`
+- `workspace_roles`
+- `workspace_access_rules`
+- `workspace_access_codes`
+- `items`, `item_activities`, `item_status_groups`, `item_statuses`
+- `billing_customers`, `billing_services`
+
+Primary edge functions:
+- `createWorkspace`
+- `checkWorkspaceSlug`
+- `publicGetWorkspace`
+- `joinWorkspaceWithAccessCode`
+- `getWorkspaceAccessCodeStatus`
+- `setWorkspaceAccessCode`
+- `publicTrackWorkspaceView`
+
+### Deploy Supabase manually
+
+```bash
+supabase link --project-ref <PROJECT_REF> --password <DB_PASSWORD>
+supabase db push --linked --yes
+```
+
+## GitHub Actions CI/CD
+
+Workflows:
+- `.github/workflows/deploy-test.yml`
+- `.github/workflows/deploy-prod.yml`
+
+Both workflows run:
+1. checkout
+2. `npm ci`
+3. `npm run lint`
+4. `npm run build`
+5. `supabase link`
+6. `supabase db push --linked --yes`
+7. Supabase function deploy
+8. Vercel deploy via CLI
+
+## Required GitHub Environment Secrets
+
+Configure these in both `test` and `prod` environments:
+
 - `SUPABASE_ACCESS_TOKEN`
-- `SUPABASE_DB_PASSWORD`
 - `SUPABASE_PROJECT_REF`
+- `SUPABASE_DB_PASSWORD`
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+
+Also configure app/runtime secrets in Vercel and Supabase as needed (Stripe + Next public envs).
+
+## Vercel Deployment Source
+
+This repo expects **workflow-driven Vercel deployments only**.
+Disable automatic Git-triggered Vercel deployments in project settings and use only:
+- `deploy-test` workflow for preview deployments
+- `deploy-prod` workflow for production deployments

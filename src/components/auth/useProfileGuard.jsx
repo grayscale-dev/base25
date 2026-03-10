@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useBoardContext } from '@/components/context/BoardContext';
+import { useWorkspaceContext } from '@/components/context/WorkspaceContext';
 import ProfileCompletionModal from './ProfileCompletionModal';
 
 /**
@@ -26,7 +26,7 @@ import ProfileCompletionModal from './ProfileCompletionModal';
  * ```
  */
 export function useProfileGuard() {
-  const { user, refresh: refreshContext } = useBoardContext();
+  const { user, refresh: refreshContext } = useWorkspaceContext();
   const [showModal, setShowModal] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
 

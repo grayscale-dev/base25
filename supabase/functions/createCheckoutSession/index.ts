@@ -1,5 +1,5 @@
 import Stripe from "https://esm.sh/stripe@14.20.0?target=deno";
-import { requireAuth, requireAdmin, verifyBoard } from "../_shared/authHelpers.ts";
+import { requireAuth, requireAdmin, verifyWorkspace } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
@@ -60,27 +60,27 @@ Deno.serve(async (req) => {
     }
 
     const payload = await req.json();
-    const boardId = payload.board_id;
+    const workspaceId = payload.workspace_id;
     const enabledServices: string[] = payload.enabled_services || [];
     const successUrl = payload.success_url;
     const cancelUrl = payload.cancel_url;
 
-    if (!boardId || !successUrl || !cancelUrl) {
+    if (!workspaceId || !successUrl || !cancelUrl) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const boardCheck = await verifyBoard(boardId);
-    if (!boardCheck.success) {
-      return new Response(boardCheck.error.body, {
-        status: boardCheck.error.status,
+    const workspaceCheck = await verifyWorkspace(workspaceId);
+    if (!workspaceCheck.success) {
+      return new Response(workspaceCheck.error.body, {
+        status: workspaceCheck.error.status,
         headers: corsHeaders,
       });
     }
 
-    const adminCheck = await requireAdmin(boardId, authCheck.user.id);
+    const adminCheck = await requireAdmin(workspaceId, authCheck.user.id);
     if (!adminCheck.success) {
       return new Response(adminCheck.error.body, {
         status: adminCheck.error.status,
@@ -133,18 +133,18 @@ Deno.serve(async (req) => {
     const { data: billingRow } = await supabaseAdmin
       .from("billing_customers")
       .select("*")
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     let customerId = billingRow?.stripe_customer_id ?? null;
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: authCheck.user.email ?? undefined,
-        metadata: { board_id: boardId },
+        metadata: { workspace_id: workspaceId },
       });
       customerId = customer.id;
       await supabaseAdmin.from("billing_customers").upsert({
-        board_id: boardId,
+        workspace_id: workspaceId,
         stripe_customer_id: customerId,
       });
     }
@@ -163,23 +163,23 @@ Deno.serve(async (req) => {
       subscription_data: {
         trial_period_days: 7,
         metadata: {
-          board_id: boardId,
+          workspace_id: workspaceId,
           enabled_services: servicesToEnable.join(","),
         },
       },
       metadata: {
-        board_id: boardId,
+        workspace_id: workspaceId,
         enabled_services: servicesToEnable.join(","),
       },
     });
 
     const serviceRows = ALL_SERVICES.map((service) => ({
-      board_id: boardId,
+      workspace_id: workspaceId,
       service,
       enabled: servicesToEnable.includes(service),
     }));
     await supabaseAdmin.from("billing_services").upsert(serviceRows, {
-      onConflict: "board_id,service",
+      onConflict: "workspace_id,service",
     });
 
     return new Response(

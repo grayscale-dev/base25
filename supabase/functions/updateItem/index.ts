@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const boardId = payload?.board_id;
+    const workspaceId = payload?.workspace_id;
     const itemId = payload?.item_id;
     const groupKey = payload?.group_key;
     const statusKey = payload?.status_key;
@@ -33,11 +33,11 @@ Deno.serve(async (req) => {
     const tags = payload?.tags;
     const visibility = payload?.visibility;
 
-    if (!boardId || !itemId) {
-      return json({ error: "board_id and item_id are required" }, 400);
+    if (!workspaceId || !itemId) {
+      return json({ error: "workspace_id and item_id are required" }, 400);
     }
 
-    const auth = await authorizeWriteAction(req, boardId, "contributor");
+    const auth = await authorizeWriteAction(req, workspaceId, "contributor");
     if (!auth.success) {
       return auth.error;
     }
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       .from("items")
       .select("*")
       .eq("id", itemId)
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .limit(1)
       .maybeSingle();
 
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     const { data: statusRow, error: statusError } = await supabaseAdmin
       .from("item_statuses")
       .select("id")
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .eq("group_key", nextGroup)
       .eq("status_key", nextStatus)
       .eq("is_active", true)
@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
       .from("items")
       .update(patch)
       .eq("id", itemId)
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .select("*")
       .maybeSingle();
 
@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
 
     if (existing.group_key !== updated.group_key) {
       await supabaseAdmin.from("item_activities").insert({
-        board_id: boardId,
+        workspace_id: workspaceId,
         item_id: updated.id,
         activity_type: "group_change",
         content: `Moved from ${existing.group_key} to ${updated.group_key}`,
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
 
     if (existing.status_key !== updated.status_key) {
       await supabaseAdmin.from("item_activities").insert({
-        board_id: boardId,
+        workspace_id: workspaceId,
         item_id: updated.id,
         activity_type: "status_change",
         content: `Status changed from ${existing.status_key} to ${updated.status_key}`,

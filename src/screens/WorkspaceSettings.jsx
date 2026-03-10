@@ -30,8 +30,8 @@ import { createPageUrl } from "@/utils";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import { StateBanner, StatePanel } from "@/components/common/StateDisplay";
-import { getBoardSession, setBoardSession } from "@/lib/board-session";
-import { workspaceDefaultUrl, workspaceUrl } from "@/components/utils/boardUrl";
+import { getWorkspaceSession, setWorkspaceSession } from "@/lib/workspace-session";
+import { workspaceDefaultUrl, workspaceUrl } from "@/components/utils/workspaceUrl";
 import AccountSettingsPanel from "@/components/workspace/AccountSettingsPanel";
 import WorkspaceApiPanel from "@/components/workspace/WorkspaceApiPanel";
 import WorkspaceBillingPanel from "@/components/workspace/WorkspaceBillingPanel";
@@ -82,12 +82,12 @@ export default function WorkspaceSettings() {
   const [statuses, setStatuses] = useState([]);
   const [statusDrafts, setStatusDrafts] = useState({});
   const [savingStatusId, setSavingStatusId] = useState(null);
-  const [showDeleteBoardDialog, setShowDeleteBoardDialog] = useState(false);
-  const [deletingBoard, setDeletingBoard] = useState(false);
+  const [showDeleteWorkspaceDialog, setShowDeleteWorkspaceDialog] = useState(false);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [activeTab, setActiveTab] = useState("my-account");
 
   useEffect(() => {
-    const { workspace: storedWorkspace, role: storedRole } = getBoardSession();
+    const { workspace: storedWorkspace, role: storedRole } = getWorkspaceSession();
     if (!storedWorkspace) {
       navigate(createPageUrl("Workspaces"));
       return;
@@ -170,8 +170,8 @@ export default function WorkspaceSettings() {
       setLoading(true);
 
       const [rolesData, accessCodeData] = await Promise.all([
-        base44.entities.BoardRole.filter({ board_id: workspaceId }),
-        base44.functions.invoke("getBoardAccessCodeStatus", { board_id: workspaceId }),
+        base44.entities.WorkspaceRole.filter({ workspace_id: workspaceId }),
+        base44.functions.invoke('getWorkspaceAccessCodeStatus', { workspace_id: workspaceId }),
       ]);
 
       setMembers(rolesData);
@@ -191,8 +191,8 @@ export default function WorkspaceSettings() {
 
   const ensureStatusConfig = async (workspaceId) => {
     const [groupRows, statusRows] = await Promise.all([
-      base44.entities.ItemStatusGroup.filter({ board_id: workspaceId }, "display_order"),
-      base44.entities.ItemStatus.filter({ board_id: workspaceId }, "display_order"),
+      base44.entities.ItemStatusGroup.filter({ workspace_id: workspaceId }, "display_order"),
+      base44.entities.ItemStatus.filter({ workspace_id: workspaceId }, "display_order"),
     ]);
 
     if (groupRows.length > 0) {
@@ -206,7 +206,7 @@ export default function WorkspaceSettings() {
 
     for (const [index, groupKey] of ITEM_GROUP_KEYS.entries()) {
       const group = await base44.entities.ItemStatusGroup.create({
-        board_id: workspaceId,
+        workspace_id: workspaceId,
         group_key: groupKey,
         display_name: ITEM_GROUP_LABELS[groupKey],
         display_order: index,
@@ -215,7 +215,7 @@ export default function WorkspaceSettings() {
 
       for (const [statusIndex, status] of (DEFAULT_GROUP_STATUSES[groupKey] || []).entries()) {
         const created = await base44.entities.ItemStatus.create({
-          board_id: workspaceId,
+          workspace_id: workspaceId,
           group_key: groupKey,
           status_key: status.key,
           label: status.label,
@@ -257,7 +257,7 @@ export default function WorkspaceSettings() {
         setSlugError(validationError);
         return;
       }
-      const existing = await base44.entities.Board.filter({ slug });
+      const existing = await base44.entities.Workspace.filter({ slug });
       if (existing.length > 0 && existing[0].id !== workspace.id) {
         setSlugError("This slug is already taken.");
         return;
@@ -266,7 +266,7 @@ export default function WorkspaceSettings() {
 
     setSaving(true);
     try {
-      await base44.entities.Board.update(workspace.id, {
+      await base44.entities.Workspace.update(workspace.id, {
         name,
         slug,
         description,
@@ -287,7 +287,7 @@ export default function WorkspaceSettings() {
         primary_color: primaryColor,
       };
       setWorkspace(updatedWorkspace);
-      setBoardSession({ workspace: updatedWorkspace, role: "admin", isPublicAccess: false });
+      setWorkspaceSession({ workspace: updatedWorkspace, role: "admin", isPublicAccess: false });
       setStatusBanner({ tone: "success", message: "Workspace settings saved." });
 
       if (slug !== workspace.slug) {
@@ -329,7 +329,7 @@ export default function WorkspaceSettings() {
   const handleUpdateMemberRole = async (memberId, nextRole) => {
     setUpdatingMemberId(memberId);
     try {
-      await base44.entities.BoardRole.update(memberId, { role: nextRole });
+      await base44.entities.WorkspaceRole.update(memberId, { role: nextRole });
       setMembers((prev) =>
         prev.map((member) => (member.id === memberId ? { ...member, role: nextRole } : member))
       );
@@ -345,7 +345,7 @@ export default function WorkspaceSettings() {
     if (!memberPendingRemoval) return;
     setUpdatingMemberId(memberPendingRemoval.id);
     try {
-      await base44.entities.BoardRole.delete(memberPendingRemoval.id);
+      await base44.entities.WorkspaceRole.delete(memberPendingRemoval.id);
       setMembers((prev) => prev.filter((member) => member.id !== memberPendingRemoval.id));
       setStatusBanner({ tone: "success", message: "Member removed." });
     } catch (error) {
@@ -362,8 +362,8 @@ export default function WorkspaceSettings() {
     setCreatingAccessCode(true);
     setStatusBanner({ tone: "info", message: "" });
     try {
-      const { data } = await base44.functions.invoke("setBoardAccessCode", {
-        board_id: workspace.id,
+      const { data } = await base44.functions.invoke('setWorkspaceAccessCode', {
+        workspace_id: workspace.id,
         expires_in: accessCodeExpiry,
       });
       setGeneratedAccessCode(data?.access_code ?? "");
@@ -449,7 +449,7 @@ export default function WorkspaceSettings() {
 
     try {
       const created = await base44.entities.ItemStatus.create({
-        board_id: workspace.id,
+        workspace_id: workspace.id,
         group_key: groupKey,
         status_key: resolvedKey,
         label: "New Status",
@@ -483,17 +483,17 @@ export default function WorkspaceSettings() {
 
   const handleDeleteWorkspace = async () => {
     if (!workspace) return;
-    setDeletingBoard(true);
+    setDeletingWorkspace(true);
     try {
-      await base44.entities.Board.update(workspace.id, { status: "archived" });
+      await base44.entities.Workspace.update(workspace.id, { status: "archived" });
       sessionStorage.clear();
       navigate(createPageUrl("Workspaces"));
     } catch (error) {
       console.error("Failed to archive workspace:", error);
       setStatusBanner({ tone: "danger", message: "Failed to delete workspace." });
     } finally {
-      setDeletingBoard(false);
-      setShowDeleteBoardDialog(false);
+      setDeletingWorkspace(false);
+      setShowDeleteWorkspaceDialog(false);
     }
   };
 
@@ -705,7 +705,7 @@ export default function WorkspaceSettings() {
           </Card>
 
           <div className="flex justify-between">
-            <Button variant="destructive" onClick={() => setShowDeleteBoardDialog(true)}>
+            <Button variant="destructive" onClick={() => setShowDeleteWorkspaceDialog(true)}>
               <Trash2 className="mr-2 h-4 w-4" />
               Delete Workspace
             </Button>
@@ -971,13 +971,13 @@ export default function WorkspaceSettings() {
       {isAdmin ? (
         <>
       <ConfirmDialog
-        open={showDeleteBoardDialog}
-        onOpenChange={setShowDeleteBoardDialog}
+        open={showDeleteWorkspaceDialog}
+        onOpenChange={setShowDeleteWorkspaceDialog}
         title="Delete Workspace"
         description="This archives the workspace and removes access for everyone. This action cannot be undone."
-        confirmLabel={deletingBoard ? "Deleting..." : "Delete Workspace"}
+        confirmLabel={deletingWorkspace ? "Deleting..." : "Delete Workspace"}
         onConfirm={handleDeleteWorkspace}
-        loading={deletingBoard}
+        loading={deletingWorkspace}
         confirmClassName="bg-rose-600 hover:bg-rose-700"
       />
 

@@ -22,20 +22,20 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const boardId = payload?.board_id;
+    const workspaceId = payload?.workspace_id;
     const statusId = payload?.status_id;
-    if (!boardId || !statusId) {
-      return json({ error: "board_id and status_id are required" }, 400);
+    if (!workspaceId || !statusId) {
+      return json({ error: "workspace_id and status_id are required" }, 400);
     }
 
-    const auth = await authorizeWriteAction(req, boardId, "admin");
+    const auth = await authorizeWriteAction(req, workspaceId, "admin");
     if (!auth.success) return auth.error;
 
     const { data: statusRow, error: statusError } = await supabaseAdmin
       .from("item_statuses")
       .select("*")
       .eq("id", statusId)
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .limit(1)
       .maybeSingle();
 
@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
     const { count: groupCount } = await supabaseAdmin
       .from("item_statuses")
       .select("id", { count: "exact", head: true })
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .eq("group_key", statusRow.group_key);
 
     if ((groupCount || 0) <= 1) {
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     const { count: itemCount } = await supabaseAdmin
       .from("items")
       .select("id", { count: "exact", head: true })
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .eq("group_key", statusRow.group_key)
       .eq("status_key", statusRow.status_key);
 
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       .from("item_statuses")
       .delete()
       .eq("id", statusId)
-      .eq("board_id", boardId);
+      .eq("workspace_id", workspaceId);
 
     if (error) {
       console.error("deleteItemStatus delete error:", error);

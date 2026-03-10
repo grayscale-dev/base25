@@ -16,9 +16,9 @@ export const ErrorResponses = {
     code: "FORBIDDEN",
     message: "Insufficient permissions",
   },
-  BOARD_NOT_FOUND: {
-    error: "Board not found",
-    code: "BOARD_NOT_FOUND",
+  WORKSPACE_NOT_FOUND: {
+    error: "Workspace not found",
+    code: "WORKSPACE_NOT_FOUND",
   },
   INVALID_INPUT: { error: "Invalid input", code: "INVALID_INPUT" },
 };
@@ -112,20 +112,20 @@ export function requireDisplayName(
   return { success: true, error: null };
 }
 
-export async function getUserBoardRole(
-  boardId: string,
+export async function getUserWorkspaceRole(
+  workspaceId: string,
   userId: string,
 ) {
   const { data, error } = await supabaseAdmin
-    .from("board_roles")
+    .from("workspace_roles")
     .select("role")
-    .eq("board_id", boardId)
+    .eq("workspace_id", workspaceId)
     .eq("user_id", userId)
     .limit(1)
     .maybeSingle();
 
   if (error) {
-    console.error("Error fetching board role:", error);
+    console.error("Error fetching workspace role:", error);
     return null;
   }
 
@@ -139,11 +139,11 @@ const ROLE_HIERARCHY: Record<string, number> = {
 };
 
 export async function requireMinimumRole(
-  boardId: string,
+  workspaceId: string,
   userId: string,
   minimumRole: string,
 ) {
-  const userRole = await getUserBoardRole(boardId, userId);
+  const userRole = await getUserWorkspaceRole(workspaceId, userId);
 
   if (!userRole) {
     return {
@@ -174,46 +174,46 @@ export async function requireMinimumRole(
   return { success: true, role: userRole, error: null };
 }
 
-export async function requireAdmin(boardId: string, userId: string) {
-  return await requireMinimumRole(boardId, userId, "admin");
+export async function requireAdmin(workspaceId: string, userId: string) {
+  return await requireMinimumRole(workspaceId, userId, "admin");
 }
 
-export async function requireStaff(boardId: string, userId: string) {
-  return await requireMinimumRole(boardId, userId, "admin");
+export async function requireStaff(workspaceId: string, userId: string) {
+  return await requireMinimumRole(workspaceId, userId, "admin");
 }
 
-export async function verifyBoard(boardId: string) {
+export async function verifyWorkspace(workspaceId: string) {
   const { data, error } = await supabaseAdmin
-    .from("boards")
+    .from("workspaces")
     .select("*")
-    .eq("id", boardId)
+    .eq("id", workspaceId)
     .eq("status", "active")
     .limit(1)
     .maybeSingle();
 
   if (error) {
-    console.error("Error verifying board:", error);
+    console.error("Error verifying workspace:", error);
     return {
       success: false,
-      board: null,
-      error: Response.json({ error: "Failed to verify board" }, { status: 500 }),
+      workspace: null,
+      error: Response.json({ error: "Failed to verify workspace" }, { status: 500 }),
     };
   }
 
   if (!data) {
     return {
       success: false,
-      board: null,
-      error: Response.json(ErrorResponses.BOARD_NOT_FOUND, { status: 404 }),
+      workspace: null,
+      error: Response.json(ErrorResponses.WORKSPACE_NOT_FOUND, { status: 404 }),
     };
   }
 
-  return { success: true, board: data, error: null };
+  return { success: true, workspace: data, error: null };
 }
 
 export async function authorizeWriteAction(
   req: Request,
-  boardId: string,
+  workspaceId: string,
   minimumRole = "contributor",
 ) {
   const authCheck = await requireAuth(req);
@@ -223,13 +223,13 @@ export async function authorizeWriteAction(
 
   const user = authCheck.user;
 
-  const boardCheck = await verifyBoard(boardId);
-  if (!boardCheck.success) {
-    return { success: false, error: boardCheck.error };
+  const workspaceCheck = await verifyWorkspace(workspaceId);
+  if (!workspaceCheck.success) {
+    return { success: false, error: workspaceCheck.error };
   }
 
   const roleCheck = await requireMinimumRole(
-    boardId,
+    workspaceId,
     user.id,
     minimumRole,
   );
@@ -245,7 +245,7 @@ export async function authorizeWriteAction(
   return {
     success: true,
     user,
-    board: boardCheck.board,
+    workspace: workspaceCheck.workspace,
     role: roleCheck.role,
     supabase: authCheck.supabase,
     error: null,

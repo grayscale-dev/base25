@@ -23,22 +23,22 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const boardId = payload?.board_id;
+    const workspaceId = payload?.workspace_id;
     const groupKey = payload?.group_key;
     const displayName = String(payload?.display_name || "").trim();
     const displayOrder = Number(payload?.display_order ?? 0);
 
-    if (!boardId || !isValidGroupKey(groupKey) || !displayName) {
-      return json({ error: "board_id, group_key, and display_name are required" }, 400);
+    if (!workspaceId || !isValidGroupKey(groupKey) || !displayName) {
+      return json({ error: "workspace_id, group_key, and display_name are required" }, 400);
     }
 
-    const auth = await authorizeWriteAction(req, boardId, "admin");
+    const auth = await authorizeWriteAction(req, workspaceId, "admin");
     if (!auth.success) return auth.error;
 
     const { data: existing } = await supabaseAdmin
       .from("item_status_groups")
       .select("id")
-      .eq("board_id", boardId)
+      .eq("workspace_id", workspaceId)
       .eq("group_key", groupKey)
       .limit(1)
       .maybeSingle();
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
           })
           .eq("id", existing.id)
       : supabaseAdmin.from("item_status_groups").insert({
-          board_id: boardId,
+          workspace_id: workspaceId,
           group_key: groupKey,
           display_name: displayName,
           display_order: Number.isNaN(displayOrder) ? 0 : displayOrder,

@@ -3,7 +3,7 @@ import Link from "@/components/common/AppLink";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { workspaceItemUrl } from "@/components/utils/boardUrl";
+import { workspaceItemUrl } from "@/components/utils/workspaceUrl";
 import ItemDetailPanel from "./ItemDetailPanel";
 import { ExternalLink, Pencil, X } from "lucide-react";
 

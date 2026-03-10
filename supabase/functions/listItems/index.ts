@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../_shared/supabase.ts";
-import { requireBoardReadAccess } from "../_shared/itemAccess.ts";
+import { requireWorkspaceReadAccess } from "../_shared/itemAccess.ts";
 import { isValidGroupKey } from "../_shared/itemValidation.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 
@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const access = await requireBoardReadAccess(req, payload);
+    const access = await requireWorkspaceReadAccess(req, payload);
     if (!access.success) {
       return json({ error: access.error }, access.status || 403);
     }
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     let query = supabaseAdmin
       .from("items")
       .select("*")
-      .eq("board_id", access.board.id);
+      .eq("workspace_id", access.workspace.id);
 
     if (groupKey) query = query.eq("group_key", groupKey);
     if (statusKey) query = query.eq("status_key", statusKey);
@@ -57,10 +57,10 @@ Deno.serve(async (req) => {
 
     return json({
       items: data ?? [],
-      board: {
-        id: access.board.id,
-        slug: access.board.slug,
-        visibility: access.board.visibility,
+      workspace: {
+        id: access.workspace.id,
+        slug: access.workspace.slug,
+        visibility: access.workspace.visibility,
       },
     });
   } catch (error) {

@@ -1,2 +1,0 @@
--- No-op migration kept to preserve migration ordering.
--- Deprecated schema was removed from the canonical history.

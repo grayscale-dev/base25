@@ -654,9 +654,10 @@ export class UserEntity extends CustomEntity {
  * @returns {string} Table name in snake_case
  */
 const ENTITY_TABLE_MAP = {
-  Board: "boards",
-  BoardRole: "board_roles",
-  BoardAccessRule: "board_access_rules",
+  Workspace: "workspaces",
+  WorkspaceRole: "workspace_roles",
+  WorkspaceAccessRule: "workspace_access_rules",
+  WorkspaceAccessCode: "workspace_access_codes",
   Item: "items",
   ItemActivity: "item_activities",
   ItemStatusGroup: "item_status_groups",

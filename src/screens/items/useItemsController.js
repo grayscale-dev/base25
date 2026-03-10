@@ -182,8 +182,8 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       setError("");
 
       const [groupRows, statusRows] = await Promise.all([
-        base44.entities.ItemStatusGroup.filter({ board_id: workspaceId }, "display_order"),
-        base44.entities.ItemStatus.filter({ board_id: workspaceId }, "display_order"),
+        base44.entities.ItemStatusGroup.filter({ workspace_id: workspaceId }, "display_order"),
+        base44.entities.ItemStatus.filter({ workspace_id: workspaceId }, "display_order"),
       ]);
 
       if (groupRows.length === 0) {
@@ -199,7 +199,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
         for (const [index, groupKey] of ITEM_GROUP_KEYS.entries()) {
           const groupRecord = await base44.entities.ItemStatusGroup.create({
-            board_id: workspaceId,
+            workspace_id: workspaceId,
             group_key: groupKey,
             display_name: ITEM_GROUP_LABELS[groupKey],
             display_order: index,
@@ -208,7 +208,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
           for (const [statusIndex, status] of (DEFAULT_GROUP_STATUSES[groupKey] || []).entries()) {
             const statusRecord = await base44.entities.ItemStatus.create({
-              board_id: workspaceId,
+              workspace_id: workspaceId,
               group_key: groupKey,
               status_key: status.key,
               label: status.label,
@@ -239,7 +239,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       setLoadingItems(true);
       setError("");
 
-      const conditions = { board_id: workspace.id };
+      const conditions = { workspace_id: workspace.id };
       if (groupKey) {
         conditions.group_key = groupKey;
       }
@@ -265,7 +265,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       setLoadingActivities(true);
       const rows = await base44.entities.ItemActivity.filter(
         {
-          board_id: workspace.id,
+          workspace_id: workspace.id,
           item_id: item.id,
         },
         "-created_at"
@@ -304,7 +304,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       setError("");
 
       const record = {
-        board_id: workspace.id,
+        workspace_id: workspace.id,
         group_key: payload.group_key,
         status_key: payload.status_key,
         title: payload.title,
@@ -342,7 +342,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
       if (payload.id && saved && previousItem?.group_key && previousItem.group_key !== payload.group_key) {
         await base44.entities.ItemActivity.create({
-          board_id: workspace.id,
+          workspace_id: workspace.id,
           item_id: saved.id,
           activity_type: "group_change",
           content: `Moved from ${getGroupLabel(previousItem.group_key)} to ${getGroupLabel(payload.group_key)}`,
@@ -368,7 +368,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
         );
 
         await base44.entities.ItemActivity.create({
-          board_id: workspace.id,
+          workspace_id: workspace.id,
           item_id: saved.id,
           activity_type: "status_change",
           content: `Status changed from ${fromStatusLabel} to ${toStatusLabel}`,
@@ -413,7 +413,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
       if ((targetItem.description || "") !== trimmedContent) {
         await base44.entities.ItemActivity.create({
-          board_id: workspace.id,
+          workspace_id: workspace.id,
           item_id: itemId,
           activity_type: "update",
           content: "Initial post updated",
@@ -480,7 +480,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     try {
       setSavingActivity(true);
       await base44.entities.ItemActivity.create({
-        board_id: workspace.id,
+        workspace_id: workspace.id,
         item_id: itemId,
         activity_type: "comment",
         content: comment.trim(),
