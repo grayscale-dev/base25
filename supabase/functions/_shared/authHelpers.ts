@@ -74,7 +74,7 @@ export async function checkAuthentication(req: Request) {
   // service-role auth client availability for basic user verification.
   const { data: requestScopedData, error: requestScopedError } = await supabase
     .auth
-    .getUser();
+    .getUser(token);
   if (!requestScopedError && requestScopedData?.user) {
     return { authenticated: true, user: toAppUser(requestScopedData.user), supabase };
   }
