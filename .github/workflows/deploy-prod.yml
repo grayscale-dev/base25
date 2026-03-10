@@ -105,7 +105,7 @@ jobs:
             for fn in "${functions_to_deploy[@]}"; do
               if [[ -f "supabase/functions/${fn}/index.ts" ]]; then
                 echo "Deploying edge function: ${fn}"
-                supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
+                supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
               fi
             done
           fi

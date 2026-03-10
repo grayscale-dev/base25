@@ -86,13 +86,13 @@ export async function checkAuthentication(req: Request) {
       }
     }
 
-    console.error("Auth token missing in function request", {
+    console.log("Auth token missing in function request", {
       hasAuthorizationHeader: Boolean(authHeader),
       hasForwardedAuthorizationHeader: Boolean(forwardedAuthHeader),
       hasFallbackTokenHeader: Boolean(fallbackToken),
       hasGatewayAuthUser: Boolean(gatewayAuthUserId),
     });
-    return { authenticated: false, user: null, supabase };
+    return { authenticated: false, user: null, supabase, reason: "missing_token" };
   }
 
   // Prefer request-scoped validation so function auth does not depend on
@@ -109,26 +109,32 @@ export async function checkAuthentication(req: Request) {
   const { data: adminData, error: adminError } = await supabaseAdmin.auth.getUser(token);
   if (adminError || !adminData?.user) {
     if (requestScopedError || adminError) {
-      console.error("Auth getUser failed:", {
+      console.log("Auth getUser failed:", {
         requestScopedError: requestScopedError?.message ?? null,
         adminError: adminError?.message ?? null,
       });
     }
-    return { authenticated: false, user: null, supabase };
+    return { authenticated: false, user: null, supabase, reason: "token_lookup_failed" };
   }
 
-  return { authenticated: true, user: toAppUser(adminData.user), supabase };
+  return { authenticated: true, user: toAppUser(adminData.user), supabase, reason: null };
 }
 
 export async function requireAuth(req: Request) {
-  const { authenticated, user, supabase } = await checkAuthentication(req);
+  const { authenticated, user, supabase, reason } = await checkAuthentication(req);
 
   if (!authenticated) {
     return {
       success: false,
       user: null,
       supabase,
-      error: Response.json(ErrorResponses.UNAUTHORIZED, { status: 401 }),
+      error: Response.json(
+        {
+          ...ErrorResponses.UNAUTHORIZED,
+          reason: reason ?? "unknown_auth_failure",
+        },
+        { status: 401 },
+      ),
     };
   }
 

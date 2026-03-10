@@ -89,7 +89,7 @@ jobs:
 
           for fn in "${functions_to_deploy[@]}"; do
             echo "Deploying edge function: ${fn}"
-            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
           done
 
       - name: Pull Vercel project settings (preview)
