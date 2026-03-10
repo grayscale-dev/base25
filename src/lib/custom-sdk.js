@@ -801,16 +801,31 @@ export function createCustomClient() {
     auth: new UserEntity(),
     functions: {
       invoke: async (name, payload = {}, options = {}) => {
-        let accessToken = await getValidFunctionAccessToken();
+        const { authMode = "auto", ...invokeOptions } = options || {};
+        const shouldUseUserToken = authMode !== "anon";
+        let accessToken = shouldUseUserToken
+          ? await getValidFunctionAccessToken()
+          : null;
+
+        if (authMode === "user" && !accessToken) {
+          const authRequiredError = new Error("Authentication required");
+          authRequiredError.status = 401;
+          throw authRequiredError;
+        }
+
+        const initialToken =
+          authMode === "anon" ? env.supabaseAnonKey : accessToken;
+
         let { data, error } = await invokeFunctionWithToken(
           name,
           payload,
-          options,
-          accessToken
+          invokeOptions,
+          initialToken
         );
 
-        // Retry once on auth failure with a fresh token to avoid transient 401s.
-        if (error?.context?.status === 401) {
+        // Retry once on auth failure with a fresh token to avoid transient 401s
+        // for authenticated invocations.
+        if (error?.context?.status === 401 && shouldUseUserToken) {
           const { data: refreshData, error: refreshError } =
             await supabase.auth.refreshSession();
           const refreshedToken =
@@ -823,7 +838,7 @@ export function createCustomClient() {
             const retryResult = await invokeFunctionWithToken(
               name,
               payload,
-              options,
+              invokeOptions,
               accessToken
             );
             data = retryResult.data;

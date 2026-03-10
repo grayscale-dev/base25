@@ -21,6 +21,11 @@ import { PageHeader, PageShell } from '@/components/common/PageScaffold';
 import { StatePanel } from '@/components/common/StateDisplay';
 import { setBoardSession } from '@/lib/board-session';
 
+const getErrorStatus = (error) => {
+  if (!error) return null;
+  return error.status ?? error.context?.status ?? null;
+};
+
 export default function Workspaces() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -43,7 +48,13 @@ export default function Workspaces() {
   }, []);
 
   useEffect(() => {
-    if (!newBoard.slug) {
+    if (!showCreateModal || !newBoard.slug) {
+      setSlugStatus({ checking: false, available: null, message: '' });
+      return;
+    }
+
+    const normalizedSlug = newBoard.slug.trim();
+    if (!normalizedSlug) {
       setSlugStatus({ checking: false, available: null, message: '' });
       return;
     }
@@ -51,20 +62,33 @@ export default function Workspaces() {
     const handle = setTimeout(async () => {
       setSlugStatus({ checking: true, available: null, message: '' });
       try {
-        const { data } = await base44.functions.invoke('checkBoardSlug', { slug: newBoard.slug });
+        const { data } = await base44.functions.invoke(
+          'checkBoardSlug',
+          { slug: normalizedSlug },
+          { authMode: 'anon' }
+        );
         if (data?.available) {
           setSlugStatus({ checking: false, available: true, message: 'Slug is available' });
         } else {
           setSlugStatus({ checking: false, available: false, message: 'Slug is already in use' });
         }
       } catch (error) {
+        const status = getErrorStatus(error);
+        if (status === 401) {
+          setSlugStatus({
+            checking: false,
+            available: null,
+            message: 'Session expired. Sign in again to continue.',
+          });
+          return;
+        }
         console.error('Failed to check slug:', error);
         setSlugStatus({ checking: false, available: null, message: 'Unable to check slug' });
       }
     }, 400);
 
     return () => clearTimeout(handle);
-  }, [newBoard.slug]);
+  }, [newBoard.slug, showCreateModal]);
 
   const loadData = async () => {
     try {
@@ -182,6 +206,11 @@ export default function Workspaces() {
       }
       loadData();
     } catch (error) {
+      const status = getErrorStatus(error);
+      if (status === 401) {
+        await base44.auth.redirectToLogin(window.location.origin + createPageUrl('Workspaces'));
+        return;
+      }
       console.error('Failed to create workspace:', error);
       setCreateError('Failed to create workspace. Please review the values and try again.');
     } finally {
