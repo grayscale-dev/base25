@@ -720,56 +720,117 @@ function createEntitiesProxy() {
  * Create custom client that mimics Base44 SDK structure
  */
 export function createCustomClient() {
+  const decodeJwtPayload = (token) => {
+    try {
+      const [, payloadSegment] = token.split(".");
+      if (!payloadSegment) return null;
+
+      const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+      const base64 = normalized.padEnd(
+        normalized.length + ((4 - (normalized.length % 4)) % 4),
+        "="
+      );
+      const decodeBase64 = (value) => {
+        if (typeof atob === "function") {
+          return atob(value);
+        }
+        if (typeof Buffer !== "undefined") {
+          return Buffer.from(value, "base64").toString("binary");
+        }
+        return "";
+      };
+
+      return JSON.parse(decodeBase64(base64));
+    } catch (error) {
+      console.warn("Unable to decode JWT payload:", error);
+      return null;
+    }
+  };
+
+  const getValidFunctionAccessToken = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    let accessToken = sessionData?.session?.access_token || null;
+    if (!accessToken) {
+      return null;
+    }
+
+    const decoded = decodeJwtPayload(accessToken);
+    const issuer = decoded?.iss || "";
+    const tokenExp = decoded?.exp ? Number(decoded.exp) * 1000 : null;
+    const tokenExpired = tokenExp ? tokenExp <= Date.now() : false;
+    const expectedHost = new URL(supabaseUrl).host;
+    const issuerHost = issuer ? new URL(issuer).host : "";
+    const tokenMatchesProject = !issuerHost || issuerHost === expectedHost;
+
+    if (!tokenMatchesProject) {
+      // Session belongs to a different Supabase project/environment.
+      await supabase.auth.signOut();
+      return null;
+    }
+
+    if (!tokenExpired) {
+      return accessToken;
+    }
+
+    const { data: refreshData, error: refreshError } =
+      await supabase.auth.refreshSession();
+    if (refreshError) {
+      console.warn("Unable to refresh expired auth session:", refreshError);
+      await supabase.auth.signOut();
+      return null;
+    }
+
+    accessToken = refreshData?.session?.access_token || null;
+    return accessToken;
+  };
+
+  const invokeFunctionWithToken = async (name, payload, options, token) => {
+    const headers = {
+      ...options.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    return await supabase.functions.invoke(name, {
+      body: payload,
+      headers,
+    });
+  };
+
   return {
     entities: createEntitiesProxy(),
     auth: new UserEntity(),
     functions: {
       invoke: async (name, payload = {}, options = {}) => {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const accessToken = sessionData?.session?.access_token;
-        let shouldAttachToken = Boolean(accessToken);
+        let accessToken = await getValidFunctionAccessToken();
+        let { data, error } = await invokeFunctionWithToken(
+          name,
+          payload,
+          options,
+          accessToken
+        );
 
-        if (accessToken) {
-          try {
-            const [, payloadSegment] = accessToken.split(".");
-            const normalized = payloadSegment
-              ? payloadSegment.replace(/-/g, "+").replace(/_/g, "/")
-              : "";
-            const base64 = normalized
-              ? normalized.padEnd(
-                  normalized.length + ((4 - (normalized.length % 4)) % 4),
-                  "="
-                )
-              : "";
-            const decodeBase64 = (value) => {
-              if (typeof atob === "function") {
-                return atob(value);
-              }
-              return Buffer.from(value, "base64").toString("binary");
-            };
-            const decoded = JSON.parse(decodeBase64(base64));
-            const issuer = decoded?.iss || "";
-            const tokenExp = decoded?.exp ? Number(decoded.exp) * 1000 : null;
-            const tokenExpired = tokenExp ? tokenExp < Date.now() : false;
-            const expectedHost = new URL(supabaseUrl).host;
-            const issuerHost = issuer ? new URL(issuer).host : "";
+        // Retry once on auth failure with a fresh token to avoid transient 401s.
+        if (error?.context?.status === 401) {
+          const { data: refreshData, error: refreshError } =
+            await supabase.auth.refreshSession();
+          const refreshedToken =
+            !refreshError && refreshData?.session?.access_token
+              ? refreshData.session.access_token
+              : null;
 
-            if (tokenExpired || (issuerHost && issuerHost !== expectedHost)) {
-              shouldAttachToken = false;
-              await supabase.auth.signOut();
-            }
-          } catch (error) {
-            console.warn("Unable to validate auth token:", error);
+          if (refreshedToken && refreshedToken !== accessToken) {
+            accessToken = refreshedToken;
+            const retryResult = await invokeFunctionWithToken(
+              name,
+              payload,
+              options,
+              accessToken
+            );
+            data = retryResult.data;
+            error = retryResult.error;
           }
         }
-        const headers = {
-          ...options.headers,
-          ...(shouldAttachToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        };
-        const { data, error } = await supabase.functions.invoke(name, {
-          body: payload,
-          headers,
-        });
+
         if (error) throw error;
         return { data };
       },

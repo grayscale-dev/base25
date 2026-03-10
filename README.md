@@ -92,3 +92,14 @@ supabase functions deploy createBillingPortal
 supabase functions deploy stripeWebhook
 supabase functions deploy getBillingSummary
 ```
+
+## GitHub Action: Supabase Deploy on Merge
+
+The repo includes a workflow at `.github/workflows/supabase-deploy.yml` that runs on push to `main`/`master` and:
+- runs `supabase db push --linked --yes`
+- deploys changed edge functions under `supabase/functions/` (or all functions when `_shared` changes)
+
+Required repository secrets:
+- `SUPABASE_ACCESS_TOKEN`
+- `SUPABASE_DB_PASSWORD`
+- `SUPABASE_PROJECT_REF`

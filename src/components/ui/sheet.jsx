@@ -115,11 +115,17 @@ const sideToPosition = {
 };
 
 const SheetContent = React.forwardRef(
-  ({ side = "right", className, children, onHide, ...props }, ref) => {
+  ({ side = "right", className, children, onHide, transitionOptions, ...props }, ref) => {
     const context = React.useContext(SheetContext);
     if (!context) {
       throw new Error("SheetContent must be used within Sheet");
     }
+
+    const mergedTransitionOptions = {
+      timeout: 220,
+      classNames: "base25-sheet-transition",
+      ...transitionOptions,
+    };
 
     return (
       <Sidebar
@@ -133,7 +139,8 @@ const SheetContent = React.forwardRef(
         showCloseIcon
         modal
         className={cn("bg-background p-6 shadow-lg", className)}
-        maskClassName="fixed inset-0 z-50 bg-black/80"
+        maskClassName="base25-overlay-mask fixed inset-0 z-50 bg-black/80"
+        transitionOptions={mergedTransitionOptions}
         ref={ref}
         {...props}
       >

@@ -74,16 +74,7 @@ export default function Workspaces() {
       try {
         currentUser = await base44.auth.me();
       } catch {
-        // Not authenticated, redirect to login
-        const loginResult = await base44.auth.redirectToLogin(
-          window.location.origin + createPageUrl('Workspaces')
-        );
-        if (loginResult?.ok === false) {
-          setLoadError(
-            loginResult.error?.message ||
-              'Unable to connect to authentication right now. Please try again.'
-          );
-        }
+        window.location.replace(createPageUrl('Home'));
         return;
       }
       
@@ -200,7 +191,7 @@ export default function Workspaces() {
 
   const handleLogout = () => {
     sessionStorage.clear();
-    base44.auth.logout();
+    base44.auth.logout(window.location.origin + createPageUrl('Home'));
   };
 
   const getRoleForBoard = (boardId) => {

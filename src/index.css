@@ -50,3 +50,126 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Shared overlay transitions for PrimeReact wrappers */
+.base25-overlay-mask {
+  backdrop-filter: blur(1px);
+}
+
+.base25-overlay-mask.p-component-overlay-enter {
+  opacity: 0;
+}
+
+.base25-overlay-mask.p-component-overlay-enter-active {
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.base25-overlay-mask.p-component-overlay-exit {
+  opacity: 1;
+}
+
+.base25-overlay-mask.p-component-overlay-exit-active {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.base25-dialog-transition-enter {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+}
+
+.base25-dialog-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 180ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.base25-dialog-transition-exit {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.base25-dialog-transition-exit-active {
+  opacity: 0;
+  transform: translateY(6px) scale(0.99);
+  transition: opacity 150ms ease, transform 170ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.base25-sheet-transition-enter {
+  opacity: 0.98;
+}
+
+.p-sidebar-right.base25-sheet-transition-enter {
+  transform: translateX(100%);
+}
+
+.p-sidebar-left.base25-sheet-transition-enter {
+  transform: translateX(-100%);
+}
+
+.p-sidebar-top.base25-sheet-transition-enter {
+  transform: translateY(-100%);
+}
+
+.p-sidebar-bottom.base25-sheet-transition-enter {
+  transform: translateY(100%);
+}
+
+.base25-sheet-transition-enter-active {
+  opacity: 1;
+  transform: translate(0, 0);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
+}
+
+.base25-sheet-transition-exit {
+  opacity: 1;
+  transform: translate(0, 0);
+}
+
+.p-sidebar-right.base25-sheet-transition-exit-active {
+  transform: translateX(100%);
+}
+
+.p-sidebar-left.base25-sheet-transition-exit-active {
+  transform: translateX(-100%);
+}
+
+.p-sidebar-top.base25-sheet-transition-exit-active {
+  transform: translateY(-100%);
+}
+
+.p-sidebar-bottom.base25-sheet-transition-exit-active {
+  transform: translateY(100%);
+}
+
+.base25-sheet-transition-exit-active {
+  opacity: 0.98;
+  transition: transform 180ms cubic-bezier(0.4, 0, 1, 1), opacity 140ms ease;
+}
+
+.base25-item-drawer-transition-enter {
+  opacity: 0;
+  transform: translate3d(100%, 0, 0);
+  will-change: transform, opacity;
+}
+
+.base25-item-drawer-transition-enter-active {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease;
+  will-change: transform, opacity;
+}
+
+.base25-item-drawer-transition-exit {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+}
+
+.base25-item-drawer-transition-exit-active {
+  opacity: 0;
+  transform: translate3d(100%, 0, 0);
+  transition: transform 220ms cubic-bezier(0.4, 0, 1, 1), opacity 170ms ease;
+  will-change: transform, opacity;
+}

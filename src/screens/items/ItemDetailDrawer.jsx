@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "@/components/common/AppLink";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,23 +16,32 @@ export default function ItemDetailDrawer({
   isAdmin,
   onDeleted,
 }) {
+  const [visibleItem, setVisibleItem] = useState(item || null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
 
   useEffect(() => {
+    if (item) {
+      setVisibleItem(item);
+    }
+  }, [item]);
+
+  useEffect(() => {
     setIsEditingTitle(false);
-    setTitleDraft(item?.title || "");
-  }, [item?.id, item?.updated_at, item?.updated_date]);
+    setTitleDraft(visibleItem?.title || "");
+  }, [visibleItem?.id, visibleItem?.updated_at, visibleItem?.updated_date]);
 
   const handleOpenChange = (nextOpen) => {
     onOpenChange?.(nextOpen);
-    if (!nextOpen) {
-      controller.setSelectedItem(null);
-    }
   };
 
+  const handleDrawerExited = useCallback(() => {
+    controller.setSelectedItem(null);
+    setVisibleItem(null);
+  }, [controller]);
+
   const saveTitle = async () => {
-    if (!item?.id) return;
+    if (!visibleItem?.id) return;
     const nextTitle = titleDraft.trim();
     if (!nextTitle) {
       controller.setError("Title is required.");
@@ -41,15 +50,15 @@ export default function ItemDetailDrawer({
 
     const result = await controller.saveItem({
       payload: {
-        id: item.id,
-        group_key: item.group_key,
-        status_key: item.status_key,
+        id: visibleItem.id,
+        group_key: visibleItem.group_key,
+        status_key: visibleItem.status_key,
         title: nextTitle,
-        description: item.description || "",
-        metadata: item.metadata || {},
-        visibility: item.visibility || "public",
+        description: visibleItem.description || "",
+        metadata: visibleItem.metadata || {},
+        visibility: visibleItem.visibility || "public",
       },
-      previousItem: item,
+      previousItem: visibleItem,
     });
 
     if (!result.ok) {
@@ -57,7 +66,7 @@ export default function ItemDetailDrawer({
       return;
     }
 
-    await controller.loadItemActivities(result.item || item);
+    await controller.loadItemActivities(result.item || visibleItem);
     setIsEditingTitle(false);
   };
 
@@ -67,13 +76,18 @@ export default function ItemDetailDrawer({
   };
 
   return (
-    <Sheet open={open && Boolean(item)} onOpenChange={handleOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
         showCloseIcon={false}
+        transitionOptions={{
+          timeout: { enter: 260, exit: 220 },
+          classNames: "base25-item-drawer-transition",
+          onExited: handleDrawerExited,
+        }}
         className="h-full w-full max-w-3xl overflow-y-auto p-0"
       >
-        {item ? (
+        {visibleItem ? (
           <div className="min-h-[100dvh] bg-white">
             <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
               <div className="min-w-0 flex-1">
@@ -97,10 +111,10 @@ export default function ItemDetailDrawer({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        setTitleDraft(item.title || "");
-                        setIsEditingTitle(false);
-                      }}
+                        onClick={() => {
+                          setTitleDraft(visibleItem.title || "");
+                          setIsEditingTitle(false);
+                        }}
                       disabled={controller.savingItem}
                     >
                       Cancel
@@ -108,14 +122,14 @@ export default function ItemDetailDrawer({
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <h2 className="truncate text-lg font-semibold text-slate-900">{item.title}</h2>
+                    <h2 className="truncate text-lg font-semibold text-slate-900">{visibleItem.title}</h2>
                     {isAdmin ? (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-slate-400 hover:text-slate-600"
                         onClick={() => {
-                          setTitleDraft(item.title || "");
+                          setTitleDraft(visibleItem.title || "");
                           setIsEditingTitle(true);
                         }}
                         aria-label="Edit item title"
@@ -136,7 +150,7 @@ export default function ItemDetailDrawer({
                   title="Open in new tab"
                 >
                   <Link
-                    to={workspaceItemUrl(workspaceSlug, item.id)}
+                    to={workspaceItemUrl(workspaceSlug, visibleItem.id)}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -157,7 +171,7 @@ export default function ItemDetailDrawer({
             <div className="px-5 py-4">
               <ItemDetailPanel
                 controller={controller}
-                item={item}
+                item={visibleItem}
                 isAdmin={isAdmin}
                 onDeleted={handleDeleted}
               />

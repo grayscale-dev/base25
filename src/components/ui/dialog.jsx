@@ -108,11 +108,17 @@ const DialogClose = React.forwardRef(
 DialogClose.displayName = "DialogClose";
 
 const DialogContent = React.forwardRef(
-  ({ className, children, onHide, contentClassName, pt, ...props }, ref) => {
+  ({ className, children, onHide, contentClassName, pt, transitionOptions, ...props }, ref) => {
     const context = React.useContext(DialogContext);
     if (!context) {
       throw new Error("DialogContent must be used within Dialog");
     }
+
+    const mergedTransitionOptions = {
+      timeout: 180,
+      classNames: "base25-dialog-transition",
+      ...transitionOptions,
+    };
 
     const mergedPt = {
       ...pt,
@@ -155,7 +161,8 @@ const DialogContent = React.forwardRef(
           "relative w-full max-w-lg border bg-background p-0 shadow-lg sm:rounded-lg",
           className
         )}
-        maskClassName="fixed inset-0 z-50 bg-black/80"
+        maskClassName="base25-overlay-mask fixed inset-0 z-50 bg-black/80"
+        transitionOptions={mergedTransitionOptions}
         pt={mergedPt}
         appendTo={typeof document !== "undefined" ? document.body : null}
         ref={ref}
