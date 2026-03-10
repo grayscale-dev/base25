@@ -751,7 +751,16 @@ export function createCustomClient() {
     const { data: sessionData } = await supabase.auth.getSession();
     let accessToken = sessionData?.session?.access_token || null;
     if (!accessToken) {
-      return null;
+      const { data: refreshData, error: refreshError } =
+        await supabase.auth.refreshSession();
+      if (refreshError) {
+        return null;
+      }
+
+      accessToken = refreshData?.session?.access_token || null;
+      if (!accessToken) {
+        return null;
+      }
     }
 
     const decoded = decodeJwtPayload(accessToken);

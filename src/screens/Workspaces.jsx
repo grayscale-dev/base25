@@ -195,7 +195,7 @@ export default function Workspaces() {
         slug: newBoard.slug,
         description: newBoard.description,
         visibility: 'restricted'
-      });
+      }, { authMode: 'user' });
 
       setShowCreateModal(false);
       setNewBoard({ name: '', slug: '', description: '' });
