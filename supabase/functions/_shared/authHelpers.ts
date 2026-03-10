@@ -61,9 +61,8 @@ function toAppUser(user: {
 
 export async function checkAuthentication(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.replace("Bearer ", "")
-    : null;
+  const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  const token = tokenMatch?.[1] ?? null;
 
   const supabase = getSupabaseClient(req);
 
@@ -71,15 +70,29 @@ export async function checkAuthentication(req: Request) {
     return { authenticated: false, user: null, supabase };
   }
 
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) {
-    if (error) {
-      console.error("Auth getUser (admin) failed:", error);
+  // Prefer request-scoped validation so function auth does not depend on
+  // service-role auth client availability for basic user verification.
+  const { data: requestScopedData, error: requestScopedError } = await supabase
+    .auth
+    .getUser();
+  if (!requestScopedError && requestScopedData?.user) {
+    return { authenticated: true, user: toAppUser(requestScopedData.user), supabase };
+  }
+
+  // Fallback to admin token verification for environments where request-scoped
+  // auth forwarding is unavailable.
+  const { data: adminData, error: adminError } = await supabaseAdmin.auth.getUser(token);
+  if (adminError || !adminData?.user) {
+    if (requestScopedError || adminError) {
+      console.error("Auth getUser failed:", {
+        requestScopedError: requestScopedError?.message ?? null,
+        adminError: adminError?.message ?? null,
+      });
     }
     return { authenticated: false, user: null, supabase };
   }
 
-  return { authenticated: true, user: toAppUser(data.user), supabase };
+  return { authenticated: true, user: toAppUser(adminData.user), supabase };
 }
 
 export async function requireAuth(req: Request) {
