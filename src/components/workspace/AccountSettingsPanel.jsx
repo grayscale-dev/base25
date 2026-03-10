@@ -38,6 +38,32 @@ function buildFullName(firstName, lastName) {
   return `${firstName.trim()} ${lastName.trim()}`.trim();
 }
 
+function resolveAuthProviders(authUser) {
+  const providers = new Set();
+  const identities = Array.isArray(authUser?.identities) ? authUser.identities : [];
+
+  identities.forEach((identity) => {
+    if (identity?.provider) {
+      providers.add(identity.provider);
+    }
+  });
+
+  const listedProviders = Array.isArray(authUser?.app_metadata?.providers)
+    ? authUser.app_metadata.providers
+    : [];
+  listedProviders.forEach((provider) => {
+    if (provider) {
+      providers.add(provider);
+    }
+  });
+
+  if (authUser?.app_metadata?.provider) {
+    providers.add(authUser.app_metadata.provider);
+  }
+
+  return providers;
+}
+
 export default function AccountSettingsPanel({ onStatusChange }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -58,6 +84,7 @@ export default function AccountSettingsPanel({ onStatusChange }) {
   const [signingOut, setSigningOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [hasEmailPasswordProvider, setHasEmailPasswordProvider] = useState(true);
 
   const canSaveProfile = useMemo(
     () => Boolean(firstName.trim() && lastName.trim()) && !savingProfile,
@@ -93,6 +120,10 @@ export default function AccountSettingsPanel({ onStatusChange }) {
       setLastName(names.lastName);
       setEmail(currentUser?.email || "");
       setProfilePhotoUrl(currentUser?.profile_photo_url || "");
+
+      const { data: authData } = await supabase.auth.getUser();
+      const providers = resolveAuthProviders(authData?.user);
+      setHasEmailPasswordProvider(providers.has("email") || providers.size === 0);
     } catch (error) {
       console.error("Failed to load account settings:", error);
       setLoadError("Unable to load your account settings right now.");
@@ -321,53 +352,42 @@ export default function AccountSettingsPanel({ onStatusChange }) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Security</CardTitle>
-          <CardDescription>Change your account password.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label>New Password</Label>
-            <Input
-              type="password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              className="mt-1.5 max-w-md"
-              placeholder="At least 8 characters"
-            />
-          </div>
-          <div>
-            <Label>Confirm New Password</Label>
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              className="mt-1.5 max-w-md"
-              placeholder="Re-enter password"
-            />
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={handleUpdatePassword} disabled={savingPassword}>
-              <Check className="mr-2 h-4 w-4" />
-              {savingPassword ? "Updating..." : "Update Password"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Session</CardTitle>
-          <CardDescription>Sign out from your current session.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex justify-end">
-          <Button variant="outline" onClick={handleSignOut} disabled={signingOut}>
-            <LogOut className="mr-2 h-4 w-4" />
-            {signingOut ? "Signing Out..." : "Sign Out"}
-          </Button>
-        </CardContent>
-      </Card>
+      {hasEmailPasswordProvider ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Security</CardTitle>
+            <CardDescription>Change your account password.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label>New Password</Label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                className="mt-1.5 max-w-md"
+                placeholder="At least 8 characters"
+              />
+            </div>
+            <div>
+              <Label>Confirm New Password</Label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                className="mt-1.5 max-w-md"
+                placeholder="Re-enter password"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={handleUpdatePassword} disabled={savingPassword}>
+                <Check className="mr-2 h-4 w-4" />
+                {savingPassword ? "Updating..." : "Update Password"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="border-rose-200">
         <CardHeader>
@@ -388,6 +408,13 @@ export default function AccountSettingsPanel({ onStatusChange }) {
           </Button>
         </CardContent>
       </Card>
+
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={handleSignOut} disabled={signingOut}>
+          <LogOut className="mr-2 h-4 w-4" />
+          {signingOut ? "Signing Out..." : "Sign Out"}
+        </Button>
+      </div>
 
       <ConfirmDialog
         open={showDeleteConfirm}

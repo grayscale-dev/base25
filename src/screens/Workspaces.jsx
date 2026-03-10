@@ -1,29 +1,38 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from '@/lib/router';
-import { Plus, LogOut, Link as LinkIcon } from 'lucide-react';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useEffect, useState } from "react";
+import { useNavigate } from "@/lib/router";
+import { Link as LinkIcon, Loader2, LogOut, Plus } from "lucide-react";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { base44 } from '@/api/base44Client';
-import { createPageUrl } from '@/utils';
-import { workspaceDefaultUrl } from '@/components/utils/workspaceUrl';
-import WorkspaceCard from '@/components/workspace/WorkspaceCard';
-import PageLoadingState from '@/components/common/PageLoadingState';
-import { PageHeader, PageShell } from '@/components/common/PageScaffold';
-import { StatePanel } from '@/components/common/StateDisplay';
-import { setWorkspaceSession } from '@/lib/workspace-session';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { base44 } from "@/api/base44Client";
+import { createPageUrl } from "@/utils";
+import { workspaceDefaultUrl } from "@/components/utils/workspaceUrl";
+import WorkspaceCard from "@/components/workspace/WorkspaceCard";
+import PageLoadingState from "@/components/common/PageLoadingState";
+import PageEmptyState from "@/components/common/PageEmptyState";
+import { PageHeader, PageShell } from "@/components/common/PageScaffold";
+import { StatePanel } from "@/components/common/StateDisplay";
+import { setWorkspaceSession } from "@/lib/workspace-session";
+import {
+  ensureWorkspaceMembership,
+  joinWorkspaceWithCode,
+  parseWorkspaceSlug,
+  resolveWorkspaceJoinCandidate,
+} from "@/lib/workspace-join";
+
+const EMPTY_SLUG_STATUS = { checking: false, available: null, message: "" };
 
 const getErrorStatus = (error) => {
   if (!error) return null;
-  return error.status ?? error.context?.status ?? null;
+  return error.status ?? error.context?.status ?? error.response?.status ?? null;
 };
 
 export default function Workspaces() {
@@ -32,58 +41,71 @@ export default function Workspaces() {
   const [workspaces, setWorkspaces] = useState([]);
   const [workspaceRoles, setWorkspaceRoles] = useState([]);
   const [loading, setLoading] = useState(true);
+
   const [showJoinModal, setShowJoinModal] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [joinLink, setJoinLink] = useState('');
-  const [joinLinkError, setJoinLinkError] = useState('');
+  const [joinStep, setJoinStep] = useState("link");
+  const [joinLink, setJoinLink] = useState("");
+  const [joinSlug, setJoinSlug] = useState("");
+  const [joinAccessCode, setJoinAccessCode] = useState("");
+  const [joinError, setJoinError] = useState("");
   const [joining, setJoining] = useState(false);
-  const [newWorkspace, setNewWorkspace] = useState({ name: '', slug: '', description: '' });
+
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newWorkspace, setNewWorkspace] = useState({
+    name: "",
+    slug: "",
+    description: "",
+  });
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
-  const [loadError, setLoadError] = useState('');
-  const [slugStatus, setSlugStatus] = useState({ checking: false, available: null, message: '' });
+  const [createError, setCreateError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [slugStatus, setSlugStatus] = useState(EMPTY_SLUG_STATUS);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   useEffect(() => {
-    if (!showCreateModal || !newWorkspace.slug) {
-      setSlugStatus({ checking: false, available: null, message: '' });
+    if (!showCreateModal) {
+      setSlugStatus(EMPTY_SLUG_STATUS);
       return;
     }
 
     const normalizedSlug = newWorkspace.slug.trim();
     if (!normalizedSlug) {
-      setSlugStatus({ checking: false, available: null, message: '' });
+      setSlugStatus(EMPTY_SLUG_STATUS);
       return;
     }
 
     const handle = setTimeout(async () => {
-      setSlugStatus({ checking: true, available: null, message: '' });
+      setSlugStatus({ checking: true, available: null, message: "Checking slug..." });
       try {
         const { data } = await base44.functions.invoke(
-          'checkWorkspaceSlug',
+          "checkWorkspaceSlug",
           { slug: normalizedSlug },
-          { authMode: 'anon' }
+          { authMode: "anon" }
         );
+
         if (data?.available) {
-          setSlugStatus({ checking: false, available: true, message: 'Slug is available' });
-        } else {
-          setSlugStatus({ checking: false, available: false, message: 'Slug is already in use' });
-        }
-      } catch (error) {
-        const status = getErrorStatus(error);
-        if (status === 401) {
           setSlugStatus({
             checking: false,
-            available: null,
-            message: 'Session expired. Sign in again to continue.',
+            available: true,
+            message: "Slug is available.",
           });
-          return;
+        } else {
+          setSlugStatus({
+            checking: false,
+            available: false,
+            message: "Slug is already in use.",
+          });
         }
-        console.error('Failed to check slug:', error);
-        setSlugStatus({ checking: false, available: null, message: 'Unable to check slug' });
+      } catch (error) {
+        console.error("Failed to check slug:", error);
+        setSlugStatus({
+          checking: false,
+          available: null,
+          message: "Unable to validate slug right now.",
+        });
       }
     }, 400);
 
@@ -92,127 +114,197 @@ export default function Workspaces() {
 
   const loadData = async () => {
     try {
-      setLoadError('');
-      // Ensure user is authenticated
+      setLoadError("");
+
       let currentUser;
       try {
         currentUser = await base44.auth.me();
       } catch {
-        window.location.replace(createPageUrl('Home'));
+        window.location.replace(createPageUrl("Home"));
         return;
       }
-      
+
       setUser(currentUser);
 
-      // Load workspace roles
-      const roles = await base44.entities.WorkspaceRole.filter({ 
-        user_id: currentUser.id 
+      const roles = await base44.entities.WorkspaceRole.filter({
+        user_id: currentUser.id,
       });
       setWorkspaceRoles(roles);
 
-      if (roles.length > 0) {
-        const workspaceIds = [...new Set(roles.map(r => r.workspace_id).filter(Boolean))];
-        const workspacesData = await Promise.all(
-          workspaceIds.map(async (id) => {
-            const results = await base44.entities.Workspace.filter({ id });
-            return results[0];
-          })
-        );
-        const activeWorkspaces = workspacesData.filter((workspace) => workspace && workspace.status === 'active');
-        setWorkspaces(activeWorkspaces);
-      } else {
+      if (roles.length === 0) {
         setWorkspaces([]);
+        return;
       }
+
+      const workspaceIds = [...new Set(roles.map((entry) => entry.workspace_id).filter(Boolean))];
+      const workspacesData = await Promise.all(
+        workspaceIds.map(async (id) => {
+          const results = await base44.entities.Workspace.filter({ id });
+          return results[0];
+        })
+      );
+      const activeWorkspaces = workspacesData.filter(
+        (workspace) => workspace && workspace.status === "active"
+      );
+      setWorkspaces(activeWorkspaces);
     } catch (error) {
-      console.error('Failed to load workspaces:', error);
-      setLoadError('Unable to load your workspaces right now. Please try again.');
+      console.error("Failed to load workspaces:", error);
+      setLoadError("Unable to load your workspaces right now. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSelectWorkspace = (workspace) => {
-    // Store selected workspace and navigate to canonical workspace route
-    const workspaceRole = workspaceRoles.find((entry) => entry.workspace_id === workspace.id);
-    const nextRole = workspaceRole?.role || 'viewer';
-    setWorkspaceSession({ workspace, role: nextRole });
-    navigate(workspaceDefaultUrl(workspace.slug, nextRole, false));
+  const resetJoinState = () => {
+    setJoinStep("link");
+    setJoinLink("");
+    setJoinSlug("");
+    setJoinAccessCode("");
+    setJoinError("");
+    setJoining(false);
   };
 
-  const handleJoinWorkspace = async () => {
+  const resetCreateState = () => {
+    setCreateError("");
+    setNewWorkspace({ name: "", slug: "", description: "" });
+    setSlugStatus(EMPTY_SLUG_STATUS);
+    setCreating(false);
+  };
+
+  const ensureCurrentUser = async () => {
+    if (user) return user;
+    const currentUser = await base44.auth.me();
+    setUser(currentUser);
+    return currentUser;
+  };
+
+  const openWorkspace = (workspace, role) => {
+    setWorkspaceSession({ workspace, role });
+    navigate(workspaceDefaultUrl(workspace.slug, role, false));
+  };
+
+  const handleJoinAccessibleWorkspace = async (workspace) => {
+    const currentUser = await ensureCurrentUser();
+    const membership = await ensureWorkspaceMembership({ workspace, user: currentUser });
+    openWorkspace(workspace, membership.role || "viewer");
+  };
+
+  const handleResolveJoinLink = async () => {
     if (!joinLink.trim()) return;
 
-    setJoinLinkError('');
+    setJoinError("");
     setJoining(true);
     try {
-      // Parse the join link to extract workspace slug
-      let slug;
-      
-      // Handle full URL or just slug
-      if (joinLink.includes('workspace=')) {
-        const url = new URL(joinLink, window.location.origin);
-        slug = url.searchParams.get('workspace');
-      } else if (joinLink.startsWith('http')) {
-        const url = new URL(joinLink);
-        slug = url.searchParams.get('workspace');
-        if (!slug) {
-          const parts = url.pathname.split('/').filter(Boolean);
-          if (parts[0] === 'workspace') {
-            slug = parts[1];
-          }
-        }
-      } else {
-        const parts = joinLink.trim().split('/').filter(Boolean);
-        if (parts[0] === 'workspace') {
-          slug = parts[1];
-        } else {
-          slug = joinLink.trim();
-        }
-      }
-
+      const slug = parseWorkspaceSlug(joinLink);
       if (!slug) {
-        setJoinLinkError('Unable to find a workspace slug in that link. Use a workspace invite URL or workspace slug.');
-        setJoining(false);
+        setJoinError(
+          "Unable to find a workspace slug in that link. Use a workspace invite URL or workspace slug."
+        );
         return;
       }
 
-      navigate(`${createPageUrl('JoinWorkspace')}?workspace=${slug}`);
+      const candidate = await resolveWorkspaceJoinCandidate(slug);
+      if (candidate.status === "auth_required") {
+        await base44.auth.redirectToLogin(window.location.origin + createPageUrl("Workspaces"));
+        return;
+      }
+      if (candidate.status === "not_found") {
+        setJoinError("Workspace not found. Check the URL and try again.");
+        return;
+      }
+      if (candidate.status === "requires_code") {
+        setJoinSlug(slug);
+        setJoinStep("code");
+        return;
+      }
+
+      if (candidate.workspace) {
+        await handleJoinAccessibleWorkspace(candidate.workspace);
+        setShowJoinModal(false);
+        resetJoinState();
+      }
     } catch (error) {
-      console.error('Failed to parse join link:', error);
-      setJoinLinkError('That invite link is invalid. Check the URL and try again.');
+      console.error("Failed to resolve join link:", error);
+      setJoinError("Unable to process that workspace link right now.");
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleJoinWithCode = async () => {
+    if (!joinSlug || !joinAccessCode.trim()) return;
+
+    setJoinError("");
+    setJoining(true);
+    try {
+      const joined = await joinWorkspaceWithCode({
+        slug: joinSlug,
+        accessCode: joinAccessCode,
+      });
+
+      if (!joined.workspace?.slug) {
+        setJoinError("Unable to join this workspace with that access code.");
+        return;
+      }
+
+      openWorkspace(joined.workspace, joined.role || "contributor");
+      setShowJoinModal(false);
+      resetJoinState();
+    } catch (error) {
+      const status = getErrorStatus(error);
+      if (status === 401) {
+        await base44.auth.redirectToLogin(window.location.origin + createPageUrl("Workspaces"));
+        return;
+      }
+      if (status === 403) {
+        setJoinError("Invalid or expired access code. Please try again.");
+        return;
+      }
+      if (status === 404) {
+        setJoinError("Workspace not found. Check the URL and try again.");
+        return;
+      }
+      console.error("Failed to join workspace with code:", error);
+      setJoinError("Unable to join workspace. Please try again.");
+    } finally {
       setJoining(false);
     }
   };
 
   const handleCreateWorkspace = async () => {
-    if (!newWorkspace.name || !newWorkspace.slug) return;
-    
-    setCreateError('');
+    if (!newWorkspace.name.trim() || !newWorkspace.slug.trim()) return;
+
+    setCreateError("");
     setCreating(true);
     try {
-      const { data: createdWorkspace } = await base44.functions.invoke('createWorkspace', {
-        name: newWorkspace.name,
-        slug: newWorkspace.slug,
-        description: newWorkspace.description,
-        visibility: 'restricted'
-      }, { authMode: 'user' });
+      const { data: createdWorkspace } = await base44.functions.invoke(
+        "createWorkspace",
+        {
+          name: newWorkspace.name.trim(),
+          slug: newWorkspace.slug.trim(),
+          description: newWorkspace.description.trim(),
+          visibility: "restricted",
+        },
+        { authMode: "user" }
+      );
 
       setShowCreateModal(false);
-      setNewWorkspace({ name: '', slug: '', description: '' });
+      resetCreateState();
+
       if (createdWorkspace?.slug) {
-        setWorkspaceSession({ workspace: createdWorkspace, role: 'admin' });
-        navigate(workspaceDefaultUrl(createdWorkspace.slug, 'admin', false));
+        setWorkspaceSession({ workspace: createdWorkspace, role: "admin" });
+        navigate(workspaceDefaultUrl(createdWorkspace.slug, "admin", false));
         return;
       }
-      loadData();
+      void loadData();
     } catch (error) {
       const status = getErrorStatus(error);
       if (status === 401) {
-        await base44.auth.redirectToLogin(window.location.origin + createPageUrl('Workspaces'));
+        await base44.auth.redirectToLogin(window.location.origin + createPageUrl("Workspaces"));
         return;
       }
-      console.error('Failed to create workspace:', error);
-      setCreateError('Failed to create workspace. Please review the values and try again.');
+      console.error("Failed to create workspace:", error);
+      setCreateError("Failed to create workspace. Please review the values and try again.");
     } finally {
       setCreating(false);
     }
@@ -220,246 +312,320 @@ export default function Workspaces() {
 
   const handleLogout = () => {
     sessionStorage.clear();
-    base44.auth.logout(window.location.origin + createPageUrl('Home'));
+    base44.auth.logout(window.location.origin + createPageUrl("Home"));
   };
 
   const getRoleForWorkspace = (workspaceId) => {
     const role = workspaceRoles.find((entry) => entry.workspace_id === workspaceId);
-    return role?.role || 'viewer';
+    return role?.role || "viewer";
   };
 
+  const canCreateWorkspace =
+    Boolean(newWorkspace.name.trim() && newWorkspace.slug.trim()) &&
+    slugStatus.available === true &&
+    !slugStatus.checking &&
+    !creating;
+
   if (loading) {
-    return <PageLoadingState fullHeight text="Loading your workspaces..." className="bg-slate-50" />;
+    return (
+      <PageLoadingState
+        fullHeight
+        text="Loading your workspaces..."
+        className="bg-slate-50"
+      />
+    );
   }
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-              <img 
-                src="/base25-logo.png" 
-                alt="base25" 
-                className="h-8 w-8 object-contain"
-              />
+      <div className="min-h-screen bg-slate-50">
+        <header className="border-b border-slate-200 bg-white">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+            <div className="flex items-center gap-3">
+              <img src="/base25-logo.png" alt="base25" className="h-8 w-8 object-contain" />
               <span className="text-lg font-semibold text-slate-900">base25</span>
             </div>
-          
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={handleLogout}
-              className="text-slate-600"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
 
-      {/* Content */}
-      <main className="max-w-7xl mx-auto px-6 py-12">
-        <PageShell className="space-y-8">
-          {loadError ? (
-            <StatePanel
-              tone="danger"
-              title="Unable to load workspaces"
-              description={loadError}
-              action={() => {
-                setLoading(true);
-                loadData();
-              }}
-              actionLabel="Retry"
-            />
-          ) : (
-            <>
-              <PageHeader
-                title="Your Workspaces"
-                description={
-                  workspaces.length > 0
-                    ? `You have access to ${workspaces.length} workspace${workspaces.length === 1 ? '' : 's'}.`
-                    : 'Join an existing workspace or create your first workspace to get started.'
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-600">
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-7xl px-6 py-12">
+          <PageShell className="space-y-8">
+            {loadError ? (
+              <StatePanel
+                tone="danger"
+                title="Unable to load workspaces"
+                description={loadError}
+                action={() => {
+                  setLoading(true);
+                  void loadData();
+                }}
+                actionLabel="Retry"
+              />
+            ) : (
+              <>
+                <PageHeader
+                  title="Your Workspaces"
+                  description={
+                    workspaces.length > 0
+                      ? `You have access to ${workspaces.length} workspace${workspaces.length === 1 ? "" : "s"}.`
+                      : "Join an existing workspace or create your first workspace to get started."
+                  }
+                  actions={
+                    <>
+                      <Button
+                        onClick={() => {
+                          resetCreateState();
+                          setShowCreateModal(true);
+                        }}
+                        size="lg"
+                        variant="outline"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create Workspace
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          resetJoinState();
+                          setShowJoinModal(true);
+                        }}
+                        size="lg"
+                        className="bg-slate-900 hover:bg-slate-800"
+                      >
+                        <LinkIcon className="mr-2 h-4 w-4" />
+                        Join Workspace
+                      </Button>
+                    </>
+                  }
+                />
+
+                {workspaces.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {workspaces.map((workspace) => (
+                      <WorkspaceCard
+                        key={workspace.id}
+                        workspace={workspace}
+                        role={getRoleForWorkspace(workspace.id)}
+                        onClick={() => openWorkspace(workspace, getRoleForWorkspace(workspace.id))}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <PageEmptyState
+                    title="No workspaces yet"
+                    description="Use one of the actions above to join a workspace invite or create a new workspace for your team."
+                  />
+                )}
+              </>
+            )}
+
+            <Dialog
+              open={showJoinModal}
+              onOpenChange={(open) => {
+                setShowJoinModal(open);
+                if (!open) {
+                  resetJoinState();
                 }
-                actions={(
-                  <>
+              }}
+            >
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Join Workspace</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {joinStep === "link" ? (
+                    <div>
+                      <Label>Workspace URL</Label>
+                      <Input
+                        value={joinLink}
+                        onChange={(event) => {
+                          setJoinLink(event.target.value);
+                          setJoinError("");
+                        }}
+                        placeholder="Paste workspace URL or slug"
+                        className="mt-1.5"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            void handleResolveJoinLink();
+                          }
+                        }}
+                      />
+                      <p className="mt-2 text-xs text-slate-500">
+                        Example: https://your-domain.com/workspace/acme/feedback
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Workspace</Label>
+                        <Input value={joinSlug} readOnly className="mt-1.5 bg-slate-50" />
+                      </div>
+                      <div>
+                        <Label>Join Code</Label>
+                        <Input
+                          value={joinAccessCode}
+                          onChange={(event) => {
+                            setJoinAccessCode(event.target.value.toUpperCase());
+                            setJoinError("");
+                          }}
+                          placeholder="Enter access code"
+                          className="mt-1.5 font-mono tracking-[0.2em]"
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              void handleJoinWithCode();
+                            }
+                          }}
+                        />
+                        <p className="mt-2 text-xs text-slate-500">
+                          This workspace is restricted. Enter a valid join code to continue.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {joinError ? <p className="text-xs text-rose-600">{joinError}</p> : null}
+
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <div>
+                      {joinStep === "code" ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            setJoinStep("link");
+                            setJoinAccessCode("");
+                            setJoinError("");
+                          }}
+                          disabled={joining}
+                        >
+                          Back
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" onClick={() => setShowJoinModal(false)} disabled={joining}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (joinStep === "link") {
+                            void handleResolveJoinLink();
+                          } else {
+                            void handleJoinWithCode();
+                          }
+                        }}
+                        disabled={
+                          joining ||
+                          (joinStep === "link" && !joinLink.trim()) ||
+                          (joinStep === "code" && !joinAccessCode.trim())
+                        }
+                        className="bg-slate-900 hover:bg-slate-800"
+                      >
+                        {joining ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Working...
+                          </>
+                        ) : joinStep === "link" ? (
+                          "Continue"
+                        ) : (
+                          "Join Workspace"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog
+              open={showCreateModal}
+              onOpenChange={(open) => {
+                setShowCreateModal(open);
+                if (!open) {
+                  resetCreateState();
+                }
+              }}
+            >
+              <DialogContent className="max-w-md">
+                <div className="space-y-4">
+                  <DialogHeader>
+                    <DialogTitle>Create New Workspace</DialogTitle>
+                  </DialogHeader>
+                  <div>
+                    <Label>Workspace Name</Label>
+                    <Input
+                      value={newWorkspace.name}
+                      onChange={(event) =>
+                        setNewWorkspace((prev) => ({ ...prev, name: event.target.value }))
+                      }
+                      placeholder="e.g., Product Team"
+                      className="mt-1.5"
+                    />
+                  </div>
+                  <div>
+                    <Label>Slug (URL-friendly)</Label>
+                    <Input
+                      value={newWorkspace.slug}
+                      onChange={(event) => {
+                        const nextSlug = event.target.value.toLowerCase().replace(/\s+/g, "-");
+                        setNewWorkspace((prev) => ({ ...prev, slug: nextSlug }));
+                        setSlugStatus(EMPTY_SLUG_STATUS);
+                      }}
+                      placeholder="e.g., product-feedback"
+                      className="mt-1.5"
+                    />
+                    {slugStatus.message ? (
+                      <p
+                        className={`mt-2 text-xs ${
+                          slugStatus.available === false ? "text-rose-600" : "text-slate-500"
+                        }`}
+                      >
+                        {slugStatus.message}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <Label>Description (Optional)</Label>
+                    <Textarea
+                      value={newWorkspace.description}
+                      onChange={(event) =>
+                        setNewWorkspace((prev) => ({ ...prev, description: event.target.value }))
+                      }
+                      placeholder="Brief description of this workspace"
+                      className="mt-1.5"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4">
                     <Button
-                      onClick={() => setShowJoinModal(true)}
-                      size="lg"
+                      variant="ghost"
+                      onClick={() => {
+                        setShowCreateModal(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleCreateWorkspace}
+                      disabled={!canCreateWorkspace}
                       className="bg-slate-900 hover:bg-slate-800"
                     >
-                      <LinkIcon className="h-4 w-4 mr-2" />
-                      Join a Workspace
+                      {creating ? "Creating..." : "Create Workspace"}
                     </Button>
-                    <Button
-                      onClick={() => {
-                        setCreateError('');
-                        setShowCreateModal(true);
-                      }}
-                      size="lg"
-                      variant="outline"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create a Workspace
-                    </Button>
-                  </>
-                )}
-              />
-
-              {/* Workspaces Grid */}
-              {workspaces.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {workspaces.map((workspace) => (
-                    <WorkspaceCard
-                      key={workspace.id}
-                      workspace={workspace}
-                      role={getRoleForWorkspace(workspace.id)}
-                      onClick={() => handleSelectWorkspace(workspace)}
-                    />
-                  ))}
+                  </div>
+                  {createError ? <p className="text-xs text-rose-600">{createError}</p> : null}
                 </div>
-              ) : (
-                <StatePanel
-                  title="No workspaces yet"
-                  description="Use one of the actions above to join a workspace invite or create a new workspace for your team."
-                  tone="neutral"
-                  action={() => setShowCreateModal(true)}
-                  actionLabel="Create a Workspace"
-                  secondaryAction={() => setShowJoinModal(true)}
-                  secondaryActionLabel="Join a Workspace"
-                />
-              )}
-            </>
-          )}
-
-          {/* Join Workspace Modal */}
-          <Dialog open={showJoinModal} onOpenChange={setShowJoinModal}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Join a Workspace</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-              <div>
-                <Label>Workspace Link</Label>
-                <Input
-                  value={joinLink}
-                  onChange={(e) => {
-                    setJoinLink(e.target.value);
-                    setJoinLinkError('');
-                  }}
-                  placeholder="Paste invite link or workspace slug"
-                  className="mt-1.5"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleJoinWorkspace();
-                  }}
-                />
-                <p className="text-xs text-slate-500 mt-2">
-                  Example: https://your-domain.com/join-workspace?workspace=your-workspace
-                </p>
-                {joinLinkError ? (
-                  <p className="text-xs text-rose-600 mt-2">{joinLinkError}</p>
-                ) : null}
-              </div>
-              <div className="flex justify-end gap-3 pt-4">
-                <Button 
-                  variant="ghost" 
-                  onClick={() => {
-                    setShowJoinModal(false);
-                    setJoinLink('');
-                    setJoinLinkError('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                  <Button 
-                    onClick={handleJoinWorkspace}
-                    disabled={!joinLink.trim() || joining}
-                    className="bg-slate-900 hover:bg-slate-800"
-                  >
-                    {joining ? 'Joining...' : 'Continue'}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* Create Workspace Modal */}
-          <Dialog
-            open={showCreateModal}
-            onOpenChange={(open) => {
-              if (!open) {
-                setCreateError('');
-              }
-              setShowCreateModal(open);
-            }}
-          >
-            <DialogContent className="max-w-md">
-              <div className="space-y-4">
-                <DialogHeader>
-                  <DialogTitle>Create New Workspace</DialogTitle>
-                </DialogHeader>
-                <div>
-                  <Label>Workspace Name</Label>
-                  <Input
-                    value={newWorkspace.name}
-                    onChange={(e) => setNewWorkspace({ ...newWorkspace, name: e.target.value })}
-                    placeholder="e.g., Product Team"
-                    className="mt-1.5"
-                  />
-                </div>
-                <div>
-                  <Label>Slug (URL-friendly)</Label>
-                  <Input
-                    value={newWorkspace.slug}
-                    onChange={(e) => setNewWorkspace({ ...newWorkspace, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
-                    placeholder="e.g., product-feedback"
-                    className="mt-1.5"
-                  />
-                  {slugStatus.message && (
-                    <p className={`text-xs mt-2 ${slugStatus.available === false ? 'text-red-600' : 'text-slate-500'}`}>
-                      {slugStatus.checking ? 'Checking...' : slugStatus.message}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <Label>Description (Optional)</Label>
-                  <Textarea
-                    value={newWorkspace.description}
-                    onChange={(e) => setNewWorkspace({ ...newWorkspace, description: e.target.value })}
-                    placeholder="Brief description of this workspace"
-                    className="mt-1.5"
-                  />
-                </div>
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setCreateError('');
-                      setShowCreateModal(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleCreateWorkspace}
-                    disabled={!newWorkspace.name || !newWorkspace.slug || creating || slugStatus.available === false || slugStatus.checking}
-                    className="bg-slate-900 hover:bg-slate-800"
-                  >
-                    {creating ? 'Creating...' : 'Create Workspace'}
-                  </Button>
-                </div>
-                {createError ? (
-                  <p className="text-xs text-rose-600">{createError}</p>
-                ) : null}
-              </div>
-            </DialogContent>
-          </Dialog>
-        </PageShell>
-      </main>
-    </div>
+              </DialogContent>
+            </Dialog>
+          </PageShell>
+        </main>
+      </div>
     </ProtectedRoute>
   );
 }
+

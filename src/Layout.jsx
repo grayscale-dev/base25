@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from '@/lib/router';
 import Link from '@/components/common/AppLink';
 import { 
-  Folder, LogOut, ChevronDown, Settings,
+  LogOut, ChevronDown, Settings,
   LayoutDashboard, MessageSquare, Map, History, Menu, X, ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,8 @@ import { workspaceUrl } from '@/components/utils/workspaceUrl';
 import { cn } from '@/lib/utils';
 import { WorkspaceProvider } from '@/components/context/WorkspaceContext';
 import { getWorkspaceSession, setWorkspaceSession } from '@/lib/workspace-session';
+import WorkspaceAvatar from '@/components/workspace/WorkspaceAvatar';
+import { startWorkspaceLogin } from '@/lib/start-workspace-login';
 import {
   getDefaultWorkspaceSection,
   resolveWorkspaceSection,
@@ -183,6 +185,11 @@ export default function Layout({ children, currentPageName }) {
     base44.auth.logout(window.location.origin + createPageUrl('Home'));
   };
 
+  const handleInteractiveSignIn = async (event) => {
+    event?.preventDefault?.();
+    await startWorkspaceLogin({ redirectTo: window.location.href });
+  };
+
   const isAdmin = role === 'admin' && !isPublicViewing;
   const canOpenSettings = Boolean(user && workspace && !isPublicViewing);
   const visibleNavItems = isAdmin ? adminNavItems : memberNavItems;
@@ -231,14 +238,8 @@ export default function Layout({ children, currentPageName }) {
                   // Simple link for incognito/public users
                   <Link to={workspaceUrl(workspace.slug, workspaceHomeSection)}>
                     <Button variant="ghost" className="h-auto p-2 hover:bg-slate-100">
-                      <div className="flex items-center gap-3">
-                        {workspace.logo_url ? (
-                          <img src={workspace.logo_url} alt={workspace.name} className="h-8 w-8 object-contain rounded-lg" />
-                        ) : (
-                          <div className="p-1.5 rounded-lg" style={{ backgroundColor: workspace.primary_color || '#0f172a' }}>
-                            <Folder className="h-4 w-4 text-white" />
-                          </div>
-                        )}
+                        <div className="flex items-center gap-3">
+                        <WorkspaceAvatar workspace={workspace} size="md" />
                         <span className="font-semibold text-slate-900 hidden sm:inline">
                           {workspace.name}
                         </span>
@@ -251,13 +252,7 @@ export default function Layout({ children, currentPageName }) {
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="h-auto p-2 hover:bg-slate-100">
                         <div className="flex items-center gap-3">
-                          {workspace.logo_url ? (
-                            <img src={workspace.logo_url} alt={workspace.name} className="h-8 w-8 object-contain rounded-lg" />
-                          ) : (
-                            <div className="p-1.5 rounded-lg" style={{ backgroundColor: workspace.primary_color || '#0f172a' }}>
-                              <Folder className="h-4 w-4 text-white" />
-                            </div>
-                          )}
+                          <WorkspaceAvatar workspace={workspace} size="md" />
                           <span className="font-semibold text-slate-900 hidden sm:inline">
                             {workspace.name}
                           </span>
@@ -270,16 +265,10 @@ export default function Layout({ children, currentPageName }) {
                         <DropdownMenuItem
                           key={ws.id}
                           onClick={() => handleWorkspaceSwitch(ws)}
-                          className="cursor-pointer flex w-full items-center"
+                          className="cursor-pointer !w-full px-3 py-2"
                         >
-                          {ws.logo_url ? (
-                            <img src={ws.logo_url} alt={ws.name} className="h-4 w-4 mr-2 object-contain" />
-                          ) : (
-                            <div className="h-4 w-4 mr-2 rounded" style={{ backgroundColor: ws.primary_color || '#0f172a' }}>
-                              <Folder className="h-3 w-3 text-white" style={{ transform: 'scale(0.75)' }} />
-                            </div>
-                          )}
-                          <span>{ws.name}</span>
+                          <WorkspaceAvatar workspace={ws} size="sm" />
+                          <span className="ml-2 flex-1 truncate text-left">{ws.name}</span>
                           {ws.id === workspace.id && (
                             <span className="ml-auto text-xs text-slate-400">Current</span>
                           )}
@@ -298,9 +287,7 @@ export default function Layout({ children, currentPageName }) {
                 )
               ) : (
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg" style={{ backgroundColor: workspace?.primary_color || '#0f172a' }}>
-                    <Folder className="h-4 w-4 text-white" />
-                  </div>
+                  <WorkspaceAvatar workspace={workspace} size="md" />
                   <span className="font-semibold text-slate-900">Portal</span>
                 </div>
               )}
@@ -338,10 +325,7 @@ export default function Layout({ children, currentPageName }) {
                 {/* Login prompt for public viewers */}
                 {isPublicViewing && !user && (
                   <Button 
-                    onClick={() =>
-                      base44.auth.redirectToLogin(
-                        `${window.location.origin}/workspaces`
-                      )}
+                    onClick={handleInteractiveSignIn}
                     className="bg-slate-900 hover:bg-slate-800 text-white"
                   >
                     Login to Contribute

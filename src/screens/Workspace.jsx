@@ -13,6 +13,7 @@ import {
   getDefaultWorkspaceSection,
   resolveWorkspaceSection,
 } from "@/lib/workspace-sections";
+import { startWorkspaceLogin } from "@/lib/start-workspace-login";
 import Items from "./Items";
 import WorkspaceItemView from "./items/WorkspaceItemView";
 
@@ -244,7 +245,11 @@ export default function Workspace({ section = "items", itemId = null }) {
           tone="danger"
           title="Unable to open workspace"
           description={error}
-          action={isPrivateWorkspaceError ? () => base44.auth.redirectToLogin(window.location.href) : () => navigate("/")}
+          action={
+            isPrivateWorkspaceError
+              ? () => startWorkspaceLogin({ redirectTo: window.location.href })
+              : () => navigate("/")
+          }
           actionLabel={isPrivateWorkspaceError ? "Login" : "Go Home"}
           secondaryAction={isPrivateWorkspaceError ? () => navigate("/") : undefined}
           secondaryActionLabel={isPrivateWorkspaceError ? "Go Home" : undefined}

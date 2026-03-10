@@ -1,7 +1,8 @@
-import { Folder, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import Badge from '@/components/common/Badge';
 import { cn } from '@/lib/utils';
+import WorkspaceAvatar from '@/components/workspace/WorkspaceAvatar';
 
 export default function WorkspaceCard({ workspace, role, onClick }) {
   return (
@@ -14,13 +15,7 @@ export default function WorkspaceCard({ workspace, role, onClick }) {
       onClick={onClick}
     >
       <div className="flex items-start justify-between mb-4">
-        {workspace.logo_url ? (
-          <img src={workspace.logo_url} alt={workspace.name} className="h-12 w-12 object-contain rounded-xl" />
-        ) : (
-          <div className="p-2.5 rounded-xl" style={{ backgroundColor: workspace.primary_color || '#0f172a' }}>
-            <Folder className="h-5 w-5 text-white" />
-          </div>
-        )}
+        <WorkspaceAvatar workspace={workspace} size="lg" />
         <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-1 transition-all" />
       </div>
       

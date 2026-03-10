@@ -11,6 +11,7 @@ import {
 import Badge from "@/components/common/Badge";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import PageLoadingState from "@/components/common/PageLoadingState";
+import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
@@ -132,16 +133,13 @@ export default function GroupItemsPage({
       {controller.loadingItems ? (
         <PageLoadingState text="Loading items..." />
       ) : controller.items.length === 0 ? (
-        <StatePanel
+        <PageEmptyState
           title={`No ${getGroupLabel(groupKey).toLowerCase()} items yet`}
           description={
             isAdmin
               ? "Create your first item to get started."
               : "There are no items in this section yet."
           }
-          tone="neutral"
-          action={isAdmin ? openCreate : undefined}
-          actionLabel={isAdmin ? "Create Item" : undefined}
         />
       ) : (
         <div className="space-y-4">

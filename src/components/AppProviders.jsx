@@ -7,6 +7,7 @@ import { AuthProvider } from '@/lib/AuthContext';
 import NavigationTracker from '@/lib/NavigationTracker';
 import { Toaster } from '@/components/ui/toaster';
 import AppAuthGate from '@/components/AppAuthGate';
+import SignInChoiceDialog from '@/components/auth/SignInChoiceDialog';
 
 export default function AppProviders({ children }) {
   const primeReactConfig = {
@@ -19,6 +20,7 @@ export default function AppProviders({ children }) {
         <QueryClientProvider client={queryClientInstance}>
           <NavigationTracker />
           <AppAuthGate>{children}</AppAuthGate>
+          <SignInChoiceDialog />
           <Toaster />
         </QueryClientProvider>
       </AuthProvider>

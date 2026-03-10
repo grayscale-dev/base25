@@ -29,6 +29,7 @@ import {
 import Badge from "@/components/common/Badge";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import PageLoadingState from "@/components/common/PageLoadingState";
+import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
@@ -258,25 +259,21 @@ export default function AllItemsPage({ workspace, controller }) {
         />
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white">
-        {controller.loadingItems ? (
+      {controller.loadingItems ? (
+        <div className="rounded-xl border border-slate-200 bg-white">
           <div className="p-6">
             <PageLoadingState text="Loading all items..." />
           </div>
-        ) : filteredItems.length === 0 ? (
-          <div className="p-6">
-            <StatePanel
-              title="No items found"
-              description="Adjust your search and filters, or create a new item."
-              tone="neutral"
-              action={() => setShowCreateModal(true)}
-              actionLabel="Create Item"
-            />
-          </div>
-        ) : (
-          <>
-            <div className="px-3 sm:px-4">
-              <Table>
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <PageEmptyState
+          title="No items found"
+          description="Adjust your search and filters, or create a new item."
+        />
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-white">
+          <div className="px-3 sm:px-4">
+            <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>
@@ -375,54 +372,53 @@ export default function AllItemsPage({ workspace, controller }) {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+          </div>
 
-            <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-slate-500">
-                Showing {start + 1}-{Math.min(start + pageSize, filteredItems.length)} of{" "}
-                {filteredItems.length}
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500">Rows</span>
-                  <Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}>
-                    <SelectTrigger className="h-8 w-[110px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAGE_SIZE_OPTIONS.map((size) => (
-                        <SelectItem key={size} value={String(size)}>
-                          {size} rows
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
-                <span className="text-xs text-slate-600">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                </Button>
+          <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              Showing {start + 1}-{Math.min(start + pageSize, filteredItems.length)} of{" "}
+              {filteredItems.length}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Rows</span>
+                <Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}>
+                  <SelectTrigger className="h-8 w-[110px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <SelectItem key={size} value={String(size)}>
+                        {size} rows
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-slate-600">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
 
       <Dialog open={showFilters} onOpenChange={setShowFilters}>
         <DialogContent className="max-w-md">

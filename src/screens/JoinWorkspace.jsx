@@ -1,13 +1,25 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from '@/lib/router';
-import { Folder, Check, X, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { base44 } from '@/api/base44Client';
-import { createPageUrl } from '@/utils';
-import PageLoadingState from '@/components/common/PageLoadingState';
-import { StatePanel } from '@/components/common/StateDisplay';
-import { setWorkspaceSession } from '@/lib/workspace-session';
-import { workspaceDefaultUrl } from '@/components/utils/workspaceUrl';
+import { useEffect, useState } from "react";
+import { useNavigate } from "@/lib/router";
+import { Check, Folder, Loader2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { base44 } from "@/api/base44Client";
+import { createPageUrl } from "@/utils";
+import PageLoadingState from "@/components/common/PageLoadingState";
+import { StatePanel } from "@/components/common/StateDisplay";
+import { setWorkspaceSession } from "@/lib/workspace-session";
+import { workspaceDefaultUrl } from "@/components/utils/workspaceUrl";
+import {
+  ensureWorkspaceMembership,
+  getWorkspaceRole,
+  joinWorkspaceWithCode,
+  resolveWorkspaceJoinCandidate,
+} from "@/lib/workspace-join";
+
+const getErrorStatus = (error) => {
+  if (!error) return null;
+  return error.status ?? error.context?.status ?? error.response?.status ?? null;
+};
 
 export default function JoinWorkspace() {
   const navigate = useNavigate();
@@ -15,137 +27,119 @@ export default function JoinWorkspace() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
   const [alreadyMember, setAlreadyMember] = useState(false);
-  const [memberRole, setMemberRole] = useState('viewer');
+  const [memberRole, setMemberRole] = useState("viewer");
+  const [accessRequired, setAccessRequired] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
 
   useEffect(() => {
-    validateAndLoadWorkspace();
+    void validateAndLoadWorkspace();
   }, []);
 
   const validateAndLoadWorkspace = async () => {
     try {
-      // Get workspace slug from URL
+      setLoading(true);
+      setError("");
+
       const urlParams = new URLSearchParams(window.location.search);
-      const slug = urlParams.get('workspace');
+      const slug = urlParams.get("workspace");
 
       if (!slug) {
-        setError('Invalid join link - no workspace specified');
-        setLoading(false);
+        setError("Invalid join link - no workspace specified.");
         return;
       }
 
-      // Check if user is authenticated
       let currentUser;
       try {
         currentUser = await base44.auth.me();
         setUser(currentUser);
       } catch {
-        // Not authenticated - redirect to login and come back
         const returnUrl = window.location.pathname + window.location.search;
-        base44.auth.redirectToLogin(window.location.origin + returnUrl);
+        await base44.auth.redirectToLogin(window.location.origin + returnUrl);
         return;
       }
 
-      // Load workspace
-      const workspaces = await base44.entities.Workspace.filter({
-        slug: slug,
-        status: 'active'
-      });
-
-      if (workspaces.length === 0) {
-        setError('Workspace not found or no longer active');
-        setLoading(false);
+      const candidate = await resolveWorkspaceJoinCandidate(slug);
+      if (candidate.status === "not_found") {
+        setError("Workspace not found or no longer active.");
+        return;
+      }
+      if (candidate.status === "auth_required") {
+        const returnUrl = window.location.pathname + window.location.search;
+        await base44.auth.redirectToLogin(window.location.origin + returnUrl);
+        return;
+      }
+      if (candidate.status === "requires_code") {
+        setAccessRequired(true);
+        setWorkspace({ slug, name: slug });
         return;
       }
 
-      const ws = workspaces[0];
-      setWorkspace(ws);
+      if (!candidate.workspace) {
+        setError("Workspace not found or no longer active.");
+        return;
+      }
 
-      // Check if already a member
-      const existingRoles = await base44.entities.WorkspaceRole.filter({
-        workspace_id: ws.id,
-        user_id: currentUser.id
-      });
+      setWorkspace(candidate.workspace);
 
-      if (existingRoles.length > 0) {
+      const role = await getWorkspaceRole(candidate.workspace.id, currentUser.id);
+      if (role) {
         setAlreadyMember(true);
-        setMemberRole(existingRoles[0].role || 'viewer');
+        setMemberRole(role.role || "viewer");
       }
-
-      // Validate if user is allowed to join
-      if (existingRoles.length === 0) {
-        const canJoin = await validateJoinPermission(ws, currentUser);
-        if (!canJoin) {
-          setError('You do not have permission to join this workspace');
-        }
-      }
-
-      setLoading(false);
     } catch (err) {
-      console.error('Failed to validate join:', err);
-      setError('Failed to load workspace. Please try again.');
+      console.error("Failed to validate join:", err);
+      setError("Failed to load workspace. Please try again.");
+    } finally {
       setLoading(false);
     }
-  };
-
-  const validateJoinPermission = async (ws, user) => {
-    // If workspace is public, anyone can join
-    if (ws.visibility === 'public') {
-      return true;
-    }
-
-    // Check if there's an explicit WorkspaceRole assigned to this email (pre-authorized)
-    const emailRoles = await base44.entities.WorkspaceRole.filter({
-      workspace_id: ws.id,
-      email: user.email
-    });
-
-    if (emailRoles.length > 0) {
-      return true;
-    }
-
-    // For rule-based access, we rely on RLS during the join attempt.
-    return true;
   };
 
   const handleJoinWorkspace = async () => {
     if (!workspace || !user) return;
 
     setJoining(true);
+    setError("");
     try {
-      // Check if there's a pre-existing role assignment by email
-      const emailRoles = await base44.entities.WorkspaceRole.filter({
-        workspace_id: workspace.id,
-        email: user.email
-      });
-
-      let assignedRole = 'viewer';
-      
-      if (emailRoles.length > 0) {
-        // Update existing role with actual user_id
-        const existingRole = emailRoles[0];
-        assignedRole = existingRole.role;
-        await base44.entities.WorkspaceRole.update(existingRole.id, {
-          user_id: user.id
-        });
-      } else {
-        // Create new WorkspaceRole
-        await base44.entities.WorkspaceRole.create({
-          workspace_id: workspace.id,
-          user_id: user.id,
-          email: user.email,
-          role: 'viewer',
-          assigned_via: 'explicit'
-        });
-      }
-
-      // Navigate to workspace with assigned role
-      setWorkspaceSession({ workspace, role: assignedRole });
-      navigate(workspaceDefaultUrl(workspace.slug, assignedRole, false));
+      const membership = await ensureWorkspaceMembership({ workspace, user });
+      setWorkspaceSession({ workspace, role: membership.role });
+      navigate(workspaceDefaultUrl(workspace.slug, membership.role, false));
     } catch (err) {
-      console.error('Failed to join workspace:', err);
-      setError('Failed to join workspace. Please try again.');
+      console.error("Failed to join workspace:", err);
+      setError("Failed to join workspace. Please try again.");
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleJoinWithAccessCode = async () => {
+    if (!workspace?.slug || !accessCode.trim()) return;
+
+    setJoining(true);
+    setError("");
+    try {
+      const joined = await joinWorkspaceWithCode({
+        slug: workspace.slug,
+        accessCode,
+      });
+      if (!joined.workspace?.slug) {
+        setError("Unable to join workspace with that code.");
+        return;
+      }
+      const nextRole = joined.role || "contributor";
+      setWorkspaceSession({ workspace: joined.workspace, role: nextRole });
+      navigate(workspaceDefaultUrl(joined.workspace.slug, nextRole, false));
+    } catch (joinError) {
+      const status = getErrorStatus(joinError);
+      if (status === 403) {
+        setError("Invalid or expired access code.");
+      } else if (status === 404) {
+        setError("Workspace not found.");
+      } else {
+        console.error("Failed to join with access code:", joinError);
+        setError("Unable to join workspace. Please try again.");
+      }
     } finally {
       setJoining(false);
     }
@@ -153,8 +147,7 @@ export default function JoinWorkspace() {
 
   const handleOpenWorkspace = () => {
     if (!workspace) return;
-
-    const nextRole = memberRole || 'viewer';
+    const nextRole = memberRole || "viewer";
     setWorkspaceSession({ workspace, role: nextRole });
     navigate(workspaceDefaultUrl(workspace.slug, nextRole, false));
   };
@@ -163,15 +156,15 @@ export default function JoinWorkspace() {
     return <PageLoadingState fullHeight text="Validating invite..." className="bg-slate-50" />;
   }
 
-  if (error) {
+  if (error && !accessRequired) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
         <StatePanel
           tone="danger"
           icon={X}
           title="Unable to Join"
           description={error}
-          action={() => navigate(createPageUrl('Workspaces'))}
+          action={() => navigate(createPageUrl("Workspaces"))}
           actionLabel="Back to Workspaces"
         />
       </div>
@@ -180,7 +173,7 @@ export default function JoinWorkspace() {
 
   if (alreadyMember && workspace) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
         <StatePanel
           tone="success"
           icon={Check}
@@ -188,7 +181,7 @@ export default function JoinWorkspace() {
           description={`You're already a member of ${workspace.name}. You can open this workspace now or return to your workspaces list.`}
           action={handleOpenWorkspace}
           actionLabel="Open Workspace"
-          secondaryAction={() => navigate(createPageUrl('Workspaces'))}
+          secondaryAction={() => navigate(createPageUrl("Workspaces"))}
           secondaryActionLabel="Back to Workspaces"
         />
       </div>
@@ -199,30 +192,79 @@ export default function JoinWorkspace() {
     return null;
   }
 
+  if (accessRequired) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
+          <div className="mb-6 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-900">
+              <Folder className="h-8 w-8 text-white" />
+            </div>
+            <h1 className="mb-2 text-2xl font-bold text-slate-900">Enter Access Code</h1>
+            <p className="text-slate-500">This workspace is restricted. Enter a valid code to join.</p>
+          </div>
+
+          <div className="space-y-3">
+            <Input
+              value={accessCode}
+              onChange={(event) => {
+                setAccessCode(event.target.value.toUpperCase());
+                setError("");
+              }}
+              className="text-center font-mono uppercase tracking-[0.3em]"
+              placeholder="Access code"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void handleJoinWithAccessCode();
+                }
+              }}
+            />
+            {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <Button
+              onClick={handleJoinWithAccessCode}
+              disabled={joining || !accessCode.trim()}
+              className="w-full bg-slate-900 hover:bg-slate-800"
+            >
+              {joining ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Joining...
+                </>
+              ) : (
+                "Join Workspace"
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={joining}
+              onClick={() => navigate(createPageUrl("Workspaces"))}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8">
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-4">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-900">
             <Folder className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">
-            Join Workspace
-          </h1>
-          <p className="text-slate-500">
-            You've been invited to join
-          </p>
+          <h1 className="mb-2 text-2xl font-bold text-slate-900">Join Workspace</h1>
+          <p className="text-slate-500">You've been invited to join</p>
         </div>
 
-        <div className="bg-slate-50 rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-2">
-            {workspace.name}
-          </h2>
-          {workspace.description && (
-            <p className="text-sm text-slate-600">
-              {workspace.description}
-            </p>
-          )}
+        <div className="mb-6 rounded-xl bg-slate-50 p-6">
+          <h2 className="mb-2 text-lg font-semibold text-slate-900">{workspace.name}</h2>
+          {workspace.description ? <p className="text-sm text-slate-600">{workspace.description}</p> : null}
         </div>
 
         <div className="space-y-3">
@@ -233,18 +275,18 @@ export default function JoinWorkspace() {
           >
             {joining ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Joining...
               </>
             ) : (
               <>
-                <Check className="h-4 w-4 mr-2" />
+                <Check className="mr-2 h-4 w-4" />
                 Join Workspace
               </>
             )}
           </Button>
           <Button
-            onClick={() => navigate(createPageUrl('Workspaces'))}
+            onClick={() => navigate(createPageUrl("Workspaces"))}
             variant="outline"
             className="w-full"
             disabled={joining}
@@ -253,10 +295,11 @@ export default function JoinWorkspace() {
           </Button>
         </div>
 
-        <p className="text-xs text-slate-500 text-center mt-6">
+        <p className="mt-6 text-center text-xs text-slate-500">
           By joining, you'll be able to view and contribute to workspace items.
         </p>
       </div>
     </div>
   );
 }
+

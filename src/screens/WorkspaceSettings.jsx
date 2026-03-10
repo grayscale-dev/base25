@@ -29,12 +29,13 @@ import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
-import { StateBanner, StatePanel } from "@/components/common/StateDisplay";
+import { StatePanel } from "@/components/common/StateDisplay";
 import { getWorkspaceSession, setWorkspaceSession } from "@/lib/workspace-session";
 import { workspaceDefaultUrl, workspaceUrl } from "@/components/utils/workspaceUrl";
 import AccountSettingsPanel from "@/components/workspace/AccountSettingsPanel";
 import WorkspaceApiPanel from "@/components/workspace/WorkspaceApiPanel";
 import WorkspaceBillingPanel from "@/components/workspace/WorkspaceBillingPanel";
+import { useToast } from "@/components/ui/use-toast";
 import {
   DEFAULT_GROUP_STATUSES,
   ITEM_GROUP_KEYS,
@@ -56,7 +57,6 @@ export default function WorkspaceSettings() {
   const [role, setRole] = useState("viewer");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [statusBanner, setStatusBanner] = useState({ tone: "info", message: "" });
   const [initialLoadError, setInitialLoadError] = useState("");
 
   const [name, setName] = useState("");
@@ -85,6 +85,16 @@ export default function WorkspaceSettings() {
   const [showDeleteWorkspaceDialog, setShowDeleteWorkspaceDialog] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [activeTab, setActiveTab] = useState("my-account");
+  const { toast } = useToast();
+
+  const notifyStatus = (tone, message) => {
+    if (!message) return;
+    toast({
+      title: tone === "danger" ? "Action failed" : "Success",
+      description: message,
+      variant: tone === "danger" ? "destructive" : "default",
+    });
+  };
 
   useEffect(() => {
     const { workspace: storedWorkspace, role: storedRole } = getWorkspaceSession();
@@ -249,7 +259,6 @@ export default function WorkspaceSettings() {
 
   const handleSaveSettings = async () => {
     if (!workspace) return;
-    setStatusBanner({ tone: "info", message: "" });
 
     if (slug !== workspace.slug) {
       const validationError = validateSlug(slug);
@@ -288,14 +297,14 @@ export default function WorkspaceSettings() {
       };
       setWorkspace(updatedWorkspace);
       setWorkspaceSession({ workspace: updatedWorkspace, role: "admin", isPublicAccess: false });
-      setStatusBanner({ tone: "success", message: "Workspace settings saved." });
+      notifyStatus("success", "Workspace settings saved.");
 
       if (slug !== workspace.slug) {
         navigate(workspaceDefaultUrl(slug, "admin", false));
       }
     } catch (error) {
       console.error("Failed to save workspace settings:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to save settings. Please try again." });
+      notifyStatus("danger", "Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -307,7 +316,7 @@ export default function WorkspaceSettings() {
     navigator.clipboard.writeText(fullUrl);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 1800);
-    setStatusBanner({ tone: "success", message: "Workspace URL copied." });
+    notifyStatus("success", "Workspace URL copied.");
   };
 
   const handleLogoUpload = async (event) => {
@@ -317,10 +326,10 @@ export default function WorkspaceSettings() {
     try {
       const { file_url: uploadedUrl } = await base44.integrations.Core.UploadFile({ file });
       setLogoUrl(uploadedUrl);
-      setStatusBanner({ tone: "success", message: "Logo uploaded. Save changes to publish it." });
+      notifyStatus("success", "Logo uploaded. Save changes to publish it.");
     } catch (error) {
       console.error("Failed to upload logo:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to upload logo." });
+      notifyStatus("danger", "Failed to upload logo.");
     } finally {
       setUploadingLogo(false);
     }
@@ -335,7 +344,7 @@ export default function WorkspaceSettings() {
       );
     } catch (error) {
       console.error("Failed to update member role:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to update member role." });
+      notifyStatus("danger", "Failed to update member role.");
     } finally {
       setUpdatingMemberId(null);
     }
@@ -347,10 +356,10 @@ export default function WorkspaceSettings() {
     try {
       await base44.entities.WorkspaceRole.delete(memberPendingRemoval.id);
       setMembers((prev) => prev.filter((member) => member.id !== memberPendingRemoval.id));
-      setStatusBanner({ tone: "success", message: "Member removed." });
+      notifyStatus("success", "Member removed.");
     } catch (error) {
       console.error("Failed to remove member:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to remove member." });
+      notifyStatus("danger", "Failed to remove member.");
     } finally {
       setUpdatingMemberId(null);
       setMemberPendingRemoval(null);
@@ -360,7 +369,6 @@ export default function WorkspaceSettings() {
   const handleCreateAccessCode = async () => {
     if (!workspace) return;
     setCreatingAccessCode(true);
-    setStatusBanner({ tone: "info", message: "" });
     try {
       const { data } = await base44.functions.invoke('setWorkspaceAccessCode', {
         workspace_id: workspace.id,
@@ -371,10 +379,10 @@ export default function WorkspaceSettings() {
         hasCode: true,
         expiresAt: data?.expires_at ?? null,
       });
-      setStatusBanner({ tone: "success", message: "Access code generated." });
+      notifyStatus("success", "Access code generated.");
     } catch (error) {
       console.error("Failed to create access code:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to create access code." });
+      notifyStatus("danger", "Failed to create access code.");
     } finally {
       setCreatingAccessCode(false);
     }
@@ -383,7 +391,7 @@ export default function WorkspaceSettings() {
   const handleGroupNameSave = async (groupId, nextName) => {
     const trimmed = nextName.trim();
     if (!trimmed) {
-      setStatusBanner({ tone: "danger", message: "Group name cannot be empty." });
+      notifyStatus("danger", "Group name cannot be empty.");
       return;
     }
     try {
@@ -391,10 +399,10 @@ export default function WorkspaceSettings() {
         display_name: trimmed,
       });
       setStatusGroups((prev) => prev.map((group) => (group.id === groupId ? updated : group)));
-      setStatusBanner({ tone: "success", message: "Status group name saved." });
+      notifyStatus("success", "Status group name saved.");
     } catch (error) {
       console.error("Failed to update status group:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to update status group name." });
+      notifyStatus("danger", "Failed to update status group name.");
     }
   };
 
@@ -404,11 +412,11 @@ export default function WorkspaceSettings() {
     const groupKey = patch.group_key;
 
     if (!nextLabel) {
-      setStatusBanner({ tone: "danger", message: "Status label is required." });
+      notifyStatus("danger", "Status label is required.");
       return;
     }
     if (!nextKey) {
-      setStatusBanner({ tone: "danger", message: "Status key is required." });
+      notifyStatus("danger", "Status key is required.");
       return;
     }
 
@@ -419,7 +427,7 @@ export default function WorkspaceSettings() {
         status.status_key === nextKey
     );
     if (duplicate) {
-      setStatusBanner({ tone: "danger", message: "Status key must be unique within each group." });
+      notifyStatus("danger", "Status key must be unique within each group.");
       return;
     }
 
@@ -430,10 +438,10 @@ export default function WorkspaceSettings() {
         status_key: nextKey,
       });
       setStatuses((prev) => prev.map((status) => (status.id === statusId ? updated : status)));
-      setStatusBanner({ tone: "success", message: "Status saved." });
+      notifyStatus("success", "Status saved.");
     } catch (error) {
       console.error("Failed to update status:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to update status." });
+      notifyStatus("danger", "Failed to update status.");
     } finally {
       setSavingStatusId(null);
     }
@@ -457,27 +465,27 @@ export default function WorkspaceSettings() {
         is_active: true,
       });
       setStatuses((prev) => [...prev, created].sort(byDisplayOrder));
-      setStatusBanner({ tone: "success", message: "Status added." });
+      notifyStatus("success", "Status added.");
     } catch (error) {
       console.error("Failed to add status:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to add status." });
+      notifyStatus("danger", "Failed to add status.");
     }
   };
 
   const handleDeleteStatus = async (statusRecord) => {
     const groupStatuses = groupedStatuses[statusRecord.group_key] || [];
     if (groupStatuses.length <= 1) {
-      setStatusBanner({ tone: "danger", message: "Each group must keep at least one status." });
+      notifyStatus("danger", "Each group must keep at least one status.");
       return;
     }
 
     try {
       await base44.entities.ItemStatus.delete(statusRecord.id);
       setStatuses((prev) => prev.filter((status) => status.id !== statusRecord.id));
-      setStatusBanner({ tone: "success", message: "Status removed." });
+      notifyStatus("success", "Status removed.");
     } catch (error) {
       console.error("Failed to delete status:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to remove status." });
+      notifyStatus("danger", "Failed to remove status.");
     }
   };
 
@@ -490,7 +498,7 @@ export default function WorkspaceSettings() {
       navigate(createPageUrl("Workspaces"));
     } catch (error) {
       console.error("Failed to archive workspace:", error);
-      setStatusBanner({ tone: "danger", message: "Failed to delete workspace." });
+      notifyStatus("danger", "Failed to delete workspace.");
     } finally {
       setDeletingWorkspace(false);
       setShowDeleteWorkspaceDialog(false);
@@ -531,7 +539,6 @@ export default function WorkspaceSettings() {
         title="Workspace Settings"
         description="Manage your account, workspace policies, and item status configuration."
       />
-      <StateBanner tone={statusBanner.tone} message={statusBanner.message} />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <TabsList className="bg-slate-100">
@@ -569,7 +576,7 @@ export default function WorkspaceSettings() {
           <AccountSettingsPanel
             onStatusChange={(nextStatus) => {
               if (!nextStatus?.message) return;
-              setStatusBanner(nextStatus);
+              notifyStatus(nextStatus.tone, nextStatus.message);
             }}
           />
         </TabsContent>

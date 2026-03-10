@@ -1,4 +1,4 @@
-import { ChevronDown, Settings, Folder } from 'lucide-react';
+import { ChevronDown, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
 import Badge from '@/components/common/Badge';
 import { createPageUrl } from '@/utils';
 import Link from '@/components/common/AppLink';
+import WorkspaceAvatar from '@/components/workspace/WorkspaceAvatar';
 
 export default function WorkspaceHeader({ workspace, workspaces, role, onSwitch }) {
   return (
@@ -19,9 +20,7 @@ export default function WorkspaceHeader({ workspace, workspaces, role, onSwitch 
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-auto p-2 hover:bg-slate-100">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-slate-900 rounded-lg">
-                  <Folder className="h-4 w-4 text-white" />
-                </div>
+                <WorkspaceAvatar workspace={workspace} size="md" />
                 <div className="text-left">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-900">{workspace.name}</span>
@@ -36,10 +35,10 @@ export default function WorkspaceHeader({ workspace, workspaces, role, onSwitch 
               <DropdownMenuItem 
                 key={ws.id} 
                 onClick={() => onSwitch(ws)}
-                className="cursor-pointer"
+                className="cursor-pointer !w-full px-3 py-2"
               >
-                <Folder className="h-4 w-4 mr-2 text-slate-500" />
-                <span>{ws.name}</span>
+                <WorkspaceAvatar workspace={ws} size="sm" />
+                <span className="ml-2 flex-1 truncate text-left">{ws.name}</span>
                 {ws.id === workspace.id && (
                   <span className="ml-auto text-xs text-slate-400">Current</span>
                 )}
