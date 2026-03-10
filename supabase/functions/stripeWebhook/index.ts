@@ -4,7 +4,6 @@ import { supabaseAdmin } from "../_shared/supabase.ts";
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
 const servicePriceIdsRaw = Deno.env.get("STRIPE_PRICE_SERVICE_IDS") ?? "{}";
-const meteredPriceId = Deno.env.get("STRIPE_PRICE_METERED_ID") ?? "";
 
 const stripe = new Stripe(stripeSecretKey, { apiVersion: "2023-10-16" });
 
@@ -45,26 +44,21 @@ function servicesFromSubscription(subscription: Stripe.Subscription) {
   );
 
   const enabled: string[] = [];
-  let meteredItemId: string | null = null;
 
   subscription.items.data.forEach((item) => {
     const priceId = item.price?.id;
     if (!priceId) return;
-    if (priceId === meteredPriceId) {
-      meteredItemId = item.id;
-      return;
-    }
     const service = reverseMap[priceId];
     if (service) {
       enabled.push(service);
     }
   });
 
-  return { enabled, meteredItemId };
+  return { enabled };
 }
 
 async function upsertBillingServices(boardId: string, enabledServices: string[]) {
-  const ALL_SERVICES = ["feedback", "roadmap", "changelog", "docs", "support"];
+  const ALL_SERVICES = ["feedback", "roadmap", "changelog"];
   const rows = ALL_SERVICES.map((service) => ({
     board_id: boardId,
     service,
@@ -131,14 +125,13 @@ Deno.serve(async (req) => {
         });
       }
 
-      const { enabled, meteredItemId } = servicesFromSubscription(subscription);
+      const { enabled } = servicesFromSubscription(subscription);
       await upsertBillingServices(boardId, enabled);
 
       await supabaseAdmin.from("billing_customers").upsert({
         board_id: boardId,
         stripe_customer_id: subscription.customer as string,
         stripe_subscription_id: subscription.id,
-        stripe_subscription_item_id: meteredItemId,
         status: subscription.status,
         trial_end: subscription.trial_end
           ? new Date(subscription.trial_end * 1000).toISOString()

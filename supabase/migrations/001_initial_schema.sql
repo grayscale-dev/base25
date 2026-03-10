@@ -1,7 +1,5 @@
--- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Updated-at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -10,237 +8,142 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
-CREATE TABLE tenants (
+CREATE TABLE boards (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
-  logo_url TEXT,
-  settings JSONB DEFAULT '{}'::jsonb,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'archived'))
-);
-
-CREATE TABLE workspaces (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  name TEXT NOT NULL,
-  slug TEXT NOT NULL,
   description TEXT,
   logo_url TEXT,
   primary_color TEXT DEFAULT '#0f172a',
   visibility TEXT DEFAULT 'restricted' CHECK (visibility IN ('public', 'restricted')),
-  support_enabled BOOLEAN DEFAULT TRUE,
   settings JSONB DEFAULT '{}'::jsonb,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'archived')),
-  UNIQUE (tenant_id, slug)
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'archived'))
 );
 
-CREATE TABLE tenant_members (
+CREATE TABLE board_roles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   user_id UUID NOT NULL,
   email TEXT NOT NULL,
-  is_tenant_admin BOOLEAN DEFAULT FALSE,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'invited')),
-  UNIQUE (tenant_id, user_id)
-);
-
-CREATE INDEX idx_tenant_members_email ON tenant_members(email);
-
-CREATE TABLE workspace_roles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  user_id UUID NOT NULL,
-  email TEXT NOT NULL,
-  role TEXT DEFAULT 'viewer' CHECK (role IN ('viewer', 'contributor', 'support', 'admin')),
-  assigned_via TEXT DEFAULT 'explicit' CHECK (assigned_via IN ('explicit', 'rule')),
+  role TEXT DEFAULT 'viewer' CHECK (role IN ('viewer', 'contributor', 'admin')),
+  assigned_via TEXT DEFAULT 'explicit' CHECK (assigned_via IN ('explicit', 'rule', 'access_code')),
   rule_id UUID,
-  UNIQUE (workspace_id, user_id)
+  UNIQUE (board_id, user_id)
 );
 
-CREATE INDEX idx_workspace_roles_email ON workspace_roles(email);
+CREATE INDEX idx_board_roles_email ON board_roles(email);
 
-CREATE TABLE access_rules (
+CREATE TABLE board_access_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   pattern TEXT NOT NULL,
   pattern_type TEXT DEFAULT 'domain' CHECK (pattern_type IN ('domain', 'substring', 'exact')),
   default_role TEXT DEFAULT 'viewer' CHECK (default_role IN ('viewer', 'contributor')),
   is_active BOOLEAN DEFAULT TRUE,
-  UNIQUE (workspace_id, pattern)
+  UNIQUE (board_id, pattern)
 );
 
-CREATE TABLE feedback (
+CREATE TABLE item_status_groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  title TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('bug', 'feature_request', 'improvement', 'question')),
-  description TEXT NOT NULL,
-  steps_to_reproduce TEXT,
-  expected_behavior TEXT,
-  actual_behavior TEXT,
-  environment JSONB,
-  attachments JSONB,
-  priority TEXT CHECK (priority IN ('low', 'medium', 'high', 'critical')),
-  status TEXT DEFAULT 'open' CHECK (status IN ('open', 'under_review', 'planned', 'in_progress', 'completed', 'closed', 'declined')),
-  tags TEXT[] DEFAULT '{}'::text[],
-  visibility TEXT DEFAULT 'public' CHECK (visibility IN ('public', 'private')),
-  roadmap_item_ids UUID[] DEFAULT '{}'::uuid[],
-  changelog_entry_ids UUID[] DEFAULT '{}'::uuid[],
-  doc_page_ids UUID[] DEFAULT '{}'::uuid[],
-  vote_count INTEGER DEFAULT 0,
-  submitter_id UUID NOT NULL,
-  submitter_email TEXT,
-  assigned_to UUID
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  group_key TEXT NOT NULL CHECK (group_key IN ('feedback', 'roadmap', 'changelog')),
+  display_name TEXT NOT NULL,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (board_id, group_key)
 );
 
-CREATE INDEX idx_feedback_workspace ON feedback(workspace_id);
-CREATE INDEX idx_feedback_status ON feedback(status);
-CREATE INDEX idx_feedback_visibility ON feedback(visibility);
-
-CREATE TABLE feedback_responses (
+CREATE TABLE item_statuses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  feedback_id UUID NOT NULL REFERENCES feedback(id) ON DELETE CASCADE,
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  content TEXT NOT NULL,
-  is_official BOOLEAN DEFAULT FALSE,
-  author_id UUID NOT NULL,
-  author_role TEXT CHECK (author_role IN ('user', 'support', 'admin')),
-  attachments JSONB
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  group_key TEXT NOT NULL CHECK (group_key IN ('feedback', 'roadmap', 'changelog')),
+  status_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (board_id, group_key, status_key),
+  FOREIGN KEY (board_id, group_key) REFERENCES item_status_groups(board_id, group_key) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_feedback_responses_feedback ON feedback_responses(feedback_id);
-
-CREATE TABLE roadmap_items (
+CREATE TABLE items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  group_key TEXT NOT NULL CHECK (group_key IN ('feedback', 'roadmap', 'changelog')),
+  status_key TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  status TEXT DEFAULT 'planned' CHECK (status IN ('planned', 'in_progress', 'shipped')),
-  target_date DATE,
-  target_quarter TEXT,
-  linked_feedback_ids UUID[] DEFAULT '{}'::uuid[],
-  changelog_entry_ids UUID[] DEFAULT '{}'::uuid[],
-  doc_page_ids UUID[] DEFAULT '{}'::uuid[],
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
   tags TEXT[] DEFAULT '{}'::text[],
-  display_order INTEGER DEFAULT 0,
-  visibility TEXT DEFAULT 'public' CHECK (visibility IN ('public', 'internal'))
-);
-
-CREATE INDEX idx_roadmap_items_workspace ON roadmap_items(workspace_id);
-CREATE INDEX idx_roadmap_items_status ON roadmap_items(status);
-
-CREATE TABLE roadmap_updates (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  roadmap_item_id UUID NOT NULL REFERENCES roadmap_items(id) ON DELETE CASCADE,
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  content TEXT NOT NULL,
-  author_id UUID NOT NULL,
-  update_type TEXT DEFAULT 'progress' CHECK (update_type IN ('progress', 'status_change', 'announcement'))
-);
-
-CREATE INDEX idx_roadmap_updates_item ON roadmap_updates(roadmap_item_id);
-
-CREATE TABLE support_threads (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  subject TEXT NOT NULL,
-  status TEXT DEFAULT 'open' CHECK (status IN ('open', 'awaiting_user', 'awaiting_support', 'resolved', 'closed')),
-  priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
-  requester_id UUID NOT NULL,
-  requester_email TEXT,
+  visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'internal', 'private')),
+  vote_count INTEGER NOT NULL DEFAULT 0,
+  submitter_id UUID,
+  submitter_email TEXT,
   assigned_to UUID,
-  participants UUID[] DEFAULT '{}'::uuid[],
-  feedback_ids UUID[] DEFAULT '{}'::uuid[],
-  roadmap_item_ids UUID[] DEFAULT '{}'::uuid[],
-  changelog_entry_ids UUID[] DEFAULT '{}'::uuid[],
-  doc_page_ids UUID[] DEFAULT '{}'::uuid[],
-  tags TEXT[] DEFAULT '{}'::text[],
-  last_message_at TIMESTAMP WITH TIME ZONE,
-  message_count INTEGER DEFAULT 0
+  FOREIGN KEY (board_id, group_key, status_key)
+    REFERENCES item_statuses(board_id, group_key, status_key)
+    ON UPDATE CASCADE
 );
 
-CREATE INDEX idx_support_threads_workspace ON support_threads(workspace_id);
-CREATE INDEX idx_support_threads_status ON support_threads(status);
+CREATE INDEX idx_items_board ON items(board_id);
+CREATE INDEX idx_items_group ON items(group_key);
+CREATE INDEX idx_items_status ON items(status_key);
+CREATE INDEX idx_items_board_group_status ON items(board_id, group_key, status_key);
+CREATE INDEX idx_items_metadata_gin ON items USING GIN(metadata);
 
-CREATE TABLE support_messages (
+CREATE TABLE item_activities (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  thread_id UUID NOT NULL REFERENCES support_threads(id) ON DELETE CASCADE,
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  activity_type TEXT NOT NULL CHECK (activity_type IN ('comment', 'update', 'status_change', 'group_change', 'system')),
   content TEXT NOT NULL,
-  author_id UUID NOT NULL,
-  author_email TEXT,
-  is_internal_note BOOLEAN DEFAULT FALSE,
-  is_staff_reply BOOLEAN DEFAULT FALSE,
-  attachments JSONB
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
+  author_id UUID,
+  author_role TEXT CHECK (author_role IN ('user', 'admin')),
+  is_internal_note BOOLEAN DEFAULT FALSE
 );
 
-CREATE INDEX idx_support_messages_thread ON support_messages(thread_id);
+CREATE INDEX idx_item_activities_item ON item_activities(item_id);
+CREATE INDEX idx_item_activities_board ON item_activities(board_id);
 
 CREATE TABLE api_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   name TEXT NOT NULL,
   token_hash TEXT NOT NULL,
   token_prefix TEXT NOT NULL,
   permissions TEXT[] NOT NULL,
   rate_limit INTEGER DEFAULT 1000,
-  last_used_at TIMESTAMP WITH TIME ZONE,
-  expires_at TIMESTAMP WITH TIME ZONE,
+  last_used_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
   is_active BOOLEAN DEFAULT TRUE,
-  created_by UUID NOT NULL
+  created_by TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX idx_api_tokens_prefix ON api_tokens(token_prefix);
 
 CREATE TABLE audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   actor_id UUID NOT NULL,
   actor_email TEXT,
-  action TEXT NOT NULL CHECK (action IN (
-    'feedback.create',
-    'feedback.update',
-    'feedback.delete',
-    'roadmap.create',
-    'roadmap.update',
-    'roadmap.delete',
-    'roadmap.status_change',
-    'support.create',
-    'support.reply',
-    'support.status_change',
-    'access.grant',
-    'access.revoke',
-    'access.role_change',
-    'api_token.create',
-    'api_token.revoke',
-    'settings.update'
-  )),
+  action TEXT NOT NULL,
   entity_type TEXT,
   entity_id UUID,
   changes JSONB,
@@ -248,120 +151,67 @@ CREATE TABLE audit_logs (
   user_agent TEXT
 );
 
-CREATE INDEX idx_audit_logs_workspace ON audit_logs(workspace_id);
+CREATE INDEX idx_audit_logs_board ON audit_logs(board_id);
 
-CREATE TABLE changelog_entries (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  roadmap_item_ids UUID[] DEFAULT '{}'::uuid[],
-  feedback_ids UUID[] DEFAULT '{}'::uuid[],
-  doc_page_ids UUID[] DEFAULT '{}'::uuid[],
-  title TEXT NOT NULL,
-  description TEXT,
-  release_date DATE NOT NULL,
-  tags TEXT[] DEFAULT '{}'::text[],
-  visibility TEXT DEFAULT 'public' CHECK (visibility IN ('public', 'internal'))
-);
+CREATE OR REPLACE FUNCTION seed_default_item_statuses(target_board_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  INSERT INTO item_status_groups (board_id, group_key, display_name, display_order)
+  VALUES
+    (target_board_id, 'feedback', 'Feedback', 0),
+    (target_board_id, 'roadmap', 'Roadmap', 1),
+    (target_board_id, 'changelog', 'Changelog', 2)
+  ON CONFLICT (board_id, group_key) DO NOTHING;
 
-CREATE INDEX idx_changelog_entries_workspace ON changelog_entries(workspace_id);
+  INSERT INTO item_statuses (board_id, group_key, status_key, label, display_order, is_active)
+  VALUES
+    (target_board_id, 'feedback', 'open', 'Open', 0, TRUE),
+    (target_board_id, 'feedback', 'under_review', 'Under review', 1, TRUE),
+    (target_board_id, 'feedback', 'planned', 'Planned', 2, TRUE),
+    (target_board_id, 'feedback', 'in_progress', 'In progress', 3, TRUE),
+    (target_board_id, 'feedback', 'completed', 'Completed', 4, TRUE),
+    (target_board_id, 'feedback', 'closed', 'Closed', 5, TRUE),
+    (target_board_id, 'roadmap', 'planned', 'Planned', 0, TRUE),
+    (target_board_id, 'roadmap', 'in_progress', 'In progress', 1, TRUE),
+    (target_board_id, 'roadmap', 'shipped', 'Shipped', 2, TRUE),
+    (target_board_id, 'changelog', 'published', 'Published', 0, TRUE)
+  ON CONFLICT (board_id, group_key, status_key) DO NOTHING;
+END;
+$$;
 
-CREATE TABLE doc_pages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  parent_id UUID REFERENCES doc_pages(id) ON DELETE SET NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  title TEXT NOT NULL,
-  slug TEXT NOT NULL,
-  content TEXT,
-  content_type TEXT DEFAULT 'markdown' CHECK (content_type IN ('markdown', 'html')),
-  feedback_ids UUID[] DEFAULT '{}'::uuid[],
-  roadmap_item_ids UUID[] DEFAULT '{}'::uuid[],
-  changelog_entry_ids UUID[] DEFAULT '{}'::uuid[],
-  "order" INTEGER DEFAULT 0,
-  is_published BOOLEAN DEFAULT TRUE,
-  type TEXT DEFAULT 'page' CHECK (type IN ('directory', 'page')),
-  UNIQUE (workspace_id, slug)
-);
+CREATE OR REPLACE FUNCTION seed_default_item_statuses_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM seed_default_item_statuses(NEW.id);
+  RETURN NEW;
+END;
+$$;
 
-CREATE INDEX idx_doc_pages_workspace ON doc_pages(workspace_id);
-
-CREATE TABLE doc_comments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  doc_page_id UUID NOT NULL REFERENCES doc_pages(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  content TEXT NOT NULL,
-  author_id UUID NOT NULL,
-  author_email TEXT,
-  is_question BOOLEAN DEFAULT TRUE,
-  is_answered BOOLEAN DEFAULT FALSE
-);
-
-CREATE INDEX idx_doc_comments_page ON doc_comments(doc_page_id);
-
-CREATE TABLE doc_queue (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  changelog_entry_id UUID NOT NULL REFERENCES changelog_entries(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  title TEXT NOT NULL,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'docs_exist', 'docs_created')),
-  doc_page_ids UUID[] DEFAULT '{}'::uuid[]
-);
-
-CREATE TABLE waitlist_signups (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
-  email TEXT NOT NULL,
-  company_name TEXT,
-  notes TEXT NOT NULL,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'contacted'))
-);
-
-CREATE UNIQUE INDEX idx_waitlist_signups_email ON waitlist_signups(email);
-
--- Updated-at triggers
-CREATE TRIGGER update_tenants_updated_at BEFORE UPDATE ON tenants
+CREATE TRIGGER update_boards_updated_at BEFORE UPDATE ON boards
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_workspaces_updated_at BEFORE UPDATE ON workspaces
+CREATE TRIGGER update_board_roles_updated_at BEFORE UPDATE ON board_roles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_tenant_members_updated_at BEFORE UPDATE ON tenant_members
+CREATE TRIGGER update_board_access_rules_updated_at BEFORE UPDATE ON board_access_rules
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_workspace_roles_updated_at BEFORE UPDATE ON workspace_roles
+CREATE TRIGGER update_item_status_groups_updated_at BEFORE UPDATE ON item_status_groups
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_access_rules_updated_at BEFORE UPDATE ON access_rules
+CREATE TRIGGER update_item_statuses_updated_at BEFORE UPDATE ON item_statuses
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_feedback_updated_at BEFORE UPDATE ON feedback
+CREATE TRIGGER update_items_updated_at BEFORE UPDATE ON items
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_feedback_responses_updated_at BEFORE UPDATE ON feedback_responses
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_roadmap_items_updated_at BEFORE UPDATE ON roadmap_items
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_roadmap_updates_updated_at BEFORE UPDATE ON roadmap_updates
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_support_threads_updated_at BEFORE UPDATE ON support_threads
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_support_messages_updated_at BEFORE UPDATE ON support_messages
+CREATE TRIGGER update_item_activities_updated_at BEFORE UPDATE ON item_activities
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_api_tokens_updated_at BEFORE UPDATE ON api_tokens
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_audit_logs_updated_at BEFORE UPDATE ON audit_logs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_changelog_entries_updated_at BEFORE UPDATE ON changelog_entries
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_doc_pages_updated_at BEFORE UPDATE ON doc_pages
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_doc_comments_updated_at BEFORE UPDATE ON doc_comments
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_doc_queue_updated_at BEFORE UPDATE ON doc_queue
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_waitlist_signups_updated_at BEFORE UPDATE ON waitlist_signups
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER seed_item_statuses_after_board_insert
+  AFTER INSERT ON boards
+  FOR EACH ROW EXECUTE FUNCTION seed_default_item_statuses_trigger();
+
+SELECT seed_default_item_statuses(id) FROM boards;

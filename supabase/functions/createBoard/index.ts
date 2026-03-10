@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     }
 
     const payload = await req.json();
-    const { name, slug, description, visibility, support_enabled } = payload;
+    const { name, slug, description, visibility } = payload;
 
     if (!name || !slug) {
       return new Response(
@@ -76,7 +76,6 @@ Deno.serve(async (req) => {
         slug,
         description: description || "",
         visibility: visibility || "restricted",
-        support_enabled: support_enabled ?? true,
         status: "active",
       })
       .select("*")
@@ -109,6 +108,14 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
+    }
+
+    const { error: seedError } = await supabaseAdmin.rpc("seed_default_item_statuses", {
+      target_board_id: createdBoard.id,
+    });
+    if (seedError) {
+      // Non-fatal because migration trigger should also seed these defaults.
+      console.warn("Failed to seed default item statuses via RPC:", seedError);
     }
 
     return new Response(JSON.stringify(createdBoard), {

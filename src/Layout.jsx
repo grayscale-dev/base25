@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from '@/lib/router';
+import Link from '@/components/common/AppLink';
 import { 
-  Folder, LogOut, User, ChevronDown, Settings, Key, 
-  MessageSquareText, Map, HeadphonesIcon, Menu, X, Sparkles, ArrowLeft, BookOpen 
+  Folder, LogOut, ChevronDown, Settings,
+  LayoutDashboard, MessageSquare, Map, History, Menu, X, ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,17 +16,26 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
-import { boardUrl } from '@/components/utils/boardUrl';
+import { workspaceUrl } from '@/components/utils/boardUrl';
 import { cn } from '@/lib/utils';
 import { BoardProvider } from '@/components/context/BoardContext';
-import ThemeToggle from '@/components/common/ThemeToggle';
+import { getBoardSession, setBoardSession } from '@/lib/board-session';
+import {
+  getDefaultWorkspaceSection,
+  resolveWorkspaceSection,
+} from '@/lib/workspace-sections';
 
-const navItems = [
-  { name: 'Feedback', icon: MessageSquareText, page: 'Feedback' },
-  { name: 'Roadmap', icon: Map, page: 'Roadmap' },
-  { name: 'Changelog', icon: Sparkles, page: 'Changelog' },
-  { name: 'Docs', icon: BookOpen, page: 'Docs' },
-  { name: 'Support', icon: HeadphonesIcon, page: 'Support', requiresSupport: true },
+const adminNavItems = [
+  { name: 'All', icon: LayoutDashboard, page: 'All', section: 'all' },
+  { name: 'Feedback', icon: MessageSquare, page: 'Feedback', section: 'feedback' },
+  { name: 'Roadmap', icon: Map, page: 'Roadmap', section: 'roadmap' },
+  { name: 'Changelog', icon: History, page: 'Changelog', section: 'changelog' },
+];
+
+const memberNavItems = [
+  { name: 'Feedback', icon: MessageSquare, page: 'Feedback', section: 'feedback' },
+  { name: 'Roadmap', icon: Map, page: 'Roadmap', section: 'roadmap' },
+  { name: 'Changelog', icon: History, page: 'Changelog', section: 'changelog' },
 ];
 
 export default function Layout({ children, currentPageName }) {
@@ -38,7 +48,8 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPublicViewing, setIsPublicViewing] = useState(false);
   const [noAccessMessage, setNoAccessMessage] = useState(null);
-  const [showNoAccessDialog, setShowNoAccessDialog] = useState(false);
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const pathSection = pathParts[0] === 'workspace' ? pathParts[2]?.toLowerCase() : null;
 
   // Public pages that don't need auth or workspace context
   const publicPages = ['Home', 'About', 'Pricing', 'Features'];
@@ -55,10 +66,23 @@ export default function Layout({ children, currentPageName }) {
     }
     
     loadContext();
-  }, [currentPageName, location.search]);
+  }, [currentPageName, location.search, location.pathname]);
+
+  useEffect(() => {
+    const handleWorkspaceSessionUpdate = () => {
+      if (!isPublicPage) {
+        loadContext();
+      }
+    };
+
+    window.addEventListener('workspace-session-updated', handleWorkspaceSessionUpdate);
+    return () => {
+      window.removeEventListener('workspace-session-updated', handleWorkspaceSessionUpdate);
+    };
+  }, [isPublicPage, currentPageName]);
 
   const loadContext = async () => {
-    // NEW FLOW: Context is set by Board router via sessionStorage
+    // Context is set by Workspace router via sessionStorage
     // We just read it here for layout rendering
     
     // Try to authenticate
@@ -69,18 +93,27 @@ export default function Layout({ children, currentPageName }) {
       currentUser = await base44.auth.me();
       setUser(currentUser);
       isAuthenticated = true;
-    } catch (error) {
+    } catch {
       // User not authenticated
       isAuthenticated = false;
     }
 
     if (needsWorkspace) {
-      // Read workspace context from sessionStorage (set by Board router)
-      const storedWorkspace = sessionStorage.getItem('selectedBoard');
-      const storedRole = sessionStorage.getItem('currentRole');
-      const storedIsPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+      // Read workspace context from sessionStorage (set by Workspace router)
+      const {
+        workspace: storedWorkspace,
+        role: storedRole,
+        isPublicAccess: storedIsPublicAccess,
+      } = getBoardSession();
       
       if (!storedWorkspace) {
+        if (location.pathname.startsWith('/workspace/')) {
+          setWorkspace(null);
+          setRole('viewer');
+          setIsPublicViewing(false);
+          return;
+        }
+
         // No workspace context - redirect to home or workspaces
         if (isAuthenticated) {
           navigate(createPageUrl('Workspaces'));
@@ -90,13 +123,14 @@ export default function Layout({ children, currentPageName }) {
         return;
       }
       
-      const targetWorkspace = JSON.parse(storedWorkspace);
-      setWorkspace(targetWorkspace);
+      setWorkspace(storedWorkspace);
       setRole(storedRole || 'viewer');
       setIsPublicViewing(storedIsPublicAccess);
       
       if (storedIsPublicAccess) {
-        setNoAccessMessage('You don\'t have permission to contribute to this board. Contact the admin to request access.');
+        setNoAccessMessage('You don\'t have permission to contribute to this workspace. Contact the admin to request access.');
+      } else {
+        setNoAccessMessage(null);
       }
       
       // Load user workspaces for switcher (if authenticated with role)
@@ -120,12 +154,28 @@ export default function Layout({ children, currentPageName }) {
     }
   };
 
-  const handleWorkspaceSwitch = (ws) => {
-    const role = workspaces.find(w => w.id === ws.id);
-    sessionStorage.setItem('selectedBoardId', ws.id);
-    sessionStorage.setItem('selectedBoard', JSON.stringify(ws));
+  const handleWorkspaceSwitch = async (ws) => {
+    let nextRole = 'viewer';
+    if (user?.id) {
+      try {
+        const roles = await base44.entities.BoardRole.filter({
+          board_id: ws.id,
+          user_id: user.id,
+        });
+        nextRole = roles[0]?.role || 'viewer';
+      } catch {
+        nextRole = 'viewer';
+      }
+    }
+
+    setBoardSession({ workspace: ws, role: nextRole, isPublicAccess: false });
     setWorkspace(ws);
-    window.location.reload(); // Reload to refresh role context
+    setRole(nextRole);
+    const requestedSection = pathSection || currentPageName?.toLowerCase() || 'items';
+    const targetSection =
+      resolveWorkspaceSection(requestedSection, nextRole, false) ||
+      getDefaultWorkspaceSection(nextRole, false);
+    navigate(workspaceUrl(ws.slug, targetSection));
   };
 
   const handleLogout = () => {
@@ -133,19 +183,21 @@ export default function Layout({ children, currentPageName }) {
     base44.auth.logout();
   };
 
-  const isActive = (page) => {
-    return currentPageName === page;
-  };
-
   const isAdmin = role === 'admin' && !isPublicViewing;
-  const isStaff = ['support', 'admin'].includes(role) && !isPublicViewing;
+  const canOpenSettings = Boolean(user && workspace && !isPublicViewing);
+  const visibleNavItems = isAdmin ? adminNavItems : memberNavItems;
+  const activeSection =
+    resolveWorkspaceSection(pathSection || currentPageName?.toLowerCase(), role, isPublicViewing) ||
+    getDefaultWorkspaceSection(role, isPublicViewing);
+  const workspaceHomeSection = activeSection;
+  const isActive = (section) => section === activeSection;
 
   // No layout for public pages, workspaces hub, or join page
   if (['Home', 'About', 'Pricing', 'Features', 'Workspaces', 'JoinWorkspace'].includes(currentPageName)) {
     return children;
   }
   
-  // Show permission error for authenticated users without access to private board
+  // Show permission error for authenticated users without access to private workspace
   if (user && noAccessMessage && workspace?.visibility === 'restricted') {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -159,19 +211,12 @@ export default function Layout({ children, currentPageName }) {
             onClick={() => navigate(createPageUrl('Workspaces'))}
             className="bg-slate-900 hover:bg-slate-800"
           >
-            View My Boards
+            View My Workspaces
           </Button>
         </div>
       </div>
     );
   }
-
-  // Filter nav items based on permissions
-  const visibleNavItems = navItems.filter(item => {
-    // Hide support from public viewers entirely
-    if (item.requiresSupport && (isPublicViewing || !workspace?.support_enabled)) return false;
-    return true;
-  });
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -184,7 +229,7 @@ export default function Layout({ children, currentPageName }) {
               {workspace ? (
                 isPublicViewing ? (
                   // Simple link for incognito/public users
-                  <Link to={boardUrl(workspace.slug, 'feedback')}>
+                  <Link to={workspaceUrl(workspace.slug, workspaceHomeSection)}>
                     <Button variant="ghost" className="h-auto p-2 hover:bg-slate-100">
                       <div className="flex items-center gap-3">
                         {workspace.logo_url ? (
@@ -241,11 +286,12 @@ export default function Layout({ children, currentPageName }) {
                         </DropdownMenuItem>
                       ))}
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem asChild>
-                        <Link to={createPageUrl('Workspaces')} className="cursor-pointer">
-                          <ArrowLeft className="h-4 w-4 mr-2" />
-                          View all boards
-                        </Link>
+                      <DropdownMenuItem
+                        onClick={() => navigate(createPageUrl('Workspaces'))}
+                        className="cursor-pointer"
+                      >
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        View all workspaces
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -264,12 +310,12 @@ export default function Layout({ children, currentPageName }) {
                 <nav className="hidden md:flex items-center gap-1 ml-6">
                   {visibleNavItems.map((item) => {
                     const Icon = item.icon;
-                    const active = isActive(item.page);
+                    const active = isActive(item.section);
 
                     return (
                       <Link
                         key={item.page}
-                        to={boardUrl(workspace.slug, item.page.toLowerCase())}
+                        to={workspaceUrl(workspace.slug, item.section)}
                         style={active ? { backgroundColor: `${workspace.primary_color || '#0f172a'}15` } : {}}
                         className={cn(
                           'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
@@ -289,7 +335,6 @@ export default function Layout({ children, currentPageName }) {
 
             {/* Right: User menu & Admin links */}
             <div className="flex items-center gap-2">
-                <ThemeToggle />
                 {/* Login prompt for public viewers */}
                 {isPublicViewing && !user && (
                   <Button 
@@ -307,47 +352,19 @@ export default function Layout({ children, currentPageName }) {
                   </div>
                 )}
                 
-                {isAdmin && workspace && (
+                {canOpenSettings && (
                   <div className="hidden md:flex items-center gap-1">
-                    <Link to={boardUrl(workspace.slug, 'api')}>
-                      <Button variant="ghost" size="sm" className="text-slate-600">
-                        <Key className="h-4 w-4 mr-2" />
-                        API
-                      </Button>
-                    </Link>
-                    <Link to={boardUrl(workspace.slug, 'settings')}>
-                      <Button variant="ghost" size="sm" className="text-slate-600">
-                        <Settings className="h-4 w-4 mr-2" />
+                    <Link to={createPageUrl('WorkspaceSettings')}>
+                      <Button
+                        variant="ghost"
+                        className="h-auto gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      >
+                        <Settings className="h-4 w-4" />
                         Settings
                       </Button>
                     </Link>
                   </div>
                 )}
-
-              {user && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="flex items-center gap-2">
-                      <div className="h-7 w-7 rounded-full bg-slate-200 flex items-center justify-center">
-                        <User className="h-4 w-4 text-slate-600" />
-                      </div>
-                      <span className="hidden sm:inline text-sm text-slate-600">
-                        {user.email}
-                      </span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <div className="px-2 py-1.5 text-xs text-slate-500">
-                      Role: {role.charAt(0).toUpperCase() + role.slice(1)}
-                    </div>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Sign Out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
 
               {/* Mobile menu button */}
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -361,13 +378,16 @@ export default function Layout({ children, currentPageName }) {
                     <div className="space-y-1 py-4">
                       {workspace && visibleNavItems.map((item) => {
                         const Icon = item.icon;
-                        const active = isActive(item.page);
+                        const active = isActive(item.section);
 
                         return (
-                          <Link
+                          <button
+                            type="button"
                             key={item.page}
-                            to={boardUrl(workspace.slug, item.page.toLowerCase())}
-                            onClick={() => setMobileMenuOpen(false)}
+                            onClick={() => {
+                              setMobileMenuOpen(false);
+                              navigate(workspaceUrl(workspace.slug, item.section));
+                            }}
                             className={cn(
                               'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all',
                               active 
@@ -377,31 +397,26 @@ export default function Layout({ children, currentPageName }) {
                           >
                             <Icon className="h-5 w-5" />
                             {item.name}
-                          </Link>
+                          </button>
                         );
                       })}
                     </div>
                     
-                    {isAdmin && workspace && (
+                    {canOpenSettings && (
                       <>
                         <div className="border-t border-slate-200 pt-4 mt-2">
-                          <p className="px-4 text-xs font-medium text-slate-400 uppercase mb-2">Admin</p>
-                          <Link
-                            to={boardUrl(workspace.slug, 'api')}
-                            onClick={() => setMobileMenuOpen(false)}
-                            className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
-                          >
-                            <Key className="h-5 w-5" />
-                            API Documentation
-                          </Link>
-                          <Link
-                            to={boardUrl(workspace.slug, 'settings')}
-                            onClick={() => setMobileMenuOpen(false)}
+                          <p className="px-4 text-xs font-medium text-slate-400 uppercase mb-2">Settings</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMobileMenuOpen(false);
+                              navigate(createPageUrl('WorkspaceSettings'));
+                            }}
                             className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
                           >
                             <Settings className="h-5 w-5" />
                             Settings
-                          </Link>
+                          </button>
                         </div>
                       </>
                     )}

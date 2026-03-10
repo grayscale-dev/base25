@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,16 +14,31 @@ import { base44 } from '@/api/base44Client';
 
 /**
  * Profile Completion Modal
- * 
- * Shown when a user attempts a write action without a display name.
+ *
+ * Shown when a user needs to complete required profile fields.
  * Blocks the action until profile is completed, then retries.
  */
-export default function ProfileCompletionModal({ isOpen, onComplete, onCancel }) {
-  const [displayName, setDisplayName] = useState('');
+export default function ProfileCompletionModal({
+  isOpen,
+  onComplete,
+  onCancel,
+  allowCancel = true,
+  initialFirstName = '',
+  initialLastName = '',
+}) {
+  const [firstName, setFirstName] = useState(initialFirstName);
+  const [lastName, setLastName] = useState(initialLastName);
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFirstName(initialFirstName);
+    setLastName(initialLastName);
+    setError(null);
+  }, [isOpen, initialFirstName, initialLastName]);
 
   const handlePhotoSelect = (e) => {
     const file = e.target.files?.[0];
@@ -35,9 +50,9 @@ export default function ProfileCompletionModal({ isOpen, onComplete, onCancel })
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!displayName.trim()) {
-      setError('Display name is required');
+
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('First name and last name are required.');
       return;
     }
 
@@ -45,7 +60,13 @@ export default function ProfileCompletionModal({ isOpen, onComplete, onCancel })
     setError(null);
 
     try {
-      const updates = { full_name: displayName.trim() };
+      const trimmedFirstName = firstName.trim();
+      const trimmedLastName = lastName.trim();
+      const updates = {
+        first_name: trimmedFirstName,
+        last_name: trimmedLastName,
+        full_name: `${trimmedFirstName} ${trimmedLastName}`.trim(),
+      };
 
       // Upload profile photo if provided (optional)
       if (profilePhoto) {
@@ -75,29 +96,49 @@ export default function ProfileCompletionModal({ isOpen, onComplete, onCancel })
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && allowCancel) {
+          onCancel();
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md" closable={allowCancel} dismissableMask={allowCancel}>
         <DialogHeader>
           <DialogTitle>Complete Your Profile</DialogTitle>
           <DialogDescription>
-            Please set your display name before contributing. Your profile photo is optional.
+            First name and last name are required. Your profile photo is optional.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          {/* Display Name - Required */}
-          <div>
-            <Label htmlFor="displayName" className="flex items-center gap-2 mb-2">
-              Display Name <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="displayName"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Enter your name"
-              className="w-full"
-              autoFocus
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="firstName" className="flex items-center gap-2 mb-2">
+                First Name <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="firstName"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="First name"
+                className="w-full"
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label htmlFor="lastName" className="flex items-center gap-2 mb-2">
+                Last Name <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="lastName"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Last name"
+                className="w-full"
+              />
+            </div>
           </div>
 
           {/* Profile Photo - Optional */}
@@ -156,20 +197,22 @@ export default function ProfileCompletionModal({ isOpen, onComplete, onCancel })
           )}
 
           <div className="flex justify-end gap-3 pt-2">
-            <Button 
-              type="button" 
-              variant="ghost" 
-              onClick={onCancel}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
+            {allowCancel ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onCancel}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+            ) : null}
             <Button 
               type="submit" 
-              disabled={!displayName.trim() || saving}
+              disabled={!firstName.trim() || !lastName.trim() || saving}
               className="bg-slate-900 hover:bg-slate-800"
             >
-              {saving ? 'Saving...' : 'Continue'}
+              {saving ? 'Saving...' : 'Save and Continue'}
             </Button>
           </div>
         </form>

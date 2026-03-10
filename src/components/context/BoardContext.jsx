@@ -1,10 +1,15 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
+import {
+  getBoardSession,
+  getOrCreateAnalyticsSessionId,
+  setBoardSession,
+} from '@/lib/board-session';
 
 /**
  * BoardContext Model
  * 
- * Provides centralized board state and permissions for all board pages.
+ * Provides centralized workspace state and permissions for all workspace pages.
  * Single source of truth that replaces scattered auth checks.
  */
 
@@ -30,9 +35,7 @@ export function BoardProvider({ children }) {
     // Computed permissions
     permissions: {
       canView: false,
-      canCreateFeedback: false,
-      canCreateRoadmap: false,
-      canCreateSupport: false,
+      canCreateItems: false,
       canComment: false,
       canManageSettings: false,
       canModerateContent: false,
@@ -53,19 +56,22 @@ export function BoardProvider({ children }) {
 
   const loadBoardContext = async () => {
     try {
-      // PRIMARY: Resolve from URL path params (/board/:slug/:section)
+      // Resolve from URL path params (/workspace/:slug/:section).
       const pathParts = window.location.pathname.split('/').filter(Boolean);
-      const slug = pathParts[0] === 'board' ? pathParts[1] : null;
+      const rootSegment = pathParts[0];
+      const slug =
+        rootSegment === 'workspace' ? pathParts[1] : null;
 
       if (!slug) {
-        // No slug in URL path - cannot resolve board
+        // No slug in URL path - cannot resolve workspace
         setState(prev => ({ ...prev, loading: false }));
         return;
       }
 
       // Check sessionStorage cache first (optimization)
-      const cachedWorkspace = sessionStorage.getItem('selectedBoard');
-      const cachedSlug = cachedWorkspace ? JSON.parse(cachedWorkspace).slug : null;
+      const cachedSession = getBoardSession();
+      const cachedWorkspace = cachedSession.workspace;
+      const cachedSlug = cachedWorkspace?.slug || null;
 
       let workspace;
       let role = 'viewer';
@@ -73,9 +79,9 @@ export function BoardProvider({ children }) {
 
       if (cachedSlug === slug) {
         // Cache hit - use sessionStorage
-        workspace = JSON.parse(cachedWorkspace);
-        role = sessionStorage.getItem('currentRole') || 'viewer';
-        isPublicAccess = sessionStorage.getItem('isPublicAccess') === 'true';
+        workspace = cachedWorkspace;
+        role = cachedSession.role || 'viewer';
+        isPublicAccess = cachedSession.isPublicAccess;
       } else {
         // Cache miss or different slug - resolve from API
         let workspaceResponse = null;
@@ -121,7 +127,7 @@ export function BoardProvider({ children }) {
             role = 'viewer';
             isPublicAccess = true;
           }
-        } catch (error) {
+        } catch {
           // Not authenticated
           if (workspace.visibility === 'public') {
             isPublicAccess = true;
@@ -129,23 +135,20 @@ export function BoardProvider({ children }) {
         }
 
         // Cache in sessionStorage for optimization
-        sessionStorage.setItem('selectedBoard', JSON.stringify(workspace));
-        sessionStorage.setItem('selectedBoardId', workspace.id);
-        sessionStorage.setItem('currentRole', role);
-        sessionStorage.setItem('isPublicAccess', isPublicAccess.toString());
+        setBoardSession({ workspace, role, isPublicAccess });
       }
 
       // Get current user
       let user = null;
       try {
         user = await base44.auth.me();
-      } catch (error) {
+      } catch {
         // Not authenticated
       }
 
       // Compute permissions
-      const permissions = computePermissions(role, isPublicAccess, user);
-      const messages = computeMessages(isPublicAccess, user, role, permissions);
+      const permissions = computePermissions(role, isPublicAccess);
+      const messages = computeMessages(isPublicAccess, user);
 
       setState({
         workspace,
@@ -163,7 +166,7 @@ export function BoardProvider({ children }) {
       });
 
     } catch (error) {
-      console.error('Failed to load board context:', error);
+      console.error('Failed to load workspace context:', error);
       setState(prev => ({ ...prev, loading: false }));
     }
   };
@@ -171,18 +174,15 @@ export function BoardProvider({ children }) {
   const trackBoardView = async (slug) => {
     try {
       // Generate or retrieve session ID (persists across page loads)
-      let sessionId = sessionStorage.getItem('analytics_session_id');
-      if (!sessionId) {
-        sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-        sessionStorage.setItem('analytics_session_id', sessionId);
-      }
+      const sessionId = getOrCreateAnalyticsSessionId();
+      if (!sessionId) return;
 
       await base44.functions.invoke('publicTrackBoardView', {
         slug,
         session_id: sessionId,
         referrer: document.referrer || undefined
       });
-    } catch (error) {
+    } catch {
       // Silent fail - analytics should never break the app
     }
   };
@@ -201,14 +201,12 @@ export function BoardProvider({ children }) {
 /**
  * Compute permissions based on role and access type
  */
-function computePermissions(role, isPublicAccess, user) {
-  // Public access (unauthenticated or no role) - read-only, no support
+function computePermissions(role, isPublicAccess) {
+  // Public access (unauthenticated or no role) - read-only
   if (isPublicAccess) {
     return {
       canView: true,
-      canCreateFeedback: false,
-      canCreateRoadmap: false,
-      canCreateSupport: false, // Support is never public
+      canCreateItems: false,
       canComment: false,
       canManageSettings: false,
       canModerateContent: false,
@@ -219,14 +217,12 @@ function computePermissions(role, isPublicAccess, user) {
 
   // Authenticated with role
   const isAdmin = role === 'admin';
-  const isStaff = role === 'admin' || role === 'support';
+  const isStaff = role === 'admin';
   const isContributor = role === 'contributor' || isStaff;
 
   return {
     canView: true,
-    canCreateFeedback: isContributor,
-    canCreateRoadmap: isStaff,
-    canCreateSupport: isContributor, // Support requires role
+    canCreateItems: isContributor,
     canComment: isContributor,
     canManageSettings: isAdmin,
     canModerateContent: isStaff,
@@ -238,20 +234,20 @@ function computePermissions(role, isPublicAccess, user) {
 /**
  * Compute UI messages for various states
  */
-function computeMessages(isPublicAccess, user, role, permissions) {
+function computeMessages(isPublicAccess, user) {
   // Unauthenticated public viewer
   if (isPublicAccess && !user) {
     return {
-      loginPrompt: 'Login to contribute feedback and interact with this board',
+      loginPrompt: 'Login to contribute feedback and interact with this workspace',
       accessDenied: null
     };
   }
 
-  // Authenticated but public access (no role)
+      // Authenticated but public access (no role)
   if (isPublicAccess && user) {
     return {
       loginPrompt: null,
-      accessDenied: "You don't have permission to contribute to this board. Contact the admin to request access."
+      accessDenied: "You don't have permission to contribute to this workspace. Contact the admin to request access."
     };
   }
 

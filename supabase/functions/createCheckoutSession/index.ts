@@ -4,7 +4,6 @@ import { supabaseAdmin } from "../_shared/supabase.ts";
 
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 const servicePriceIdsRaw = Deno.env.get("STRIPE_PRICE_SERVICE_IDS") ?? "{}";
-const meteredPriceId = Deno.env.get("STRIPE_PRICE_METERED_ID") ?? "";
 
 const stripe = new Stripe(stripeSecretKey, { apiVersion: "2023-10-16" });
 
@@ -14,7 +13,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ALL_SERVICES = ["feedback", "roadmap", "changelog", "docs", "support"];
+const ALL_SERVICES = ["feedback", "roadmap", "changelog"];
 
 function parseServicePriceIds() {
   try {
@@ -42,7 +41,7 @@ Deno.serve(async (req) => {
       return new Response("ok", { headers: corsHeaders });
     }
 
-    if (!stripeSecretKey || !meteredPriceId) {
+    if (!stripeSecretKey) {
       return new Response(
         JSON.stringify({ error: "Stripe is not configured" }),
         {
@@ -112,22 +111,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    for (const service of servicesToEnable) {
+      const priceId = priceMap[service];
+      const price = await stripe.prices.retrieve(priceId);
+      const isMonthly = price.recurring?.interval === "month";
+      const isExpectedAmount = price.unit_amount === 2500;
+      if (!isMonthly || !isExpectedAmount) {
+        return new Response(
+          JSON.stringify({
+            error:
+              `Price for ${service} must be a monthly recurring price set to $25.00`,
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+    }
+
     const { data: billingRow } = await supabaseAdmin
       .from("billing_customers")
       .select("*")
       .eq("board_id", boardId)
       .maybeSingle();
-
-    const betaGrantedAt = billingRow?.beta_access_granted_at ?? null;
-    if (!betaGrantedAt) {
-      return new Response(
-        JSON.stringify({ error: "Beta access required" }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
-    }
 
     let customerId = billingRow?.stripe_customer_id ?? null;
     if (!customerId) {
@@ -139,7 +146,6 @@ Deno.serve(async (req) => {
       await supabaseAdmin.from("billing_customers").upsert({
         board_id: boardId,
         stripe_customer_id: customerId,
-        beta_access_granted_at: betaGrantedAt,
       });
     }
 
@@ -147,8 +153,6 @@ Deno.serve(async (req) => {
       price: priceMap[service],
       quantity: 1,
     }));
-
-    lineItems.push({ price: meteredPriceId, quantity: 1 });
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",

@@ -9,7 +9,7 @@ export const ErrorResponses = {
   NAME_REQUIRED: {
     error: "Name required",
     code: "NAME_REQUIRED",
-    message: "Please set your display name before performing this action",
+    message: "Please set your first and last name before performing this action",
   },
   FORBIDDEN: {
     error: "Forbidden",
@@ -29,13 +29,32 @@ function toAppUser(user: {
   user_metadata?: Record<string, unknown>;
 }) {
   const metadata = user.user_metadata ?? {};
+  const firstName = (
+    (metadata.first_name as string | undefined) ??
+    (metadata.given_name as string | undefined) ??
+    ""
+  ).trim();
+  const lastName = (
+    (metadata.last_name as string | undefined) ??
+    (metadata.family_name as string | undefined) ??
+    ""
+  ).trim();
+  const fullName =
+    ((metadata.full_name as string | undefined) ??
+      (metadata.name as string | undefined) ??
+      "").trim();
+  const fullNameParts = fullName ? fullName.split(/\s+/).filter(Boolean) : [];
+  const fallbackFirstName =
+    firstName || (fullNameParts.length > 0 ? fullNameParts.slice(0, -1).join(" ") || fullNameParts[0] : "");
+  const fallbackLastName =
+    lastName || (fullNameParts.length > 1 ? fullNameParts.slice(-1).join("") : "");
+
   return {
     id: user.id,
     email: user.email ?? null,
-    full_name:
-      (metadata.full_name as string | undefined) ??
-      (metadata.name as string | undefined) ??
-      "",
+    first_name: fallbackFirstName,
+    last_name: fallbackLastName,
+    full_name: `${fallbackFirstName} ${fallbackLastName}`.trim() || fullName,
     profile_photo_url: metadata.profile_photo_url as string | undefined,
   };
 }
@@ -78,8 +97,12 @@ export async function requireAuth(req: Request) {
   return { success: true, user, supabase, error: null };
 }
 
-export function requireDisplayName(user: { full_name?: string | null }) {
-  if (!user.full_name || user.full_name.trim() === "") {
+export function requireDisplayName(
+  user: { first_name?: string | null; last_name?: string | null; full_name?: string | null },
+) {
+  const firstName = user.first_name?.trim() ?? "";
+  const lastName = user.last_name?.trim() ?? "";
+  if (!firstName || !lastName) {
     return {
       success: false,
       error: Response.json(ErrorResponses.NAME_REQUIRED, { status: 403 }),
@@ -110,8 +133,7 @@ export async function getUserBoardRole(
 }
 
 const ROLE_HIERARCHY: Record<string, number> = {
-  admin: 4,
-  support: 3,
+  admin: 3,
   contributor: 2,
   viewer: 1,
 };
@@ -157,7 +179,7 @@ export async function requireAdmin(boardId: string, userId: string) {
 }
 
 export async function requireStaff(boardId: string, userId: string) {
-  return await requireMinimumRole(boardId, userId, "support");
+  return await requireMinimumRole(boardId, userId, "admin");
 }
 
 export async function verifyBoard(boardId: string) {

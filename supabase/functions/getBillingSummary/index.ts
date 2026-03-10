@@ -6,6 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+const SERVICE_PRICE = 25;
 
 Deno.serve(async (req) => {
   try {
@@ -63,24 +64,8 @@ Deno.serve(async (req) => {
       periodEnd = end.toISOString();
     }
 
-    const { data: usageDaily } = await supabaseAdmin
-      .from("billing_usage_daily")
-      .select("usage_date, total_count, billable_count")
-      .eq("board_id", boardId)
-      .gte("usage_date", periodStart.slice(0, 10))
-      .lte("usage_date", periodEnd.slice(0, 10));
-
-    const interactionsTotal = (usageDaily || []).reduce(
-      (sum, row) => sum + (row.total_count || 0),
-      0,
-    );
-    const billableTotal = (usageDaily || []).reduce(
-      (sum, row) => sum + (row.billable_count || 0),
-      0,
-    );
-
-    const serviceCost = enabledServices.length * 5;
-    const overageCost = billableTotal * 0.002;
+    const activeServiceCount = enabledServices.length;
+    const serviceCost = activeServiceCount * SERVICE_PRICE;
 
     return new Response(
       JSON.stringify({
@@ -89,12 +74,9 @@ Deno.serve(async (req) => {
         current_period_start: periodStart,
         current_period_end: periodEnd,
         enabled_services: enabledServices,
-        interactions_total: interactionsTotal,
-        billable_interactions: billableTotal,
+        active_service_count: activeServiceCount,
+        service_unit_price: SERVICE_PRICE,
         service_cost: serviceCost,
-        overage_cost: overageCost,
-        estimated_total: serviceCost + overageCost,
-        beta_access_granted_at: billingRow?.beta_access_granted_at ?? null,
         cancel_at_period_end: billingRow?.cancel_at_period_end ?? false,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

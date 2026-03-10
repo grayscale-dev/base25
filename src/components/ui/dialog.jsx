@@ -1,86 +1,206 @@
 "use client"
 
-import * as React from "react"
-import * as DialogPrimitive from "@radix-ui/react-dialog"
-import { X } from "lucide-react"
+import * as React from "react";
+import { Dialog as PrimeDialog } from "primereact/dialog";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
-const Dialog = DialogPrimitive.Root
+const DialogContext = React.createContext(null);
 
-const DialogTrigger = DialogPrimitive.Trigger
+const Dialog = ({ open, defaultOpen = false, onOpenChange, children }) => {
+  const [internalOpen, setInternalOpen] = React.useState(defaultOpen);
+  const isControlled = open !== undefined;
+  const currentOpen = isControlled ? open : internalOpen;
 
-const DialogPortal = DialogPrimitive.Portal
+  const setOpen = React.useCallback(
+    (nextOpen) => {
+      if (!isControlled) {
+        setInternalOpen(nextOpen);
+      }
+      onOpenChange?.(nextOpen);
+    },
+    [isControlled, onOpenChange]
+  );
 
-const DialogClose = DialogPrimitive.Close
+  return (
+    <DialogContext.Provider value={{ open: currentOpen, setOpen }}>
+      {children}
+    </DialogContext.Provider>
+  );
+};
+
+const composeHandlers = (first, second) => (event) => {
+  first?.(event);
+  second?.(event);
+};
+
+const DialogTrigger = React.forwardRef(
+  ({ asChild = false, children, onClick, ...props }, ref) => {
+    const context = React.useContext(DialogContext);
+    if (!context) {
+      throw new Error("DialogTrigger must be used within Dialog");
+    }
+
+    const handleClick = () => context.setOpen(true);
+
+    if (asChild && React.isValidElement(children)) {
+      return React.cloneElement(children, {
+        ...props,
+        ref,
+        onClick: composeHandlers(handleClick, composeHandlers(onClick, children.props.onClick)),
+      });
+    }
+
+    return (
+      <button
+        type="button"
+        ref={ref}
+        onClick={composeHandlers(handleClick, onClick)}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  }
+);
+DialogTrigger.displayName = "DialogTrigger";
+
+const DialogPortal = ({ children }) => <>{children}</>;
 
 const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
-  <DialogPrimitive.Overlay
-    ref={ref}
-    className={cn(
-      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-      className
-    )}
-    {...props} />
-))
-DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
-
-const DialogContent = React.forwardRef(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
-        className
-      )}
-      {...props}>
-      {children}
-      <DialogPrimitive.Close
-        className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-))
-DialogContent.displayName = DialogPrimitive.Content.displayName
-
-const DialogHeader = ({
-  className,
-  ...props
-}) => (
   <div
-    className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)}
-    {...props} />
-)
-DialogHeader.displayName = "DialogHeader"
+    ref={ref}
+    className={cn("fixed inset-0 z-50 bg-black/80", className)}
+    {...props}
+  />
+));
+DialogOverlay.displayName = "DialogOverlay";
 
-const DialogFooter = ({
-  className,
-  ...props
-}) => (
+const DialogClose = React.forwardRef(
+  ({ asChild = false, children, onClick, ...props }, ref) => {
+    const context = React.useContext(DialogContext);
+    if (!context) {
+      throw new Error("DialogClose must be used within Dialog");
+    }
+
+    const handleClick = () => context.setOpen(false);
+
+    if (asChild && React.isValidElement(children)) {
+      return React.cloneElement(children, {
+        ...props,
+        ref,
+        onClick: composeHandlers(handleClick, composeHandlers(onClick, children.props.onClick)),
+      });
+    }
+
+    return (
+      <button
+        type="button"
+        ref={ref}
+        onClick={composeHandlers(handleClick, onClick)}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  }
+);
+DialogClose.displayName = "DialogClose";
+
+const DialogContent = React.forwardRef(
+  ({ className, children, onHide, contentClassName, pt, ...props }, ref) => {
+    const context = React.useContext(DialogContext);
+    if (!context) {
+      throw new Error("DialogContent must be used within Dialog");
+    }
+
+    const mergedPt = {
+      ...pt,
+      header: {
+        ...(pt?.header || {}),
+        className: cn(
+          "absolute right-4 top-4 z-10 m-0 border-0 bg-transparent p-0",
+          pt?.header?.className
+        ),
+      },
+      headerIcons: {
+        ...(pt?.headerIcons || {}),
+        className: cn("flex items-center", pt?.headerIcons?.className),
+      },
+      closeButton: {
+        ...(pt?.closeButton || {}),
+        className: cn(
+          "inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+          pt?.closeButton?.className
+        ),
+      },
+      content: {
+        ...(pt?.content || {}),
+        className: cn("p-6", contentClassName, pt?.content?.className),
+      },
+    };
+
+    return (
+      <PrimeDialog
+        visible={context.open}
+        onHide={(event) => {
+          context.setOpen(false);
+          onHide?.(event);
+        }}
+        modal
+        draggable={false}
+        resizable={false}
+        dismissableMask
+        className={cn(
+          "relative w-full max-w-lg border bg-background p-0 shadow-lg sm:rounded-lg",
+          className
+        )}
+        maskClassName="fixed inset-0 z-50 bg-black/80"
+        pt={mergedPt}
+        appendTo={typeof document !== "undefined" ? document.body : null}
+        ref={ref}
+        {...props}
+      >
+        {children}
+      </PrimeDialog>
+    );
+  }
+);
+DialogContent.displayName = "DialogContent";
+
+const DialogHeader = ({ className, ...props }) => (
+  <div
+    className={cn("flex flex-col space-y-1.5 pr-10 text-center sm:text-left", className)}
+    {...props}
+  />
+);
+DialogHeader.displayName = "DialogHeader";
+
+const DialogFooter = ({ className, ...props }) => (
   <div
     className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
-    {...props} />
-)
-DialogFooter.displayName = "DialogFooter"
+    {...props}
+  />
+);
+DialogFooter.displayName = "DialogFooter";
 
 const DialogTitle = React.forwardRef(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title
+  <h2
     ref={ref}
     className={cn("text-lg font-semibold leading-none tracking-tight", className)}
-    {...props} />
-))
-DialogTitle.displayName = DialogPrimitive.Title.displayName
+    {...props}
+  />
+));
+DialogTitle.displayName = "DialogTitle";
 
 const DialogDescription = React.forwardRef(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description
+  <p
     ref={ref}
     className={cn("text-sm text-muted-foreground", className)}
-    {...props} />
-))
-DialogDescription.displayName = DialogPrimitive.Description.displayName
+    {...props}
+  />
+));
+DialogDescription.displayName = "DialogDescription";
 
 export {
   Dialog,
@@ -93,4 +213,4 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-}
+};

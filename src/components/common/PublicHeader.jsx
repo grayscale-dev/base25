@@ -1,29 +1,30 @@
+"use client";
+
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { createPageUrl } from '@/utils';
-import ThemeToggle from '@/components/common/ThemeToggle';
+import Link from '@/components/common/AppLink';
+import { publicRoutes } from '@/lib/public-routes';
 
 const navLinks = [
-  { label: 'Home', page: 'Home' },
-  { label: 'Features', page: 'Features' },
-  { label: 'About', page: 'About' },
-  { label: 'Pricing', page: 'Pricing' },
+  { label: 'Home', page: 'home', to: publicRoutes.home },
+  { label: 'Features', page: 'features', to: publicRoutes.features },
+  { label: 'About', page: 'about', to: publicRoutes.about },
+  { label: 'Pricing', page: 'pricing', to: publicRoutes.pricing },
 ];
 
-export default function PublicHeader({ currentPage = 'Home', onRequestAccess }) {
+export default function PublicHeader({ currentPage = 'home' }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/70 backdrop-blur">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <Link to={createPageUrl('Home')} className="flex items-center gap-2">
+        <Link to={publicRoutes.home} className="flex items-center gap-2">
           <img
             src="/base25-logo.png"
             alt="base25"
-            className="h-8 w-8 object-contain dark:invert"
+            className="h-8 w-8 object-contain"
           />
           <span className="text-lg font-bold text-slate-900">base25</span>
         </Link>
@@ -32,7 +33,7 @@ export default function PublicHeader({ currentPage = 'Home', onRequestAccess }) 
           {navLinks.map((link) => (
             <Link
               key={link.page}
-              to={createPageUrl(link.page)}
+              to={link.to}
               className={`text-sm font-medium ${
                 currentPage === link.page
                   ? 'text-slate-900'
@@ -45,20 +46,14 @@ export default function PublicHeader({ currentPage = 'Home', onRequestAccess }) 
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
-          <Link to={createPageUrl('Workspaces')}>
+          <Link to={publicRoutes.workspaceHub}>
             <Button variant="outline" size="sm">Sign In</Button>
           </Link>
-          <Button
-            size="sm"
-            className="bg-slate-900 hover:bg-slate-800 text-white"
-            onClick={onRequestAccess}
-          >
-            Request access
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
+          <Link to={publicRoutes.workspaceHub}>
+            <Button size="sm" className="bg-slate-900 hover:bg-slate-800 text-white">
+              Get Started
+            </Button>
+          </Link>
         </div>
 
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
@@ -73,8 +68,10 @@ export default function PublicHeader({ currentPage = 'Home', onRequestAccess }) 
                 {navLinks.map((link) => (
                   <Link
                     key={link.page}
-                    to={createPageUrl(link.page)}
-                    onClick={() => setMenuOpen(false)}
+                    to={link.to}
+                    onClick={() => {
+                      setMenuOpen(false);
+                    }}
                     className={
                       currentPage === link.page
                         ? 'font-medium text-slate-900'
@@ -86,17 +83,25 @@ export default function PublicHeader({ currentPage = 'Home', onRequestAccess }) 
                 ))}
               </nav>
               <div className="flex flex-col gap-3">
-                <Link to={createPageUrl('Workspaces')} onClick={() => setMenuOpen(false)}>
-                  <Button variant="outline" className="w-full">Sign In</Button>
-                </Link>
-                <Button
-                  className="bg-slate-900 hover:bg-slate-800 text-white w-full"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onRequestAccess?.();
-                  }}
-                >
-                  Request access
+                <Button variant="outline" className="w-full" asChild>
+                  <Link
+                    to={publicRoutes.workspaceHub}
+                    onClick={() => {
+                      setMenuOpen(false);
+                    }}
+                  >
+                    Sign In
+                  </Link>
+                </Button>
+                <Button className="bg-slate-900 hover:bg-slate-800 text-white w-full" asChild>
+                  <Link
+                    to={publicRoutes.workspaceHub}
+                    onClick={() => {
+                      setMenuOpen(false);
+                    }}
+                  >
+                    Get Started
+                  </Link>
                 </Button>
               </div>
             </div>

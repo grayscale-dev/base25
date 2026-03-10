@@ -8,7 +8,7 @@
  */
 export const ErrorResponses = {
   UNAUTHORIZED: { error: 'Unauthorized', code: 'UNAUTHORIZED', message: 'Authentication required' },
-  NAME_REQUIRED: { error: 'Name required', code: 'NAME_REQUIRED', message: 'Please set your display name before performing this action' },
+  NAME_REQUIRED: { error: 'Name required', code: 'NAME_REQUIRED', message: 'Please set your first and last name before performing this action' },
   FORBIDDEN: { error: 'Forbidden', code: 'FORBIDDEN', message: 'Insufficient permissions' },
   WORKSPACE_NOT_FOUND: { error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' },
   INVALID_INPUT: { error: 'Invalid input', code: 'INVALID_INPUT' }
@@ -46,12 +46,15 @@ export async function requireAuth(base44) {
 }
 
 /**
- * Require display name for write actions
- * Contributors, support, and admins must have a name set
+ * Require first and last name for write actions
+ * Contributors and admins must have both names set
  * Returns { success: boolean, error: Response|null }
  */
 export function requireDisplayName(user) {
-  if (!user.full_name || user.full_name.trim() === '') {
+  const firstName = user?.first_name?.trim() || '';
+  const lastName = user?.last_name?.trim() || '';
+
+  if (!firstName || !lastName) {
     return {
       success: false,
       error: Response.json(ErrorResponses.NAME_REQUIRED, { status: 403 })
@@ -83,8 +86,7 @@ export async function getUserWorkspaceRole(base44, workspaceId, userId) {
  * Role hierarchy for permission checks
  */
 const ROLE_HIERARCHY = {
-  'admin': 4,
-  'support': 3,
+  'admin': 3,
   'contributor': 2,
   'viewer': 1
 };
@@ -131,11 +133,11 @@ export async function requireAdmin(base44, workspaceId, userId) {
 }
 
 /**
- * Check if user is staff (support or admin)
+ * Check if user is staff (admin)
  * Returns { success: boolean, error: Response|null, role: string|null }
  */
 export async function requireStaff(base44, workspaceId, userId) {
-  return await requireMinimumRole(base44, workspaceId, userId, 'support');
+  return await requireMinimumRole(base44, workspaceId, userId, 'admin');
 }
 
 /**
@@ -170,7 +172,7 @@ export async function verifyWorkspace(base44, workspaceId) {
 
 /**
  * Complete authorization flow for write actions requiring contributor+
- * Checks: auth, workspace exists, user has role, display name set
+ * Checks: auth, workspace exists, user has role, required names set
  * Returns { success: boolean, user, workspace, role, error: Response|null }
  */
 export async function authorizeWriteAction(base44, workspaceId, minimumRole = 'contributor') {
@@ -194,7 +196,7 @@ export async function authorizeWriteAction(base44, workspaceId, minimumRole = 'c
     return { success: false, error: roleCheck.error };
   }
   
-  // 4. Require display name for contributors and above
+  // 4. Require first + last name for contributors and above
   const nameCheck = requireDisplayName(user);
   if (!nameCheck.success) {
     return { success: false, error: nameCheck.error };

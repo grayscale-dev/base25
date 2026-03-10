@@ -1,4 +1,4 @@
-import { ChevronDown, Settings, Key, Folder } from 'lucide-react';
+import { ChevronDown, Settings, Folder } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -8,10 +8,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import Badge from '@/components/common/Badge';
-import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import Link from '@/components/common/AppLink';
 
-export default function WorkspaceHeader({ workspace, workspaces, role, onSwitch, isAdmin }) {
+export default function WorkspaceHeader({ workspace, workspaces, role, onSwitch }) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-4">
@@ -46,30 +46,28 @@ export default function WorkspaceHeader({ workspace, workspaces, role, onSwitch,
               </DropdownMenuItem>
             ))}
             {workspaces.length > 1 && <DropdownMenuSeparator />}
-            <DropdownMenuItem asChild>
-              <Link to={createPageUrl('WorkspaceSelector')} className="cursor-pointer">
+            <DropdownMenuItem
+              onClick={() => { window.location.href = createPageUrl('WorkspaceSelector'); }}
+              className="cursor-pointer"
+            >
                 View all workspaces
-              </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         
-        <Badge variant={role === 'admin' ? 'primary' : role === 'support' ? 'purple' : 'default'}>
+        <Badge variant={role === 'admin' ? 'primary' : 'default'}>
           {role.charAt(0).toUpperCase() + role.slice(1)}
         </Badge>
       </div>
       
-      {isAdmin && (
+      {role && (
         <div className="flex items-center gap-2">
-          <Link to={createPageUrl('ApiDocs')}>
-            <Button variant="ghost" size="sm" className="text-slate-600">
-              <Key className="h-4 w-4 mr-2" />
-              API
-            </Button>
-          </Link>
           <Link to={createPageUrl('WorkspaceSettings')}>
-            <Button variant="ghost" size="sm" className="text-slate-600">
-              <Settings className="h-4 w-4 mr-2" />
+            <Button
+              variant="ghost"
+              className="h-auto gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <Settings className="h-4 w-4" />
               Settings
             </Button>
           </Link>

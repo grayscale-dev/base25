@@ -1,15 +1,33 @@
+import {
+  getDefaultWorkspaceSection,
+  WORKSPACE_DEFAULT_SECTION,
+} from "@/lib/workspace-sections";
+
 /**
- * Generate canonical board URL paths
- * @param {string} slug - Board slug
- * @param {string} section - Board section (feedback, roadmap, changelog, docs, support, etc.)
+ * Generate canonical workspace URL paths.
+ * @param {string} slug - Workspace slug
+ * @param {string} section - Workspace section (all, feedback, roadmap, changelog)
  * @param {Object} options - Additional options
  * @param {string} options.query - Query string (e.g., "?id=123&tab=details")
- * @returns {string} Canonical board URL path
+ * @returns {string} Canonical workspace URL path
  */
-export function boardUrl(slug, section, options = {}) {
-  const path = `/board/${slug}/${section}`;
+export function workspaceUrl(slug, section, options = {}) {
+  const resolvedSection = section || WORKSPACE_DEFAULT_SECTION;
+  const path = `/workspace/${slug}/${resolvedSection}`;
   return options.query ? `${path}${options.query}` : path;
 }
+
+export function workspaceDefaultUrl(slug, role = "viewer", isPublicAccess = false, options = {}) {
+  return workspaceUrl(slug, getDefaultWorkspaceSection(role, isPublicAccess), options);
+}
+
+export function workspaceItemUrl(slug, itemId, options = {}) {
+  const path = `/workspace/${slug}/item/${itemId}`;
+  return options.query ? `${path}${options.query}` : path;
+}
+
+// Backward-compatible alias for older imports.
+export const boardUrl = workspaceUrl;
 
 /**
  * Build query string from params object

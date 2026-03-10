@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import LoadingSpinner from '@/components/common/LoadingSpinner';
+import PageLoadingState from '@/components/common/PageLoadingState';
 
 export default function ProtectedRoute({ children }) {
-  const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
 
@@ -21,7 +19,7 @@ export default function ProtectedRoute({ children }) {
         return;
       }
       setAuthenticated(true);
-    } catch (error) {
+    } catch {
       base44.auth.redirectToLogin(window.location.href);
     } finally {
       setChecking(false);
@@ -29,11 +27,7 @@ export default function ProtectedRoute({ children }) {
   };
 
   if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="lg" text="Checking authentication..." />
-      </div>
-    );
+    return <PageLoadingState fullHeight text="Checking authentication..." />;
   }
 
   return authenticated ? children : null;

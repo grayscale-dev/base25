@@ -1,6 +1,13 @@
+import { env } from "@/lib/env";
+
 const isNode = typeof window === 'undefined';
-const windowObj = isNode ? { localStorage: new Map() } : window;
-const storage = windowObj.localStorage;
+const storage = isNode
+	? {
+		getItem: () => null,
+		setItem: () => { },
+		removeItem: () => { },
+	}
+	: window.localStorage;
 
 const toSnakeCase = (str) => {
 	return str.replace(/([A-Z])/g, '_$1').toLowerCase();
@@ -53,11 +60,13 @@ const getAppParams = () => {
 		storage.setItem('base44_access_token', legacyToken);
 	}
 	return {
-		appId: getAppParamValue("app_id", { defaultValue: import.meta.env.VITE_BASE44_APP_ID }),
+		appId: getAppParamValue("app_id", { defaultValue: env.base44AppId }),
 		token: accessToken || legacyToken,
-		fromUrl: getAppParamValue("from_url", { defaultValue: window.location.href }),
-		functionsVersion: getAppParamValue("functions_version", { defaultValue: import.meta.env.VITE_BASE44_FUNCTIONS_VERSION }),
-		appBaseUrl: getAppParamValue("app_base_url", { defaultValue: import.meta.env.VITE_BASE44_APP_BASE_URL }),
+		fromUrl: getAppParamValue("from_url", {
+			defaultValue: isNode ? env.base44AppBaseUrl : window.location.href,
+		}),
+		functionsVersion: getAppParamValue("functions_version", { defaultValue: env.base44FunctionsVersion }),
+		appBaseUrl: getAppParamValue("app_base_url", { defaultValue: env.base44AppBaseUrl }),
 	}
 }
 

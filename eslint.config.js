@@ -1,15 +1,28 @@
 import globals from "globals";
 import pluginJs from "@eslint/js";
+import pluginNext from "@next/eslint-plugin-next";
 import pluginReact from "eslint-plugin-react";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginUnusedImports from "eslint-plugin-unused-imports";
 
 export default [
   {
+    ignores: [
+      ".next/**",
+      ".next_stale_*/**",
+      "node_modules/**",
+      "supabase/**",
+      "functions/**",
+    ],
+  },
+  {
     files: [
+      "app/**/*.{js,mjs,cjs,jsx}",
       "src/components/**/*.{js,mjs,cjs,jsx}",
-      "src/pages/**/*.{js,mjs,cjs,jsx}",
+      "src/screens/**/*.{js,mjs,cjs,jsx}",
       "src/Layout.jsx",
+      "src/App.jsx",
+      "src/ClientAppShell.jsx",
     ],
     ignores: ["src/lib/**/*", "src/components/ui/**/*"],
     ...pluginJs.configs.recommended,
@@ -30,6 +43,7 @@ export default [
       },
     },
     plugins: {
+      "@next/next": pluginNext,
       react: pluginReact,
       "react-hooks": pluginReactHooks,
       "unused-imports": pluginUnusedImports,
@@ -55,6 +69,10 @@ export default [
         { ignore: ["cmdk-input-wrapper", "toast-close"] },
       ],
       "react-hooks/rules-of-hooks": "error",
+      ...pluginNext.configs.recommended.rules,
+      ...pluginNext.configs["core-web-vitals"].rules,
+      "@next/next/no-html-link-for-pages": "off",
+      "@next/next/no-img-element": "off",
     },
   },
 ];

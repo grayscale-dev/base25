@@ -7,6 +7,8 @@ import { requireAuth, ErrorResponses } from './authHelpers.js';
  * Auth: Required
  * 
  * Request: {
+ *   first_name?: string,
+ *   last_name?: string,
  *   full_name?: string,
  *   profile_photo_url?: string (optional, non-blocking)
  * }
@@ -17,7 +19,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const payload = await req.json();
-    const { full_name, profile_photo_url } = payload;
+    const { first_name, last_name, full_name, profile_photo_url } = payload;
 
     // Require authentication
     const authCheck = await requireAuth(base44);
@@ -27,9 +29,23 @@ Deno.serve(async (req) => {
 
     const updates = {};
 
-    // Update display name if provided
-    if (full_name !== undefined) {
-      // Validate name is not empty
+    const trimmedFirstName =
+      typeof first_name === 'string' ? first_name.trim() : undefined;
+    const trimmedLastName =
+      typeof last_name === 'string' ? last_name.trim() : undefined;
+
+    if (trimmedFirstName !== undefined || trimmedLastName !== undefined) {
+      if (!trimmedFirstName || !trimmedLastName) {
+        return Response.json({
+          error: 'Invalid name',
+          code: 'INVALID_INPUT',
+          message: 'First and last name are required'
+        }, { status: 400 });
+      }
+      updates.first_name = trimmedFirstName;
+      updates.last_name = trimmedLastName;
+      updates.full_name = `${trimmedFirstName} ${trimmedLastName}`.trim();
+    } else if (full_name !== undefined) {
       if (full_name.trim() === '') {
         return Response.json({
           error: 'Invalid name',

@@ -4,8 +4,8 @@ import ProfileCompletionModal from './ProfileCompletionModal';
 
 /**
  * Profile Guard Hook
- * 
- * Wraps write actions to enforce display name requirement.
+ *
+ * Wraps write actions to enforce required first/last name profile fields.
  * 
  * Usage:
  * ```js
@@ -30,12 +30,16 @@ export function useProfileGuard() {
   const [showModal, setShowModal] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
 
+  const hasRequiredName = Boolean(
+    user?.first_name?.trim() &&
+      user?.last_name?.trim()
+  );
+
   /**
    * Guard a write action - checks if profile is complete before executing
    */
   const guardAction = async (action) => {
-    // Check if user has display name
-    if (!user?.full_name || user.full_name.trim() === '') {
+    if (!hasRequiredName) {
       // Store the action and show modal
       return new Promise((resolve, reject) => {
         setPendingAction({ action, resolve, reject });
@@ -88,6 +92,8 @@ export function useProfileGuard() {
       isOpen={showModal}
       onComplete={handleComplete}
       onCancel={handleCancel}
+      initialFirstName={user?.first_name || ''}
+      initialLastName={user?.last_name || ''}
     />
   );
 

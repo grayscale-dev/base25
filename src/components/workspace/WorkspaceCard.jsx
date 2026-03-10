@@ -1,4 +1,4 @@
-import { Folder, MessageSquare, GitBranch, Users, ChevronRight } from 'lucide-react';
+import { Folder, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import Badge from '@/components/common/Badge';
 import { cn } from '@/lib/utils';
@@ -35,19 +35,12 @@ export default function WorkspaceCard({ workspace, role, onClick }) {
       )}
       
       <div className="flex items-center gap-2 flex-wrap">
-        <Badge variant={role === 'admin' ? 'primary' : role === 'support' ? 'purple' : 'default'}>
+        <Badge variant={role === 'admin' ? 'primary' : 'default'}>
           {role.charAt(0).toUpperCase() + role.slice(1)}
         </Badge>
         
         {workspace.visibility === 'public' && (
           <Badge variant="outline">Public</Badge>
-        )}
-        
-        {workspace.support_enabled && (
-          <Badge variant="outline" className="flex items-center gap-1">
-            <MessageSquare className="h-3 w-3" />
-            Support
-          </Badge>
         )}
       </div>
     </Card>

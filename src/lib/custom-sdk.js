@@ -1,129 +1,28 @@
 import { supabase } from "./supabase-client.js";
-import { createClient } from "@supabase/supabase-js";
+import { env } from "./env.js";
 
-// Handle both Vite (import.meta.env) and Node.js (process.env) environments
-const getEnvVar = (key, defaultValue) => {
-  if (typeof import.meta !== "undefined" && import.meta.env) {
-    return import.meta.env[key] || defaultValue;
-  }
-  return process.env[key] || defaultValue;
+const isDevEnv = process.env.NODE_ENV === "development";
+const supabaseUrl = env.supabaseUrl;
+
+const isNetworkFetchFailure = (error) => {
+  const message = error?.message || "";
+  return /failed to fetch|fetch failed|networkerror|load failed/i.test(message);
 };
 
-const isDevEnv =
-  (typeof import.meta !== "undefined" && import.meta.env?.DEV) ||
-  process.env.NODE_ENV === "development";
-
-// Create service role client for admin operations (bypasses RLS)
-const supabaseUrl = getEnvVar("VITE_SUPABASE_URL", "http://127.0.0.1:54321");
-const supabaseServiceKey = getEnvVar(
-  "VITE_SUPABASE_SERVICE_ROLE_KEY",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU"
-);
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-  db: {
-    schema: "public",
-  },
-});
-
-const INTERACTIONS_ENDPOINT = getEnvVar(
-  "VITE_INTERACTIONS_ENDPOINT",
-  "/api/interactions"
-);
-
-const BILLABLE_INTERACTIONS = {
-  feedback: { service: "feedback", create: "create_post" },
-  feedback_responses: { service: "feedback", create: "create_comment" },
-  roadmap_items: { service: "roadmap", create: "create_item" },
-  roadmap_updates: { service: "roadmap", create: "create_update" },
-  changelog_entries: { service: "changelog", create: "create_entry" },
-  doc_pages: { service: "docs", create: "create_page", update: "edit_page" },
-  doc_comments: { service: "docs", create: "create_comment" },
-  support_threads: { service: "support", create: "create_ticket" },
-  support_messages: { service: "support", create: "send_message" },
-};
-
-async function recordInteraction(payload) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
-  if (!accessToken) return;
-
-  const body = JSON.stringify(payload);
-
-  try {
-    const response = await fetch(INTERACTIONS_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Interaction tracking failed: ${response.status}`);
-    }
-  } catch (error) {
-    try {
-      await supabase.functions.invoke("recordInteraction", {
-        body: payload,
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-    } catch (fallbackError) {
-      console.warn("Interaction tracking failed:", fallbackError || error);
-    }
-  }
-}
-
-async function trackInteraction(operation, tableName, record, data, useServiceRole) {
-  if (useServiceRole) return;
-  const config = BILLABLE_INTERACTIONS[tableName];
-  if (!config) return;
-  const eventType = config[operation];
-  if (!eventType) return;
-
-  const boardId =
-    record?.board_id ||
-    data?.board_id ||
-    record?.workspace_id ||
-    data?.workspace_id;
-
-  if (!boardId) return;
-
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData?.user?.id) return;
-
-  const timestamp =
-    record?.created_at ||
-    record?.updated_at ||
-    new Date().toISOString();
-
-  const idempotencyKey = record?.id
-    ? `${tableName}:${record.id}:${eventType}`
-    : null;
-
-  await recordInteraction({
-    workspace_id: boardId,
-    service: config.service,
-    event_type: eventType,
-    timestamp,
-    actor_user_id: userData.user.id,
-    idempotency_key: idempotencyKey,
-  });
-}
+const buildSupabaseConnectionError = () =>
+  new Error(
+    `Unable to reach Supabase Auth at ${supabaseUrl}. Start Supabase locally or configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY with a reachable project.`
+  );
 
 
 /**
  * Base Entity class that provides CRUD operations compatible with Base44 SDK
  */
 export class CustomEntity {
-  constructor(tableName, useServiceRole = false) {
+  constructor(tableName) {
     this.tableName = tableName;
-    this.supabase = useServiceRole ? supabaseAdmin : supabase;
-    this.useServiceRole = useServiceRole;
+    this.supabase = supabase;
+    this.useServiceRole = false;
   }
 
   /**
@@ -338,13 +237,6 @@ export class CustomEntity {
       console.error(`Create error for ${this.tableName}:`, error);
       throw error;
     }
-    await trackInteraction(
-      "create",
-      this.tableName,
-      result,
-      mappedData,
-      this.useServiceRole
-    );
     return this.mapResultFields(result);
   }
 
@@ -389,13 +281,6 @@ export class CustomEntity {
       return null;
     }
 
-    await trackInteraction(
-      "update",
-      this.tableName,
-      result,
-      mappedData,
-      this.useServiceRole
-    );
     return this.mapResultFields(result);
   }
 
@@ -431,19 +316,25 @@ export class CustomEntity {
  */
 export class UserEntity extends CustomEntity {
   constructor() {
-    super("users", true); // Use service role for user operations to bypass RLS when needed
+    super("users");
   }
 
   mapAuthUser(user) {
+    const metadata = user.user_metadata || {};
+    const firstName = (metadata.first_name || metadata.given_name || "").trim();
+    const lastName = (metadata.last_name || metadata.family_name || "").trim();
+    const fallbackFullName = (metadata.full_name || metadata.name || "").trim();
+    const resolvedFullName =
+      firstName && lastName ? `${firstName} ${lastName}`.trim() : fallbackFullName;
+
     return {
       id: user.id,
       email: user.email,
-      full_name:
-        user.user_metadata?.full_name ||
-        user.user_metadata?.name ||
-        "",
-      profile_photo_url: user.user_metadata?.profile_photo_url || null,
-      role: user.user_metadata?.role || "user",
+      first_name: firstName || "",
+      last_name: lastName || "",
+      full_name: resolvedFullName,
+      profile_photo_url: metadata.profile_photo_url || null,
+      role: metadata.role || "user",
       created_date: user.created_at,
       updated_date: user.updated_at,
     };
@@ -573,6 +464,8 @@ export class UserEntity extends CustomEntity {
               password: devPassword,
               options: {
                 data: {
+                  first_name: "Development",
+                  last_name: "User",
                   full_name: "Development User",
                   role: "admin",
                 },
@@ -629,6 +522,9 @@ export class UserEntity extends CustomEntity {
           window.location.reload();
         }
       } catch (error) {
+        if (isNetworkFetchFailure(error)) {
+          throw buildSupabaseConnectionError();
+        }
         console.error("Development login failed:", error);
         throw error;
       }
@@ -659,20 +555,29 @@ export class UserEntity extends CustomEntity {
   }
 
   async redirectToLogin(redirectTo = window.location.href) {
-    let provider = getEnvVar("VITE_AUTH_PROVIDER");
-    if (!provider) {
-      if (isDevEnv) {
-        provider = "dev";
-      } else {
-        throw new Error(
-          "VITE_AUTH_PROVIDER is not set. Configure an OAuth provider for production."
-        );
+    try {
+      let provider = env.authProvider;
+      if (!provider) {
+        if (isDevEnv) {
+          provider = "dev";
+        } else {
+          throw new Error(
+            "NEXT_PUBLIC_AUTH_PROVIDER is not set. Configure an OAuth provider for production."
+          );
+        }
       }
+      if (redirectTo) {
+        localStorage.setItem("post_login_redirect", redirectTo);
+      }
+      await this.login(provider);
+      return { ok: true };
+    } catch (error) {
+      const resolvedError = isNetworkFetchFailure(error)
+        ? buildSupabaseConnectionError()
+        : error;
+      console.error("Unable to start login flow:", resolvedError);
+      return { ok: false, error: resolvedError };
     }
-    if (redirectTo) {
-      localStorage.setItem("post_login_redirect", redirectTo);
-    }
-    return this.login(provider);
   }
 
   /**
@@ -720,25 +625,25 @@ export class UserEntity extends CustomEntity {
   }
 
   /**
-   * List all users (admin function using service role)
+   * List all users
    * @param {string} orderBy - Field to order by
    * @param {number} limit - Maximum number of records
    * @returns {Promise<Array>} Array of users
    */
   async list(orderBy = "created_at", limit = null) {
-    console.warn("User listing is not supported without a users table.");
+    console.warn("User listing is not available without a users table.");
     return [];
   }
 
   /**
-   * Filter users (admin function using service role)
+   * Filter users
    * @param {Object} conditions - Filter conditions
    * @param {string} orderBy - Field to order by
    * @param {number} limit - Maximum number of records
    * @returns {Promise<Array>} Array of filtered users
    */
   async filter(conditions = {}, orderBy = "created_at", limit = null) {
-    console.warn("User filtering is not supported without a users table.");
+    console.warn("User filtering is not available without a users table.");
     return [];
   }
 }
@@ -752,19 +657,12 @@ const ENTITY_TABLE_MAP = {
   Board: "boards",
   BoardRole: "board_roles",
   BoardAccessRule: "board_access_rules",
-  Feedback: "feedback",
-  FeedbackResponse: "feedback_responses",
-  RoadmapItem: "roadmap_items",
-  RoadmapUpdate: "roadmap_updates",
-  SupportThread: "support_threads",
-  SupportMessage: "support_messages",
+  Item: "items",
+  ItemActivity: "item_activities",
+  ItemStatusGroup: "item_status_groups",
+  ItemStatus: "item_statuses",
   ApiToken: "api_tokens",
   AuditLog: "audit_logs",
-  ChangelogEntry: "changelog_entries",
-  DocPage: "doc_pages",
-  DocComment: "doc_comments",
-  DocQueue: "doc_queue",
-  WaitlistSignup: "waitlist_signups",
 };
 
 function entityNameToTableName(entityName) {
@@ -776,29 +674,6 @@ function entityNameToTableName(entityName) {
     .replace(/([A-Z])/g, "_$1")
     .toLowerCase()
     .replace(/^_/, "");
-}
-
-/**
- * Determine if an entity should use service role based on common patterns
- * @param {string} entityName - Entity name
- * @returns {boolean} Whether to use service role
- */
-function shouldUseServiceRole(entityName) {
-  const serviceRoleEntities = [
-    "user",
-    "transaction",
-    "usermembership",
-    "payment",
-    "order",
-    "subscription",
-    "admin",
-    "audit",
-    "log",
-  ];
-
-  return serviceRoleEntities.some((pattern) =>
-    entityName.toLowerCase().includes(pattern)
-  );
 }
 
 /**
@@ -820,15 +695,12 @@ function createEntitiesProxy() {
 
         // Create new entity on-demand
         const tableName = entityNameToTableName(entityName);
-        const useServiceRole = shouldUseServiceRole(entityName);
-        const entity = new CustomEntity(tableName, useServiceRole);
+        const entity = new CustomEntity(tableName);
 
         // Cache the entity for future use
         entityCache.set(entityName, entity);
 
-        console.log(
-          `Created entity: ${entityName} -> ${tableName} (service role: ${useServiceRole})`
-        );
+        console.log(`Created entity: ${entityName} -> ${tableName}`);
 
         return entity;
       },

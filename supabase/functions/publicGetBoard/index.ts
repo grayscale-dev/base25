@@ -120,7 +120,6 @@ Deno.serve(async (req) => {
         logo_url: data.logo_url || "",
         primary_color: data.primary_color || "#0f172a",
         visibility: data.visibility,
-        support_enabled: data.support_enabled || false,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

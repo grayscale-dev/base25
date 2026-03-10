@@ -45,7 +45,7 @@ export const RATE_LIMITS = {
     burst: 1,
   },
   
-  // Waitlist signup - moderate
+  // Public signup endpoint - moderate
   SIGNUP: {
     windowMs: 60000, // 1 minute
     maxRequests: 3, // 3 signups per minute per IP

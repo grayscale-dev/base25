@@ -14,8 +14,7 @@ import { applyRateLimit, addCacheHeaders, RATE_LIMITS } from './rateLimiter.js';
  *   description: string,
  *   logo_url: string,
  *   primary_color: string,
- *   visibility: "public",
- *   support_enabled: boolean
+ *   visibility: "public"
  * }
  */
 Deno.serve(async (req) => {
@@ -58,8 +57,7 @@ Deno.serve(async (req) => {
       description: workspace.description || '',
       logo_url: workspace.logo_url || '',
       primary_color: workspace.primary_color || '#0f172a',
-      visibility: workspace.visibility,
-      support_enabled: workspace.support_enabled || false
+      visibility: workspace.visibility
     });
     
     // Cache for 5 minutes (workspace metadata rarely changes)
