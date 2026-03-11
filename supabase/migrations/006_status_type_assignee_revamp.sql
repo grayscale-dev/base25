@@ -238,8 +238,7 @@ WHERE i.workspace_id = s.workspace_id
   AND i.status_id IS NULL;
 
 UPDATE public.items i
-SET status_id = fallback_status.id
-FROM LATERAL (
+SET status_id = (
   SELECT s.id
   FROM public.item_statuses s
   WHERE s.workspace_id = i.workspace_id
@@ -247,7 +246,7 @@ FROM LATERAL (
     AND s.is_active = TRUE
   ORDER BY s.display_order ASC, s.created_at ASC
   LIMIT 1
-) fallback_status
+)
 WHERE i.status_id IS NULL;
 
 ALTER TABLE public.items
@@ -328,15 +327,14 @@ WHERE i.workspace_id = t.workspace_id
   AND i.item_type_id IS NULL;
 
 UPDATE public.items i
-SET item_type_id = fallback_type.id
-FROM LATERAL (
+SET item_type_id = (
   SELECT t.id
   FROM public.item_types t
   WHERE t.workspace_id = i.workspace_id
     AND t.is_active = TRUE
   ORDER BY t.display_order ASC, t.created_at ASC
   LIMIT 1
-) fallback_type
+)
 WHERE i.item_type_id IS NULL;
 
 ALTER TABLE public.items
