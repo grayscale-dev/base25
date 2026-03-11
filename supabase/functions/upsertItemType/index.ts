@@ -1,7 +1,6 @@
 import { authorizeWriteAction } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
-import { isValidGroupKey } from "../_shared/itemValidation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,15 +14,6 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function normalizeStatusKey(value: unknown) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -33,50 +23,47 @@ Deno.serve(async (req) => {
   try {
     const payload = await req.json();
     const workspaceId = payload?.workspace_id;
-    const groupKey = payload?.group_key;
-    const statusId = payload?.status_id;
+    const itemTypeId = payload?.item_type_id || null;
     const label = String(payload?.label || "").trim();
-    const displayOrder = Number(payload?.display_order ?? 0);
     const isActive = payload?.is_active ?? true;
+    const displayOrder = Number(payload?.display_order ?? 0);
 
-    if (!workspaceId || !isValidGroupKey(groupKey) || !label) {
-      return json(
-        { error: "workspace_id, group_key, and label are required" },
-        400,
-      );
+    if (!workspaceId || !label) {
+      return json({ error: "workspace_id and label are required" }, 400);
     }
 
     const auth = await authorizeWriteAction(req, workspaceId, "admin");
     if (!auth.success) return auth.error;
 
-    const mutation = statusId
+    const mutation = itemTypeId
       ? supabaseAdmin
-          .from("item_statuses")
+          .from("item_types")
           .update({
             label,
-            group_key: groupKey,
-            display_order: Number.isNaN(displayOrder) ? 0 : displayOrder,
             is_active: Boolean(isActive),
+            display_order: Number.isNaN(displayOrder) ? 0 : displayOrder,
           })
-          .eq("id", statusId)
-      : supabaseAdmin.from("item_statuses").insert({
+          .eq("workspace_id", workspaceId)
+          .eq("id", itemTypeId)
+      : supabaseAdmin.from("item_types").insert({
           workspace_id: workspaceId,
-          group_key: groupKey,
           label,
-          status_key: normalizeStatusKey(crypto.randomUUID()),
-          display_order: Number.isNaN(displayOrder) ? 0 : displayOrder,
           is_active: Boolean(isActive),
+          display_order: Number.isNaN(displayOrder) ? 0 : displayOrder,
         });
 
     const { data, error } = await mutation.select("*").single();
     if (error) {
-      console.error("upsertItemStatus error:", error);
-      return json({ error: "Failed to save status" }, 500);
+      const isDuplicate = error.code === "23505";
+      return json(
+        { error: isDuplicate ? "Item type label must be unique in workspace" : "Failed to save item type" },
+        isDuplicate ? 409 : 500,
+      );
     }
 
     return json(data);
   } catch (error) {
-    console.error("upsertItemStatus exception:", error);
+    console.error("upsertItemType error:", error);
     return json({ error: "Internal server error" }, 500);
   }
 });

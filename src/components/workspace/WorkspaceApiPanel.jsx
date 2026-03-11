@@ -53,7 +53,7 @@ const API_ENDPOINTS = [
     permissions: ["items:read"],
     params: [
       { name: "group", type: "string", description: "Filter by group (feedback, roadmap, changelog)" },
-      { name: "status", type: "string", description: "Filter by status key for the selected group" },
+      { name: "status_id", type: "string", description: "Filter by status UUID" },
       { name: "limit", type: "number", description: "Max items to return (default: 50)" },
     ],
     response: `{
@@ -62,7 +62,7 @@ const API_ENDPOINTS = [
       "id": "it_123",
       "group_key": "feedback",
       "title": "Improve onboarding flow",
-      "status_key": "planned",
+      "status_id": "f07d59db-9d7f-4a95-9194-e25ecf570f80",
       "metadata": { "type": "feature_request" },
       "created_date": "2025-01-15T10:00:00Z"
     }
@@ -76,17 +76,17 @@ const API_ENDPOINTS = [
     description: "Create a new unified item",
     permissions: ["items:write"],
     body: `{
-  "group_key": "feedback",
-  "status_key": "open",
+  "status_id": "f07d59db-9d7f-4a95-9194-e25ecf570f80",
   "title": "Bug in login page",
   "description": "Login fails on mobile browsers",
-  "metadata": { "type": "bug", "priority": "high" }
+  "item_type_id": "d68dbd91-3ddf-4fc8-a053-ac0e7e4a40c3",
+  "metadata": { "priority": "high" }
 }`,
     response: `{
   "id": "it_124",
   "group_key": "feedback",
   "title": "Bug in login page",
-  "status_key": "open",
+  "status_id": "f07d59db-9d7f-4a95-9194-e25ecf570f80",
   "created_date": "2025-01-15T10:00:00Z"
 }`,
   },
@@ -99,7 +99,7 @@ const API_ENDPOINTS = [
     response: `{
   "id": "it_124",
   "group_key": "roadmap",
-  "status_key": "in_progress",
+  "status_id": "130cf2d9-4658-412d-a5fc-97b8d511d153",
   "metadata": { "target_quarter": "Q2 2026" }
 }`,
   },
@@ -110,12 +110,12 @@ const API_ENDPOINTS = [
     permissions: ["items:read"],
     body: `{
   "groups": [
-    { "group_key": "feedback", "display_name": "Feedback" },
-    { "group_key": "roadmap", "display_name": "Roadmap" },
-    { "group_key": "changelog", "display_name": "Changelog" }
+    { "group_key": "feedback", "display_name": "Feedback", "color_hex": "#2563EB" },
+    { "group_key": "roadmap", "display_name": "Roadmap", "color_hex": "#7C3AED" },
+    { "group_key": "changelog", "display_name": "Changelog", "color_hex": "#059669" }
   ],
   "statuses": [
-    { "group_key": "feedback", "status_key": "open", "label": "Open" }
+    { "id": "f07d59db-9d7f-4a95-9194-e25ecf570f80", "group_key": "feedback", "label": "Open" }
   ]
 }`,
     response: `{}`,

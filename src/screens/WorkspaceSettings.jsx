@@ -16,7 +16,10 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  Pencil,
+  GripVertical,
 } from "lucide-react";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,11 +65,10 @@ import {
   DEFAULT_GROUP_STATUSES,
   ITEM_GROUP_KEYS,
   ITEM_GROUP_LABELS,
-  sanitizeStatusKey,
 } from "@/lib/item-groups";
 import { isAdminRole, isOwnerRole } from "@/lib/roles";
 
-const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "billing", "api"];
+const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "item-types", "billing", "api"];
 
 function byDisplayOrder(a, b) {
   return (a.display_order || 0) - (b.display_order || 0);
@@ -115,7 +117,16 @@ export default function WorkspaceSettings() {
   const [statusGroups, setStatusGroups] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [statusDrafts, setStatusDrafts] = useState({});
+  const [editingStatusId, setEditingStatusId] = useState(null);
+  const [editingStatusLabel, setEditingStatusLabel] = useState("");
   const [savingStatusId, setSavingStatusId] = useState(null);
+  const [statusMovePending, setStatusMovePending] = useState(null);
+  const [statusMoveTargetId, setStatusMoveTargetId] = useState("");
+  const [savingStatusMove, setSavingStatusMove] = useState(false);
+  const [itemTypes, setItemTypes] = useState([]);
+  const [editingItemTypeId, setEditingItemTypeId] = useState(null);
+  const [editingItemTypeLabel, setEditingItemTypeLabel] = useState("");
+  const [savingItemType, setSavingItemType] = useState(false);
   const [showDeleteWorkspaceDialog, setShowDeleteWorkspaceDialog] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [activeTab, setActiveTab] = useState("my-account");
@@ -232,6 +243,24 @@ export default function WorkspaceSettings() {
     [members]
   );
 
+  const statusMoveTargetOptions = useMemo(() => {
+    if (!statusMovePending?.status?.id) return [];
+    return statusGroups
+      .slice()
+      .sort(byDisplayOrder)
+      .flatMap((group) => {
+        const groupLabel = ITEM_GROUP_LABELS[group.group_key] || group.display_name || group.group_key;
+        return (groupedStatuses[group.group_key] || [])
+          .filter((status) => status.id !== statusMovePending.status.id)
+          .map((status) => ({
+            id: status.id,
+            label: status.label || "Unnamed status",
+            groupKey: group.group_key,
+            groupLabel,
+          }));
+      });
+  }, [statusMovePending, statusGroups, groupedStatuses]);
+
   const getMemberDisplayName = (member) => {
     const firstName = String(member?.first_name || "").trim();
     const lastName = String(member?.last_name || "").trim();
@@ -262,7 +291,7 @@ export default function WorkspaceSettings() {
       setMembers(rolesData);
       setAccessCodeStatus(accessCodeData);
 
-      await ensureStatusConfig(workspaceId);
+      await Promise.all([loadStatusConfig(workspaceId), loadItemTypes(workspaceId)]);
     } catch (error) {
       console.error("Failed to load workspace settings:", error);
       const status = getErrorStatus(error);
@@ -305,11 +334,15 @@ export default function WorkspaceSettings() {
     };
   };
 
-  const ensureStatusConfig = async (workspaceId) => {
-    const [groupRows, statusRows] = await Promise.all([
-      base44.entities.ItemStatusGroup.filter({ workspace_id: workspaceId }, "display_order"),
-      base44.entities.ItemStatus.filter({ workspace_id: workspaceId }, "display_order"),
-    ]);
+  const loadStatusConfig = async (workspaceId) => {
+    const { data } = await base44.functions.invoke(
+      "getItemStatusConfig",
+      { workspace_id: workspaceId },
+      { authMode: "user" }
+    );
+
+    const groupRows = data?.groups || [];
+    const statusRows = data?.statuses || [];
 
     if (groupRows.length > 0) {
       setStatusGroups(groupRows.sort(byDisplayOrder));
@@ -333,7 +366,6 @@ export default function WorkspaceSettings() {
         const created = await base44.entities.ItemStatus.create({
           workspace_id: workspaceId,
           group_key: groupKey,
-          status_key: status.key,
           label: status.label,
           display_order: statusIndex,
           is_active: true,
@@ -344,6 +376,17 @@ export default function WorkspaceSettings() {
 
     setStatusGroups(createdGroups.sort(byDisplayOrder));
     setStatuses(createdStatuses.sort(byDisplayOrder));
+  };
+
+  const loadItemTypes = async (workspaceId) => {
+    const { data } = await base44.functions.invoke(
+      "listItemTypes",
+      { workspace_id: workspaceId, active_only: false },
+      { authMode: "user" }
+    );
+
+    const rows = (data?.item_types || []).sort(byDisplayOrder);
+    setItemTypes(rows);
   };
 
   const validateSlug = (value) => {
@@ -571,56 +614,76 @@ export default function WorkspaceSettings() {
     notifyStatus("success", "Workspace code copied.");
   };
 
-  const handleGroupNameSave = async (groupId, nextName) => {
-    const trimmed = nextName.trim();
-    if (!trimmed) {
-      notifyStatus("danger", "Group name cannot be empty.");
+  const handleGroupColorSave = async (group, nextColor) => {
+    if (!workspace?.id || !group?.group_key) return;
+    const normalizedColor = String(nextColor || "").trim().toUpperCase();
+    if (!/^#[0-9A-F]{6}$/.test(normalizedColor)) {
+      notifyStatus("danger", "Color must be a valid hex value like #2563EB.");
       return;
     }
     try {
-      const updated = await base44.entities.ItemStatusGroup.update(groupId, {
-        display_name: trimmed,
-      });
-      setStatusGroups((prev) => prev.map((group) => (group.id === groupId ? updated : group)));
-      notifyStatus("success", "Status group name saved.");
+      const { data } = await base44.functions.invoke(
+        "upsertItemStatusGroup",
+        {
+          workspace_id: workspace.id,
+          group_key: group.group_key,
+          color_hex: normalizedColor,
+          display_order: group.display_order || 0,
+        },
+        { authMode: "user" }
+      );
+      setStatusGroups((prev) =>
+        prev.map((entry) => (entry.id === group.id ? { ...entry, ...(data || {}), color_hex: normalizedColor } : entry))
+      );
+      notifyStatus("success", "Status group color saved.");
     } catch (error) {
-      console.error("Failed to update status group:", error);
-      notifyStatus("danger", "Failed to update status group name.");
+      console.error("Failed to update status group color:", error);
+      notifyStatus("danger", "Failed to update status group color.");
     }
   };
 
-  const handleStatusSave = async (statusId, patch) => {
-    const nextLabel = patch.label?.trim();
-    const nextKey = sanitizeStatusKey(patch.status_key || patch.key);
-    const groupKey = patch.group_key;
+  const beginStatusRename = (status) => {
+    setEditingStatusId(status.id);
+    setEditingStatusLabel(status.label || "");
+  };
 
+  const cancelStatusRename = () => {
+    setEditingStatusId(null);
+    setEditingStatusLabel("");
+  };
+
+  const handleStatusSave = async (status, patch = {}) => {
+    if (!workspace?.id || !status?.id) return;
+    const nextLabel = String((patch.label ?? editingStatusLabel ?? status.label) || "").trim();
+    const nextGroupKey = patch.group_key || status.group_key;
     if (!nextLabel) {
       notifyStatus("danger", "Status label is required.");
       return;
     }
-    if (!nextKey) {
-      notifyStatus("danger", "Status key is required.");
-      return;
-    }
 
-    const duplicate = statuses.find(
-      (status) =>
-        status.id !== statusId &&
-        status.group_key === groupKey &&
-        status.status_key === nextKey
-    );
-    if (duplicate) {
-      notifyStatus("danger", "Status key must be unique within each group.");
-      return;
-    }
-
-    setSavingStatusId(statusId);
+    setSavingStatusId(status.id);
     try {
-      const updated = await base44.entities.ItemStatus.update(statusId, {
-        label: nextLabel,
-        status_key: nextKey,
-      });
-      setStatuses((prev) => prev.map((status) => (status.id === statusId ? updated : status)));
+      const { data } = await base44.functions.invoke(
+        "upsertItemStatus",
+        {
+          workspace_id: workspace.id,
+          status_id: status.id,
+          group_key: nextGroupKey,
+          label: nextLabel,
+          display_order: Number.isNaN(Number(patch.display_order)) ? status.display_order || 0 : Number(patch.display_order),
+          is_active: status.is_active !== false,
+        },
+        { authMode: "user" }
+      );
+
+      if (data) {
+        setStatuses((prev) => prev.map((entry) => (entry.id === status.id ? data : entry)).sort(byDisplayOrder));
+      } else {
+        await loadStatusConfig(workspace.id);
+      }
+      if (editingStatusId === status.id) {
+        cancelStatusRename();
+      }
       notifyStatus("success", "Status saved.");
     } catch (error) {
       console.error("Failed to update status:", error);
@@ -633,21 +696,23 @@ export default function WorkspaceSettings() {
   const handleAddStatus = async (groupKey) => {
     if (!workspace?.id) return;
     const groupStatuses = groupedStatuses[groupKey] || [];
-    const defaultKey = sanitizeStatusKey(`new_status_${groupStatuses.length + 1}`);
-
-    const duplicate = groupStatuses.some((status) => status.status_key === defaultKey);
-    const resolvedKey = duplicate ? `${defaultKey}_${Date.now().toString().slice(-4)}` : defaultKey;
-
     try {
-      const created = await base44.entities.ItemStatus.create({
-        workspace_id: workspace.id,
-        group_key: groupKey,
-        status_key: resolvedKey,
-        label: "New Status",
-        display_order: groupStatuses.length,
-        is_active: true,
-      });
-      setStatuses((prev) => [...prev, created].sort(byDisplayOrder));
+      const { data } = await base44.functions.invoke(
+        "upsertItemStatus",
+        {
+          workspace_id: workspace.id,
+          group_key: groupKey,
+          label: "New Status",
+          display_order: groupStatuses.length,
+          is_active: true,
+        },
+        { authMode: "user" }
+      );
+      if (data) {
+        setStatuses((prev) => [...prev, data].sort(byDisplayOrder));
+      } else {
+        await loadStatusConfig(workspace.id);
+      }
       notifyStatus("success", "Status added.");
     } catch (error) {
       console.error("Failed to add status:", error);
@@ -656,19 +721,193 @@ export default function WorkspaceSettings() {
   };
 
   const handleDeleteStatus = async (statusRecord) => {
-    const groupStatuses = groupedStatuses[statusRecord.group_key] || [];
-    if (groupStatuses.length <= 1) {
-      notifyStatus("danger", "Each group must keep at least one status.");
-      return;
-    }
+    if (!workspace?.id || !statusRecord?.id) return;
 
     try {
-      await base44.entities.ItemStatus.delete(statusRecord.id);
+      await base44.functions.invoke(
+        "deleteItemStatus",
+        {
+          workspace_id: workspace.id,
+          status_id: statusRecord.id,
+        },
+        { authMode: "user" }
+      );
       setStatuses((prev) => prev.filter((status) => status.id !== statusRecord.id));
       notifyStatus("success", "Status removed.");
     } catch (error) {
       console.error("Failed to delete status:", error);
       notifyStatus("danger", "Failed to remove status.");
+    }
+  };
+
+  const applyStatusReorder = async ({ statusId, targetGroupKey, targetIndex, reassignmentStatusId }) => {
+    if (!workspace?.id) return;
+    try {
+      setSavingStatusMove(true);
+      const { data } = await base44.functions.invoke(
+        "reorderItemStatuses",
+        {
+          workspace_id: workspace.id,
+          status_id: statusId,
+          target_group_key: targetGroupKey,
+          target_index: targetIndex,
+          reassignment_status_id: reassignmentStatusId || null,
+        },
+        { authMode: "user" }
+      );
+      if (data?.statuses) {
+        setStatuses((data.statuses || []).sort(byDisplayOrder));
+      } else {
+        await loadStatusConfig(workspace.id);
+      }
+      notifyStatus("success", "Status ordering updated.");
+    } catch (error) {
+      console.error("Failed to reorder status:", error);
+      notifyStatus("danger", "Failed to reorder status.");
+    } finally {
+      setSavingStatusMove(false);
+    }
+  };
+
+  const handleStatusDragEnd = (result) => {
+    if (!workspace?.id) return;
+    if (!result?.destination) return;
+    const sourceGroupKey = result.source.droppableId;
+    const destinationGroupKey = result.destination.droppableId;
+    const sourceGroupStatuses = groupedStatuses[sourceGroupKey] || [];
+    const movedStatus = sourceGroupStatuses[result.source.index];
+    if (!movedStatus) return;
+
+    if (sourceGroupKey === destinationGroupKey && result.source.index === result.destination.index) {
+      return;
+    }
+
+    if (sourceGroupKey !== destinationGroupKey) {
+      setStatusMovePending({
+        status: movedStatus,
+        sourceGroupKey,
+        destinationGroupKey,
+        destinationIndex: result.destination.index,
+      });
+      setStatusMoveTargetId("");
+      return;
+    }
+
+    void applyStatusReorder({
+      statusId: movedStatus.id,
+      targetGroupKey: destinationGroupKey,
+      targetIndex: result.destination.index,
+      reassignmentStatusId: null,
+    });
+  };
+
+  const confirmStatusCrossGroupMove = async () => {
+    if (!statusMovePending) return;
+    if (!statusMoveTargetId) {
+      notifyStatus("danger", "Choose a destination status for existing items.");
+      return;
+    }
+
+    await applyStatusReorder({
+      statusId: statusMovePending.status.id,
+      targetGroupKey: statusMovePending.destinationGroupKey,
+      targetIndex: statusMovePending.destinationIndex,
+      reassignmentStatusId: statusMoveTargetId,
+    });
+
+    setStatusMovePending(null);
+    setStatusMoveTargetId("");
+  };
+
+  const moveItemType = async (itemTypeId, direction) => {
+    if (!workspace?.id) return;
+    const ordered = itemTypes.slice().sort(byDisplayOrder);
+    const currentIndex = ordered.findIndex((row) => row.id === itemTypeId);
+    if (currentIndex < 0) return;
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= ordered.length) return;
+
+    const next = ordered.slice();
+    const [moved] = next.splice(currentIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    const orderedIds = next.map((row) => row.id);
+
+    try {
+      const { data } = await base44.functions.invoke(
+        "reorderItemTypes",
+        { workspace_id: workspace.id, ordered_type_ids: orderedIds },
+        { authMode: "user" }
+      );
+      setItemTypes((data?.item_types || []).sort(byDisplayOrder));
+    } catch (error) {
+      console.error("Failed to reorder item types:", error);
+      notifyStatus("danger", "Failed to reorder item types.");
+    }
+  };
+
+  const saveItemType = async (itemType = null) => {
+    if (!workspace?.id) return;
+    const label = String(editingItemTypeLabel || "").trim();
+    if (!label) {
+      notifyStatus("danger", "Type label is required.");
+      return;
+    }
+
+    setSavingItemType(true);
+    try {
+      const { data } = await base44.functions.invoke(
+        "upsertItemType",
+        {
+          workspace_id: workspace.id,
+          item_type_id: itemType?.id || null,
+          label,
+          is_active: true,
+          display_order: itemType?.display_order ?? itemTypes.length,
+        },
+        { authMode: "user" }
+      );
+
+      if (itemType?.id) {
+        setItemTypes((prev) => prev.map((row) => (row.id === itemType.id ? data : row)).sort(byDisplayOrder));
+      } else {
+        setItemTypes((prev) => [...prev, data].sort(byDisplayOrder));
+      }
+      setEditingItemTypeId(null);
+      setEditingItemTypeLabel("");
+      notifyStatus("success", "Item type saved.");
+    } catch (error) {
+      console.error("Failed to save item type:", error);
+      notifyStatus("danger", "Failed to save item type.");
+    } finally {
+      setSavingItemType(false);
+    }
+  };
+
+  const removeItemType = async (itemType) => {
+    if (!workspace?.id || !itemType?.id) return;
+    const replacement = itemTypes
+      .filter((row) => row.id !== itemType.id && row.is_active !== false)
+      .sort(byDisplayOrder)[0];
+    if (!replacement) {
+      notifyStatus("danger", "Each workspace must keep at least one item type.");
+      return;
+    }
+
+    try {
+      await base44.functions.invoke(
+        "deleteItemType",
+        {
+          workspace_id: workspace.id,
+          item_type_id: itemType.id,
+          replacement_item_type_id: replacement.id,
+        },
+        { authMode: "user" }
+      );
+      setItemTypes((prev) => prev.filter((row) => row.id !== itemType.id));
+      notifyStatus("success", "Item type removed.");
+    } catch (error) {
+      console.error("Failed to remove item type:", error);
+      notifyStatus("danger", "Failed to remove item type.");
     }
   };
 
@@ -752,6 +991,10 @@ export default function WorkspaceSettings() {
           <TabsTrigger value="status-groups" className="flex items-center gap-2">
             <Check className="h-4 w-4" />
             Status Groups
+          </TabsTrigger>
+          <TabsTrigger value="item-types" className="flex items-center gap-2">
+            <Check className="h-4 w-4" />
+            Item Types
           </TabsTrigger>
           {isOwner ? (
             <TabsTrigger value="billing" className="flex items-center gap-2">
@@ -1093,115 +1336,286 @@ export default function WorkspaceSettings() {
             <CardHeader>
               <CardTitle>Status Groups</CardTitle>
               <CardDescription>
-                Configure status values for Feedback, Roadmap, and Changelog. Every item must belong to one status in its group.
+                Manage status labels and ordering for Feedback, Roadmap, and Changelog. Drag statuses to reorder or move across groups.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {[...statusGroups].sort(byDisplayOrder).map((group) => {
-                const groupStatuses = groupedStatuses[group.group_key] || [];
-                return (
-                  <div key={group.id} className="rounded-xl border border-slate-200 p-4">
-                    <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                      <div className="w-full md:max-w-sm">
-                        <Label>{ITEM_GROUP_LABELS[group.group_key]} Group Name</Label>
-                        <Input
-                          value={statusDrafts[group.id]?.display_name ?? group.display_name}
-                          onChange={(event) =>
-                            setStatusDrafts((prev) => ({
-                              ...prev,
-                              [group.id]: {
-                                ...(prev[group.id] || {}),
-                                display_name: event.target.value,
-                              },
-                            }))
-                          }
-                          className="mt-1.5"
-                        />
-                      </div>
-                      <Button
-                        variant="outline"
-                        onClick={() =>
-                          handleGroupNameSave(
-                            group.id,
-                            statusDrafts[group.id]?.display_name ?? group.display_name
-                          )
-                        }
-                      >
-                        Save Group Name
-                      </Button>
-                    </div>
+              <DragDropContext onDragEnd={handleStatusDragEnd}>
+                {[...statusGroups].sort(byDisplayOrder).map((group) => {
+                  const groupStatuses = groupedStatuses[group.group_key] || [];
+                  const draftColor = statusDrafts[group.id]?.color_hex ?? group.color_hex ?? "#0F172A";
 
-                    <div className="space-y-3">
-                      {groupStatuses.map((status) => {
-                        const draft = statusDrafts[status.id] || {};
-                        const label = draft.label ?? status.label;
-                        const key = draft.status_key ?? status.status_key;
-                        return (
-                          <div
-                            key={status.id}
-                            className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_auto_auto]"
+                  return (
+                    <div key={group.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {ITEM_GROUP_LABELS[group.group_key] || group.display_name}
+                          </p>
+                          <p className="text-xs text-slate-500">Fixed status group name</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={draftColor}
+                            onChange={(event) =>
+                              setStatusDrafts((prev) => ({
+                                ...prev,
+                                [group.id]: {
+                                  ...(prev[group.id] || {}),
+                                  color_hex: event.target.value.toUpperCase(),
+                                },
+                              }))
+                            }
+                            className="w-32 font-mono text-xs uppercase"
+                          />
+                          <input
+                            type="color"
+                            value={draftColor}
+                            onChange={(event) =>
+                              setStatusDrafts((prev) => ({
+                                ...prev,
+                                [group.id]: {
+                                  ...(prev[group.id] || {}),
+                                  color_hex: event.target.value.toUpperCase(),
+                                },
+                              }))
+                            }
+                            className="h-9 w-10 cursor-pointer rounded border border-slate-200 p-0"
+                          />
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              void handleGroupColorSave(group, draftColor);
+                            }}
                           >
-                            <Input
-                              value={label}
-                              onChange={(event) =>
-                                setStatusDrafts((prev) => ({
-                                  ...prev,
-                                  [status.id]: {
-                                    ...(prev[status.id] || {}),
-                                    label: event.target.value,
-                                  },
-                                }))
-                              }
-                              placeholder="Status label"
-                            />
-                            <Input
-                              value={key}
-                              onChange={(event) =>
-                                setStatusDrafts((prev) => ({
-                                  ...prev,
-                                  [status.id]: {
-                                    ...(prev[status.id] || {}),
-                                    status_key: sanitizeStatusKey(event.target.value),
-                                  },
-                                }))
-                              }
-                              placeholder="status_key"
-                              className="font-mono text-sm"
-                            />
-                            <Button
-                              variant="outline"
-                              disabled={savingStatusId === status.id}
-                              onClick={() =>
-                                handleStatusSave(status.id, {
-                                  label,
-                                  status_key: key,
-                                  group_key: group.group_key,
-                                })
-                              }
-                            >
-                              {savingStatusId === status.id ? "Saving..." : "Save"}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                              onClick={() => handleDeleteStatus(status)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
+                            Save Color
+                          </Button>
+                        </div>
+                      </div>
 
-                    <div className="mt-3">
-                      <Button variant="outline" onClick={() => handleAddStatus(group.group_key)}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Status
+                      <Droppable droppableId={group.group_key}>
+                        {(provided) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className="space-y-2"
+                          >
+                            {groupStatuses.map((status, index) => (
+                              <Draggable key={status.id} draggableId={status.id} index={index}>
+                                {(dragProvided, snapshot) => (
+                                  <div
+                                    ref={dragProvided.innerRef}
+                                    {...dragProvided.draggableProps}
+                                    className={cn(
+                                      "flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3",
+                                      snapshot.isDragging && "border-slate-300 shadow-md"
+                                    )}
+                                  >
+                                    <button
+                                      type="button"
+                                      className="text-slate-400"
+                                      {...dragProvided.dragHandleProps}
+                                      aria-label="Drag status"
+                                    >
+                                      <GripVertical className="h-4 w-4" />
+                                    </button>
+
+                                    <div className="flex-1">
+                                      {editingStatusId === status.id ? (
+                                        <Input
+                                          value={editingStatusLabel}
+                                          onChange={(event) => setEditingStatusLabel(event.target.value)}
+                                          className="h-8"
+                                        />
+                                      ) : (
+                                        <p className="text-sm font-medium text-slate-900">{status.label}</p>
+                                      )}
+                                    </div>
+
+                                    {editingStatusId === status.id ? (
+                                      <div className="flex items-center gap-1">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={savingStatusId === status.id}
+                                          onClick={() => {
+                                            void handleStatusSave(status, { label: editingStatusLabel });
+                                          }}
+                                        >
+                                          Save
+                                        </Button>
+                                        <Button size="sm" variant="ghost" onClick={cancelStatusRename}>
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => beginStatusRename(status)}
+                                          aria-label="Edit status"
+                                        >
+                                          <Pencil className="h-4 w-4 text-slate-500" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                          onClick={() => {
+                                            void handleDeleteStatus(status);
+                                          }}
+                                          aria-label="Delete status"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+
+                      <div className="mt-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            void handleAddStatus(group.group_key);
+                          }}
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add Status
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </DragDropContext>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="item-types" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Item Types</CardTitle>
+              <CardDescription>
+                Manage global item types used across Feedback, Roadmap, and Changelog.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {itemTypes.sort(byDisplayOrder).map((itemType, index) => (
+                <div key={itemType.id} className="flex items-center gap-2 rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        void moveItemType(itemType.id, "up");
+                      }}
+                      disabled={index === 0}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        void moveItemType(itemType.id, "down");
+                      }}
+                      disabled={index === itemTypes.length - 1}
+                    >
+                      ↓
+                    </Button>
+                  </div>
+
+                  <div className="flex-1">
+                    {editingItemTypeId === itemType.id ? (
+                      <Input
+                        value={editingItemTypeLabel}
+                        onChange={(event) => setEditingItemTypeLabel(event.target.value)}
+                        className="h-8"
+                      />
+                    ) : (
+                      <p className="text-sm font-medium text-slate-900">{itemType.label}</p>
+                    )}
+                  </div>
+
+                  {editingItemTypeId === itemType.id ? (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={savingItemType}
+                        onClick={() => {
+                          void saveItemType(itemType);
+                        }}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingItemTypeId(null);
+                          setEditingItemTypeLabel("");
+                        }}
+                      >
+                        Cancel
                       </Button>
                     </div>
-                  </div>
-                );
-              })}
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditingItemTypeId(itemType.id);
+                          setEditingItemTypeLabel(itemType.label || "");
+                        }}
+                      >
+                        <Pencil className="h-4 w-4 text-slate-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        onClick={() => {
+                          void removeItemType(itemType);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div className="mt-3 flex items-center gap-2">
+                <Input
+                  value={editingItemTypeId ? "" : editingItemTypeLabel}
+                  onChange={(event) => {
+                    setEditingItemTypeId(null);
+                    setEditingItemTypeLabel(event.target.value);
+                  }}
+                  placeholder="New type label"
+                  className="max-w-sm"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    void saveItemType(null);
+                  }}
+                  disabled={savingItemType}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Type
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1279,6 +1693,75 @@ export default function WorkspaceSettings() {
               disabled={rotatingAccessCode}
             >
               {rotatingAccessCode ? "Rotating..." : "Rotate Code"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(statusMovePending)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setStatusMovePending(null);
+            setStatusMoveTargetId("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirm Status Move</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              You are moving{" "}
+              <span className="font-semibold text-slate-900">
+                {statusMovePending?.status?.label || "this status"}
+              </span>{" "}
+              from{" "}
+              <span className="font-semibold text-slate-900">
+                {ITEM_GROUP_LABELS[statusMovePending?.sourceGroupKey] || statusMovePending?.sourceGroupKey}
+              </span>{" "}
+              to{" "}
+              <span className="font-semibold text-slate-900">
+                {ITEM_GROUP_LABELS[statusMovePending?.destinationGroupKey] || statusMovePending?.destinationGroupKey}
+              </span>
+              . Choose the fallback status for items currently using this status.
+            </p>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="status-move-target">Reassign existing items to</Label>
+              <Select value={statusMoveTargetId} onValueChange={setStatusMoveTargetId}>
+                <SelectTrigger id="status-move-target">
+                  <SelectValue placeholder="Select destination status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusMoveTargetOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.groupLabel} • {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setStatusMovePending(null);
+                setStatusMoveTargetId("");
+              }}
+              disabled={savingStatusMove}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                void confirmStatusCrossGroupMove();
+              }}
+              disabled={savingStatusMove || !statusMoveTargetId}
+            >
+              {savingStatusMove ? "Moving..." : "Move Status"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { canContributeRole, isAdminRole } from "@/lib/roles";
 import {
-  DEFAULT_GROUP_STATUSES,
   ITEM_GROUP_KEYS,
   ITEM_GROUP_LABELS,
+  getGroupColor,
   getGroupLabel,
   validateMetadata,
 } from "@/lib/item-groups";
@@ -44,28 +44,27 @@ function resolveInitialPostAuthorLabel(item, currentUserId) {
   return "Unknown";
 }
 
-function resolveStatusLabel(statusesByGroup, statusKey, preferredGroupKey = null) {
-  if (!statusKey) return "Unknown";
-
-  if (preferredGroupKey && statusesByGroup[preferredGroupKey]) {
-    const inGroup = statusesByGroup[preferredGroupKey].find(
-      (status) => status.status_key === statusKey
-    );
-    if (inGroup?.label) return inGroup.label;
-  }
-
-  for (const groupStatuses of Object.values(statusesByGroup)) {
-    const match = groupStatuses.find((status) => status.status_key === statusKey);
-    if (match?.label) return match.label;
-  }
-
-  return String(statusKey);
+function buildMemberName(member) {
+  if (!member) return "";
+  const first = String(member.first_name || "").trim();
+  const last = String(member.last_name || "").trim();
+  const full = String(member.full_name || "").trim();
+  if (first || last) return `${first} ${last}`.trim();
+  if (full) return full;
+  const local = String(member.email || "").split("@")[0] || "";
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export function useItemsController({ workspace, role, isPublicAccess }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [groups, setGroups] = useState([]);
   const [statuses, setStatuses] = useState([]);
+  const [itemTypes, setItemTypes] = useState([]);
+  const [memberDirectory, setMemberDirectory] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [itemActivities, setItemActivities] = useState([]);
@@ -114,16 +113,67 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     return grouped;
   }, [statuses]);
 
-  const canEditInitialPost = (item) => {
-    if (isAdmin) return true;
-    return Boolean(currentUserId && item?.submitter_id && item.submitter_id === currentUserId);
+  const statusById = useMemo(() => {
+    const map = new Map();
+    statuses.forEach((status) => {
+      map.set(status.id, status);
+    });
+    return map;
+  }, [statuses]);
+
+  const itemTypesById = useMemo(() => {
+    const map = new Map();
+    itemTypes.forEach((type) => {
+      map.set(type.id, type);
+    });
+    return map;
+  }, [itemTypes]);
+
+  const memberDirectoryById = useMemo(() => {
+    const map = new Map();
+    memberDirectory.forEach((member) => {
+      map.set(member.user_id, {
+        ...member,
+        display_name: buildMemberName(member),
+      });
+    });
+    return map;
+  }, [memberDirectory]);
+
+  const hydrateItem = (item) => {
+    if (!item) return item;
+    const statusRecord = statusById.get(item.status_id) || null;
+    const groupKey = statusRecord?.group_key || item.group_key;
+    const groupLabel = ITEM_GROUP_LABELS[groupKey] || getGroupLabel(groupKey);
+    const groupColor = groups.find((group) => group.group_key === groupKey)?.color_hex || getGroupColor(groupKey);
+    const statusLabel = statusRecord?.label || item.status_label || item.status_key || "Unknown";
+    const typeRecord = itemTypesById.get(item.item_type_id) || null;
+    const assigneeRecord = item.assigned_to ? memberDirectoryById.get(item.assigned_to) || null : null;
+
+    return {
+      ...item,
+      group_key: groupKey,
+      group_label: groupLabel,
+      group_color: groupColor,
+      status_label: statusLabel,
+      item_type_label: typeRecord?.label || item.item_type_label || "No Type",
+      assignee: assigneeRecord
+        ? {
+            id: assigneeRecord.user_id,
+            name: assigneeRecord.display_name,
+            profile_photo_url: assigneeRecord.profile_photo_url || null,
+          }
+        : null,
+    };
   };
+
+  const canEditInitialPost = (item) =>
+    Boolean(currentUserId && item?.submitter_id && item.submitter_id === currentUserId);
 
   const canEditComment = (activity) =>
     Boolean(currentUserId && activity?.author_id && activity.author_id === currentUserId);
 
-  const canDeleteComment = (activity) =>
-    Boolean(currentUserId && activity?.author_id && activity.author_id === currentUserId);
+  const canDeleteComment = () => false;
 
   const canDeleteItem = (item) => {
     if (!item) return false;
@@ -188,82 +238,84 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       setError("Workspace context is missing.");
       return;
     }
-    void loadStatusConfiguration(workspace.id);
-  }, [workspace?.id]);
+    void loadWorkspaceConfig(workspace.id);
+  }, [workspace?.id, role, isPublicAccess]);
 
-  const loadStatusConfiguration = async (workspaceId) => {
+  useEffect(() => {
+    if (!workspace?.id) return;
+    setItems((prev) => prev.map((item) => hydrateItem(item)));
+    setSelectedItem((prev) => (prev ? hydrateItem(prev) : prev));
+  }, [groups, statuses, itemTypes, memberDirectory]);
+
+  const loadWorkspaceConfig = async (workspaceId) => {
     try {
       setLoadingConfig(true);
       setError("");
 
-      const [groupRows, statusRows] = await Promise.all([
-        base44.entities.ItemStatusGroup.filter({ workspace_id: workspaceId }, "display_order"),
-        base44.entities.ItemStatus.filter({ workspace_id: workspaceId }, "display_order"),
+      const authMode = isPublicAccess ? "anon" : "user";
+
+      const [statusConfigResult, itemTypesResult] = await Promise.all([
+        base44.functions.invoke(
+          "getItemStatusConfig",
+          { workspace_id: workspaceId },
+          { authMode }
+        ),
+        base44.functions.invoke(
+          "listItemTypes",
+          { workspace_id: workspaceId, active_only: true },
+          { authMode }
+        ),
       ]);
 
-      if (groupRows.length === 0) {
-        if (!isAdmin) {
-          setError("Item status groups are not configured yet.");
-          setGroups([]);
-          setStatuses([]);
-          return;
+      const nextGroups = statusConfigResult?.data?.groups || [];
+      const nextStatuses = statusConfigResult?.data?.statuses || [];
+      const nextItemTypes = itemTypesResult?.data?.item_types || [];
+
+      setGroups(nextGroups);
+      setStatuses(nextStatuses);
+      setItemTypes(nextItemTypes);
+
+      if (!isPublicAccess && canContributeRole(role)) {
+        try {
+          const memberResult = await base44.functions.invoke(
+            "listWorkspaceMemberDirectory",
+            { workspace_id: workspaceId },
+            { authMode: "user" }
+          );
+          setMemberDirectory(memberResult?.data?.members || []);
+        } catch (memberError) {
+          console.error("Failed to load workspace member directory:", memberError);
+          setMemberDirectory([]);
         }
-
-        const seededGroups = [];
-        const seededStatuses = [];
-
-        for (const [index, groupKey] of ITEM_GROUP_KEYS.entries()) {
-          const groupRecord = await base44.entities.ItemStatusGroup.create({
-            workspace_id: workspaceId,
-            group_key: groupKey,
-            display_name: ITEM_GROUP_LABELS[groupKey],
-            display_order: index,
-          });
-          seededGroups.push(groupRecord);
-
-          for (const [statusIndex, status] of (DEFAULT_GROUP_STATUSES[groupKey] || []).entries()) {
-            const statusRecord = await base44.entities.ItemStatus.create({
-              workspace_id: workspaceId,
-              group_key: groupKey,
-              status_key: status.key,
-              label: status.label,
-              display_order: statusIndex,
-              is_active: true,
-            });
-            seededStatuses.push(statusRecord);
-          }
-        }
-
-        setGroups(seededGroups);
-        setStatuses(seededStatuses);
       } else {
-        setGroups(groupRows);
-        setStatuses(statusRows);
+        setMemberDirectory([]);
       }
     } catch (configError) {
-      console.error("Failed to load item status configuration:", configError);
-      setError("Unable to load item status configuration.");
+      console.error("Failed to load item configuration:", configError);
+      setError("Unable to load item configuration.");
+      setGroups([]);
+      setStatuses([]);
+      setItemTypes([]);
+      setMemberDirectory([]);
     } finally {
       setLoadingConfig(false);
     }
   };
 
-  const loadItems = async ({ groupKey = null, statusKey = "all" } = {}) => {
+  const loadItems = async ({ groupKey = null, statusId = "all" } = {}) => {
     if (!workspace?.id) return;
     try {
       setLoadingItems(true);
       setError("");
 
-      const conditions = { workspace_id: workspace.id };
-      if (groupKey) {
-        conditions.group_key = groupKey;
-      }
-      if (statusKey && statusKey !== "all") {
-        conditions.status_key = statusKey;
-      }
+      const authMode = isPublicAccess ? "anon" : "user";
+      const payload = { workspace_id: workspace.id };
+      if (groupKey) payload.group_key = groupKey;
+      if (statusId && statusId !== "all") payload.status_id = statusId;
 
-      const rows = await base44.entities.Item.filter(conditions, "-created_at");
-      setItems(rows || []);
+      const { data } = await base44.functions.invoke("listItems", payload, { authMode });
+      const rows = data?.items || [];
+      setItems(rows.map((row) => hydrateItem(row)));
     } catch (itemsError) {
       console.error("Failed to load items:", itemsError);
       setError("Unable to load items.");
@@ -275,7 +327,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
   const loadItemActivities = async (item) => {
     if (!workspace?.id || !item?.id) return;
-    setSelectedItem(item);
+    setSelectedItem(hydrateItem(item));
     try {
       setLoadingActivities(true);
       const rows = await base44.entities.ItemActivity.filter(
@@ -296,37 +348,45 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
   const syncItemInState = (nextItem) => {
     if (!nextItem?.id) return;
-    setItems((prev) => prev.map((item) => (item.id === nextItem.id ? { ...item, ...nextItem } : item)));
-    setSelectedItem((prev) => (prev?.id === nextItem.id ? { ...prev, ...nextItem } : prev));
+    const hydrated = hydrateItem(nextItem);
+    setItems((prev) => prev.map((item) => (item.id === hydrated.id ? { ...item, ...hydrated } : item)));
+    setSelectedItem((prev) => (prev?.id === hydrated.id ? { ...prev, ...hydrated } : prev));
   };
 
   const saveItem = async ({ payload, previousItem = null }) => {
     if (!workspace?.id) return { ok: false, error: "Workspace is missing." };
 
-    const statusOptions = statusesByGroup[payload.group_key] || [];
-    const statusExists = statusOptions.some((status) => status.status_key === payload.status_key);
-    if (!statusExists) {
-      return { ok: false, error: "Selected status is invalid for this group." };
+    const selectedStatus = statusById.get(payload.status_id) || null;
+    if (!selectedStatus || selectedStatus.is_active === false) {
+      return { ok: false, error: "Selected status is invalid." };
     }
 
-    const metadataValidation = validateMetadata(payload.group_key, payload.metadata);
+    const metadataValidation = validateMetadata(selectedStatus.group_key, payload.metadata);
     if (!metadataValidation.valid) {
       return { ok: false, error: metadataValidation.message };
     }
 
+    if (!payload.item_type_id || !itemTypesById.get(payload.item_type_id)) {
+      return { ok: false, error: "Selected item type is invalid." };
+    }
+
     const isContributor = role === "contributor" && !isPublicAccess;
     if (isContributor) {
-      if (payload.group_key !== "feedback") {
+      if (selectedStatus.group_key !== "feedback") {
         return { ok: false, error: "Contributors can only submit feedback items." };
       }
       if (payload.id) {
         if (previousItem?.submitter_id !== currentUserId) {
           return { ok: false, error: "You can only edit feedback you submitted." };
         }
-        if (previousItem?.status_key && previousItem.status_key !== payload.status_key) {
+        if (previousItem?.status_id && previousItem.status_id !== payload.status_id) {
           return { ok: false, error: "Contributors cannot change item status." };
         }
       }
+    }
+
+    if (!isAdmin && payload.assigned_to) {
+      return { ok: false, error: "Only admin or owner can assign items." };
     }
 
     try {
@@ -335,12 +395,13 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
       const record = {
         workspace_id: workspace.id,
-        group_key: payload.group_key,
-        status_key: payload.status_key,
+        status_id: payload.status_id,
         title: payload.title,
         description: payload.description,
         metadata: payload.metadata,
         visibility: payload.visibility || "public",
+        item_type_id: payload.item_type_id,
+        assigned_to: isAdmin ? payload.assigned_to || null : null,
       };
 
       let saved = null;
@@ -370,32 +431,26 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
       syncItemInState(saved);
 
-      if (payload.id && saved && previousItem?.group_key && previousItem.group_key !== payload.group_key) {
+      if (payload.id && saved && previousItem?.group_key && previousItem.group_key !== selectedStatus.group_key) {
         await base44.entities.ItemActivity.create({
           workspace_id: workspace.id,
           item_id: saved.id,
           activity_type: "group_change",
-          content: `Moved from ${getGroupLabel(previousItem.group_key)} to ${getGroupLabel(payload.group_key)}`,
+          content: `Moved from ${getGroupLabel(previousItem.group_key)} to ${getGroupLabel(selectedStatus.group_key)}`,
           metadata: {
             from_group: previousItem.group_key,
-            to_group: payload.group_key,
+            to_group: selectedStatus.group_key,
           },
           author_id: currentUserId,
           author_role: isAdminRole(role) ? "admin" : "user",
         });
       }
 
-      if (payload.id && saved && previousItem?.status_key && previousItem.status_key !== payload.status_key) {
-        const fromStatusLabel = resolveStatusLabel(
-          statusesByGroup,
-          previousItem.status_key,
-          previousItem.group_key || payload.group_key
-        );
-        const toStatusLabel = resolveStatusLabel(
-          statusesByGroup,
-          payload.status_key,
-          payload.group_key
-        );
+      if (payload.id && saved && previousItem?.status_id && previousItem.status_id !== payload.status_id) {
+        const fromStatus = statusById.get(previousItem.status_id);
+        const toStatus = statusById.get(payload.status_id);
+        const fromStatusLabel = fromStatus?.label || previousItem.status_label || "Unknown";
+        const toStatusLabel = toStatus?.label || saved.status_label || "Unknown";
 
         await base44.entities.ItemActivity.create({
           workspace_id: workspace.id,
@@ -403,8 +458,8 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
           activity_type: "status_change",
           content: `Status changed from ${fromStatusLabel} to ${toStatusLabel}`,
           metadata: {
-            from_status: previousItem.status_key,
-            to_status: payload.status_key,
+            from_status_id: previousItem.status_id,
+            to_status_id: payload.status_id,
           },
           author_id: currentUserId,
           author_role: isAdminRole(role) ? "admin" : "user",
@@ -590,10 +645,17 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     currentUser,
     currentUserId,
     isAdmin,
+    isPublicAccess,
     canComment,
+    canManageAssignee: isAdmin,
     groups,
     statuses,
     statusesByGroup,
+    statusById,
+    itemTypes,
+    itemTypesById,
+    memberDirectory,
+    memberDirectoryById,
     items,
     selectedItem,
     itemActivities,
@@ -607,6 +669,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     error,
     setError,
     setSelectedItem,
+    hydrateItem,
     canEditInitialPost,
     canEditComment,
     canDeleteComment,

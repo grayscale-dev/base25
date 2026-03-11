@@ -13,13 +13,18 @@ function formatDate(value) {
   return date.toLocaleString();
 }
 
-function resolveStatusLabel(statusesByGroup, statusKey) {
-  if (!statusKey) return "Unknown";
-  for (const groupStatuses of Object.values(statusesByGroup || {})) {
-    const match = groupStatuses.find((status) => status.status_key === statusKey);
-    if (match?.label) return match.label;
+function resolveStatusLabel(controller, statusId, fallbackStatusKey = null) {
+  if (statusId) {
+    const byId = controller.statusById?.get(statusId);
+    if (byId?.label) return byId.label;
   }
-  return String(statusKey);
+  if (fallbackStatusKey) {
+    for (const groupStatuses of Object.values(controller.statusesByGroup || {})) {
+      const match = groupStatuses.find((status) => status.status_key === fallbackStatusKey);
+      if (match?.label) return match.label;
+    }
+  }
+  return String(fallbackStatusKey || statusId || "Unknown");
 }
 
 function StatusPill({ children }) {
@@ -59,11 +64,11 @@ function resolveFromToValues(activity, controller) {
   const metadata = activity?.metadata || {};
 
   if (activity.activity_type === "status_change") {
-    const fromStatus = metadata.from_status
-      ? resolveStatusLabel(controller.statusesByGroup, metadata.from_status)
+    const fromStatus = (metadata.from_status_id || metadata.from_status)
+      ? resolveStatusLabel(controller, metadata.from_status_id, metadata.from_status)
       : null;
-    const toStatus = metadata.to_status
-      ? resolveStatusLabel(controller.statusesByGroup, metadata.to_status)
+    const toStatus = (metadata.to_status_id || metadata.to_status)
+      ? resolveStatusLabel(controller, metadata.to_status_id, metadata.to_status)
       : null;
     if (fromStatus && toStatus) return { from: fromStatus, to: toStatus };
   }

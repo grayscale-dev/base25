@@ -61,8 +61,7 @@ Deno.serve(async (req) => {
       .from("items")
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", workspaceId)
-      .eq("group_key", statusRow.group_key)
-      .eq("status_key", statusRow.status_key);
+      .eq("status_id", statusRow.id);
 
     if ((itemCount || 0) > 0) {
       return json({ error: "Cannot delete a status that is currently assigned to items" }, 409);

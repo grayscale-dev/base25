@@ -33,12 +33,17 @@ export default function ItemEditorDialog({
   item,
   availableGroupKeys,
   availableStatusesByGroup,
+  itemTypes = [],
+  assigneeOptions = [],
+  canAssign = false,
   canManageGroupTransition,
   defaultGroup = "feedback",
 }) {
   const initialGroup = normalizeGroupKey(item?.group_key || defaultGroup);
   const [groupKey, setGroupKey] = useState(initialGroup);
-  const [statusKey, setStatusKey] = useState(item?.status_key || "");
+  const [statusId, setStatusId] = useState(item?.status_id || "");
+  const [itemTypeId, setItemTypeId] = useState(item?.item_type_id || "");
+  const [assignedTo, setAssignedTo] = useState(item?.assigned_to || "");
   const [title, setTitle] = useState(item?.title || "");
   const [description, setDescription] = useState(item?.description || "");
   const [metadata, setMetadata] = useState(item?.metadata || getMetadataShapeForGroup(initialGroup));
@@ -47,7 +52,9 @@ export default function ItemEditorDialog({
   useEffect(() => {
     const nextGroup = normalizeGroupKey(item?.group_key || defaultGroup);
     setGroupKey(nextGroup);
-    setStatusKey(item?.status_key || "");
+    setStatusId(item?.status_id || "");
+    setItemTypeId(item?.item_type_id || "");
+    setAssignedTo(item?.assigned_to || "");
     setTitle(item?.title || "");
     setDescription(item?.description || "");
     setMetadata(item?.metadata || getMetadataShapeForGroup(nextGroup));
@@ -55,20 +62,37 @@ export default function ItemEditorDialog({
   }, [item, defaultGroup, open]);
 
   const statusOptions = availableStatusesByGroup[groupKey] || [];
+  const sortedItemTypes = itemTypes
+    .filter((itemType) => itemType?.is_active !== false)
+    .slice()
+    .sort((left, right) => (left.display_order || 0) - (right.display_order || 0));
 
   useEffect(() => {
-    if (!statusKey && statusOptions.length > 0) {
-      setStatusKey(statusOptions[0].status_key);
+    if (!statusId && statusOptions.length > 0) {
+      setStatusId(statusOptions[0].id);
       return;
     }
 
-    if (statusKey && statusOptions.length > 0) {
-      const stillValid = statusOptions.some((status) => status.status_key === statusKey);
+    if (statusId && statusOptions.length > 0) {
+      const stillValid = statusOptions.some((status) => status.id === statusId);
       if (!stillValid) {
-        setStatusKey(statusOptions[0].status_key);
+        setStatusId(statusOptions[0].id);
       }
     }
-  }, [statusKey, statusOptions]);
+  }, [statusId, statusOptions]);
+
+  useEffect(() => {
+    if (!itemTypeId && sortedItemTypes.length > 0) {
+      setItemTypeId(sortedItemTypes[0].id);
+      return;
+    }
+    if (itemTypeId && sortedItemTypes.length > 0) {
+      const stillValid = sortedItemTypes.some((itemType) => itemType.id === itemTypeId);
+      if (!stillValid) {
+        setItemTypeId(sortedItemTypes[0].id);
+      }
+    }
+  }, [itemTypeId, sortedItemTypes]);
 
   const handleGroupChange = (nextGroup) => {
     setGroupKey(nextGroup);
@@ -81,8 +105,12 @@ export default function ItemEditorDialog({
       setError("Title is required.");
       return;
     }
-    if (!statusKey) {
+    if (!statusId) {
       setError("Status is required.");
+      return;
+    }
+    if (!itemTypeId) {
+      setError("Item type is required.");
       return;
     }
 
@@ -94,8 +122,9 @@ export default function ItemEditorDialog({
 
     onSave({
       id: item?.id || null,
-      group_key: groupKey,
-      status_key: statusKey,
+      status_id: statusId,
+      item_type_id: itemTypeId,
+      assigned_to: assignedTo || null,
       title: title.trim(),
       description: description.trim(),
       metadata,
@@ -137,19 +166,56 @@ export default function ItemEditorDialog({
 
             <div>
               <Label>Status</Label>
-              <Select value={statusKey} onValueChange={setStatusKey}>
+              <Select value={statusId} onValueChange={setStatusId}>
                 <SelectTrigger className="mt-1.5">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
                   {statusOptions.map((status) => (
-                    <SelectItem key={status.id || status.status_key} value={status.status_key}>
+                    <SelectItem key={status.id} value={status.id}>
                       {status.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label>Item Type</Label>
+              <Select value={itemTypeId} onValueChange={setItemTypeId}>
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedItemTypes.map((itemType) => (
+                    <SelectItem key={itemType.id} value={itemType.id}>
+                      {itemType.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {groupKey === "feedback" ? (
+              <div>
+                <Label>Assignee</Label>
+                <Select value={assignedTo || "unassigned"} onValueChange={(value) => setAssignedTo(value === "unassigned" ? "" : value)} disabled={!canAssign}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {assigneeOptions.map((member) => (
+                      <SelectItem key={member.user_id} value={member.user_id}>
+                        {member.display_name || member.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
 
           <div>

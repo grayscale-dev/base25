@@ -34,16 +34,16 @@ Deno.serve(async (req) => {
     }
 
     const limit = Math.min(Math.max(Number(payload.limit || 50), 1), 200);
-    const statusKey =
-      typeof payload.status_key === "string" ? String(payload.status_key) : null;
+    const statusId =
+      typeof payload.status_id === "string" ? String(payload.status_id) : null;
 
     let query = supabaseAdmin
       .from("items")
-      .select("*")
+      .select("*, status:item_statuses!items_status_id_fkey(id,label,group_key,status_key), item_type:item_types!items_item_type_id_fkey(id,label)")
       .eq("workspace_id", access.workspace.id);
 
     if (groupKey) query = query.eq("group_key", groupKey);
-    if (statusKey) query = query.eq("status_key", statusKey);
+    if (statusId) query = query.eq("status_id", statusId);
     if (access.isPublicAccess) query = query.eq("visibility", "public");
 
     const { data, error } = await query
@@ -55,8 +55,38 @@ Deno.serve(async (req) => {
       return json({ error: "Failed to list items" }, 500);
     }
 
+    const groupRowsResult = await supabaseAdmin
+      .from("item_status_groups")
+      .select("group_key, display_name, color_hex")
+      .eq("workspace_id", access.workspace.id);
+
+    if (groupRowsResult.error) {
+      console.error("listItems group lookup error:", groupRowsResult.error);
+      return json({ error: "Failed to list items" }, 500);
+    }
+
+    const groupMap = new Map<string, { display_name: string; color_hex: string }>();
+    (groupRowsResult.data || []).forEach((row) => {
+      groupMap.set(String(row.group_key), {
+        display_name: String(row.display_name || row.group_key),
+        color_hex: String(row.color_hex || "#0F172A"),
+      });
+    });
+
+    const items = (data ?? []).map((row) => {
+      const groupKeyValue = String(row.group_key || row.status?.group_key || "");
+      const groupMeta = groupMap.get(groupKeyValue);
+      return {
+        ...row,
+        status_label: row.status?.label || row.status_key,
+        group_label: groupMeta?.display_name || groupKeyValue,
+        group_color: groupMeta?.color_hex || "#0F172A",
+        item_type_label: row.item_type?.label || null,
+      };
+    });
+
     return json({
-      items: data ?? [],
+      items,
       workspace: {
         id: access.workspace.id,
         slug: access.workspace.slug,

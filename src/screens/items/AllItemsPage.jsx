@@ -33,13 +33,14 @@ import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
+import AssigneeDisplay from "./AssigneeDisplay";
 import { ITEM_GROUP_KEYS, getGroupLabel } from "@/lib/item-groups";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 function sortableValue(item, key) {
   if (key === "group") return item.group_key || "";
-  if (key === "status") return item.status_key || "";
+  if (key === "status") return item.status_label || item.status_key || "";
   if (key === "updated") {
     return item.updated_date || item.updated_at || item.created_date || item.created_at || "";
   }
@@ -56,8 +57,8 @@ function formatDate(value) {
 function uniqueStatuses(statuses) {
   const map = new Map();
   statuses.forEach((status) => {
-    if (!map.has(status.status_key)) {
-      map.set(status.status_key, status);
+    if (!map.has(status.id)) {
+      map.set(status.id, status);
     }
   });
   return [...map.values()];
@@ -78,7 +79,7 @@ export default function AllItemsPage({ workspace, controller }) {
   const [showItemDrawer, setShowItemDrawer] = useState(false);
 
   useEffect(() => {
-    void controller.loadItems({ groupKey: null, statusKey: "all" });
+    void controller.loadItems({ groupKey: null, statusId: "all" });
   }, [workspace?.id]);
 
   useEffect(() => {
@@ -103,11 +104,11 @@ export default function AllItemsPage({ workspace, controller }) {
     return controller.items
       .filter((item) => {
         if (groupFilter !== "all" && item.group_key !== groupFilter) return false;
-        if (statusFilter !== "all" && item.status_key !== statusFilter) return false;
+        if (statusFilter !== "all" && item.status_id !== statusFilter) return false;
         if (!normalizedQuery) return true;
 
         const haystack =
-          `${item.title || ""} ${item.description || ""} ${item.group_key || ""} ${item.status_key || ""}`.toLowerCase();
+          `${item.title || ""} ${item.description || ""} ${item.group_key || ""} ${item.status_label || ""}`.toLowerCase();
         return haystack.includes(normalizedQuery);
       })
       .sort((a, b) => {
@@ -124,11 +125,11 @@ export default function AllItemsPage({ workspace, controller }) {
   const start = (currentPage - 1) * pageSize;
   const pagedItems = filteredItems.slice(start, start + pageSize);
 
-  const statusLabelByKey = useMemo(() => {
+  const statusLabelById = useMemo(() => {
     const map = new Map();
     controller.statuses.forEach((status) => {
-      if (!map.has(status.status_key)) {
-        map.set(status.status_key, status.label);
+      if (!map.has(status.id)) {
+        map.set(status.id, status.label);
       }
     });
     return map;
@@ -141,13 +142,13 @@ export default function AllItemsPage({ workspace, controller }) {
     }
     if (statusFilter !== "all") {
       const label =
-        statusOptions.find((status) => status.status_key === statusFilter)?.label ||
-        statusLabelByKey.get(statusFilter) ||
+        statusOptions.find((status) => status.id === statusFilter)?.label ||
+        statusLabelById.get(statusFilter) ||
         statusFilter;
       filters.push({ id: "status", label: "Status", value: label });
     }
     return filters;
-  }, [groupFilter, statusFilter, statusOptions, statusLabelByKey]);
+  }, [groupFilter, statusFilter, statusOptions, statusLabelById]);
 
   useEffect(() => {
     setPage(1);
@@ -169,7 +170,7 @@ export default function AllItemsPage({ workspace, controller }) {
       return;
     }
     setShowCreateModal(false);
-    await controller.loadItems({ groupKey: null, statusKey: "all" });
+    await controller.loadItems({ groupKey: null, statusId: "all" });
   };
 
   const openItem = async (item) => {
@@ -178,9 +179,7 @@ export default function AllItemsPage({ workspace, controller }) {
   };
 
   const applyFilters = () => {
-    const hasDraftStatus = draftStatusOptions.some(
-      (status) => status.status_key === draftStatusFilter
-    );
+    const hasDraftStatus = draftStatusOptions.some((status) => status.id === draftStatusFilter);
     setGroupFilter(draftGroupFilter);
     setStatusFilter(draftStatusFilter === "all" || hasDraftStatus ? draftStatusFilter : "all");
     setShowFilters(false);
@@ -194,10 +193,7 @@ export default function AllItemsPage({ workspace, controller }) {
     setShowFilters(false);
   };
 
-  const getStatusLabel = (item) =>
-    controller.statusesByGroup[item.group_key]?.find(
-      (status) => status.status_key === item.status_key
-    )?.label || statusLabelByKey.get(item.status_key) || item.status_key;
+  const getStatusLabel = (item) => item.status_label || statusLabelById.get(item.status_id) || item.status_key;
 
   if (controller.loadingConfig) {
     return <PageLoadingState text="Loading workspace items..." />;
@@ -254,7 +250,7 @@ export default function AllItemsPage({ workspace, controller }) {
           tone="danger"
           title="Unable to load all items"
           description={controller.error}
-          action={() => controller.loadItems({ groupKey: null, statusKey: "all" })}
+          action={() => controller.loadItems({ groupKey: null, statusId: "all" })}
           actionLabel="Retry"
         />
       ) : null}
@@ -298,7 +294,7 @@ export default function AllItemsPage({ workspace, controller }) {
                         className="inline-flex items-center gap-1"
                         onClick={() => toggleSort("group")}
                       >
-                        Group
+                        Group • Status
                         {sortKey === "group" ? (
                           sortDirection === "asc" ? (
                             <ChevronUp className="h-3 w-3" />
@@ -308,22 +304,8 @@ export default function AllItemsPage({ workspace, controller }) {
                         ) : null}
                       </button>
                     </TableHead>
-                    <TableHead>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1"
-                        onClick={() => toggleSort("status")}
-                      >
-                        Status
-                        {sortKey === "status" ? (
-                          sortDirection === "asc" ? (
-                            <ChevronUp className="h-3 w-3" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3" />
-                          )
-                        ) : null}
-                      </button>
-                    </TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Assignee</TableHead>
                     <TableHead>
                       <button
                         type="button"
@@ -360,9 +342,22 @@ export default function AllItemsPage({ workspace, controller }) {
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-slate-700">
-                        {getGroupLabel(item.group_key)}
+                        <Badge
+                          variant="outline"
+                          className="border-0 text-white"
+                          style={{ backgroundColor: item.group_color || "#0F172A" }}
+                        >
+                          {getGroupLabel(item.group_key)} • {getStatusLabel(item)}
+                        </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-slate-700">{getStatusLabel(item)}</TableCell>
+                      <TableCell className="text-sm text-slate-700">{item.item_type_label || "No Type"}</TableCell>
+                      <TableCell className="text-sm text-slate-700">
+                        {item.group_key === "feedback" ? (
+                          <AssigneeDisplay assignee={item.assignee} fallback="Unassigned" />
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm text-slate-700">
                         {formatDate(
                           item.updated_date || item.updated_at || item.created_date || item.created_at
@@ -462,7 +457,7 @@ export default function AllItemsPage({ workspace, controller }) {
                 <SelectContent>
                   <SelectItem value="all">All statuses</SelectItem>
                   {draftStatusOptions.map((status) => (
-                    <SelectItem key={status.id || status.status_key} value={status.status_key}>
+                    <SelectItem key={status.id} value={status.id}>
                       {status.label}
                     </SelectItem>
                   ))}
@@ -489,8 +484,9 @@ export default function AllItemsPage({ workspace, controller }) {
         controller={controller}
         item={controller.selectedItem}
         isAdmin={controller.isAdmin}
+        showGroupContext
         onDeleted={async () => {
-          await controller.loadItems({ groupKey: null, statusKey: "all" });
+          await controller.loadItems({ groupKey: null, statusId: "all" });
         }}
       />
 
@@ -502,6 +498,9 @@ export default function AllItemsPage({ workspace, controller }) {
         item={null}
         availableGroupKeys={ITEM_GROUP_KEYS}
         availableStatusesByGroup={controller.statusesByGroup}
+        itemTypes={controller.itemTypes}
+        assigneeOptions={controller.memberDirectory}
+        canAssign={controller.canManageAssignee}
         canManageGroupTransition
         defaultGroup="feedback"
       />

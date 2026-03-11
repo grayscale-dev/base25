@@ -1,7 +1,7 @@
 import { authorizeWriteAction, isAdminLikeRole } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
-import { isValidGroupKey, validateMetadata } from "../_shared/itemValidation.ts";
+import { validateMetadata } from "../_shared/itemValidation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,13 +25,16 @@ Deno.serve(async (req) => {
     const payload = await req.json();
     const workspaceId = payload?.workspace_id;
     const itemId = payload?.item_id;
-    const groupKey = payload?.group_key;
-    const statusKey = payload?.status_key;
+    const statusId = payload?.status_id;
+    const itemTypeId = payload?.item_type_id;
     const title = payload?.title;
     const description = payload?.description;
     const metadata = payload?.metadata;
     const tags = payload?.tags;
     const visibility = payload?.visibility;
+    const assignedTo = Object.prototype.hasOwnProperty.call(payload || {}, "assigned_to")
+      ? payload?.assigned_to ?? null
+      : undefined;
 
     if (!workspaceId || !itemId) {
       return json({ error: "workspace_id and item_id are required" }, 400);
@@ -67,11 +70,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    const nextGroup = groupKey ?? existing.group_key;
-    const nextStatus = statusKey ?? existing.status_key;
-    if (!isValidGroupKey(nextGroup)) {
-      return json({ error: "group_key is invalid" }, 400);
+    const nextStatusId = statusId ?? existing.status_id;
+
+    const { data: nextStatusRow, error: nextStatusError } = await supabaseAdmin
+      .from("item_statuses")
+      .select("id, group_key, status_key, label, is_active")
+      .eq("workspace_id", workspaceId)
+      .eq("id", nextStatusId)
+      .limit(1)
+      .maybeSingle();
+
+    if (nextStatusError) {
+      console.error("updateItem status lookup error:", nextStatusError);
+      return json({ error: "Failed to validate status" }, 500);
     }
+    if (!nextStatusRow || nextStatusRow.is_active === false) {
+      return json({ error: "status_id is not valid for this workspace" }, 400);
+    }
+
+    const nextGroup = nextStatusRow.group_key;
 
     if (nextGroup !== existing.group_key && !isAdminLikeRole(auth.role)) {
       return json({ error: "Only admins can move items across groups" }, 403);
@@ -81,8 +98,12 @@ Deno.serve(async (req) => {
       return json({ error: "Contributors can only edit feedback items" }, 403);
     }
 
-    if (auth.role === "contributor" && nextStatus !== existing.status_key) {
+    if (auth.role === "contributor" && nextStatusId !== existing.status_id) {
       return json({ error: "Contributors cannot change item status" }, 403);
+    }
+
+    if (assignedTo !== undefined && !isAdminLikeRole(auth.role)) {
+      return json({ error: "Only admin or owner can change assignee" }, 403);
     }
 
     const nextMetadata = metadata ?? existing.metadata;
@@ -91,34 +112,56 @@ Deno.serve(async (req) => {
       return json({ error: metadataCheck.message }, 400);
     }
 
-    const { data: statusRow, error: statusError } = await supabaseAdmin
-      .from("item_statuses")
-      .select("id")
-      .eq("workspace_id", workspaceId)
-      .eq("group_key", nextGroup)
-      .eq("status_key", nextStatus)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    if (statusError) {
-      console.error("updateItem status lookup error:", statusError);
-      return json({ error: "Failed to validate status" }, 500);
-    }
-    if (!statusRow) {
-      return json({ error: "status_key is not valid for this group" }, 400);
+    let nextItemTypeId = itemTypeId ?? existing.item_type_id ?? null;
+    if (!nextItemTypeId) {
+      const { data: fallbackType, error: fallbackTypeError } = await supabaseAdmin
+        .from("item_types")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (fallbackTypeError) {
+        console.error("updateItem fallback type lookup error:", fallbackTypeError);
+        return json({ error: "Failed to resolve item type" }, 500);
+      }
+      if (!fallbackType?.id) {
+        return json({ error: "No active item types are configured for this workspace" }, 409);
+      }
+      nextItemTypeId = fallbackType.id;
+    } else {
+      const { data: typeRow, error: typeError } = await supabaseAdmin
+        .from("item_types")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("id", nextItemTypeId)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (typeError) {
+        console.error("updateItem type lookup error:", typeError);
+        return json({ error: "Failed to validate item type" }, 500);
+      }
+      if (!typeRow) {
+        return json({ error: "item_type_id is not valid for this workspace" }, 400);
+      }
     }
 
     const patch: Record<string, unknown> = {
+      status_id: nextStatusRow.id,
       group_key: nextGroup,
-      status_key: nextStatus,
+      status_key: nextStatusRow.status_key,
       metadata: nextMetadata,
+      item_type_id: nextItemTypeId,
     };
 
     if (typeof title === "string") patch.title = title.trim();
     if (typeof description === "string") patch.description = description;
     if (Array.isArray(tags)) patch.tags = tags;
     if (typeof visibility === "string") patch.visibility = visibility;
+    if (assignedTo !== undefined) patch.assigned_to = assignedTo;
 
     const { data: updated, error: updateError } = await supabaseAdmin
       .from("items")
@@ -151,15 +194,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (existing.status_key !== updated.status_key) {
+    if (existing.status_id !== updated.status_id) {
+      const { data: oldStatusRow } = await supabaseAdmin
+        .from("item_statuses")
+        .select("label")
+        .eq("workspace_id", workspaceId)
+        .eq("id", existing.status_id)
+        .limit(1)
+        .maybeSingle();
+
+      const fromStatusLabel = oldStatusRow?.label || existing.status_key || "Unknown";
+      const toStatusLabel = nextStatusRow.label || updated.status_key || "Unknown";
       await supabaseAdmin.from("item_activities").insert({
         workspace_id: workspaceId,
         item_id: updated.id,
         activity_type: "status_change",
-        content: `Status changed from ${existing.status_key} to ${updated.status_key}`,
+        content: `Status changed from ${fromStatusLabel} to ${toStatusLabel}`,
         metadata: {
-          from_status: existing.status_key,
-          to_status: updated.status_key,
+          from_status_id: existing.status_id,
+          to_status_id: updated.status_id,
         },
         author_id: auth.user.id,
         author_role: isAdminLikeRole(auth.role) ? "admin" : "user",

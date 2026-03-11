@@ -15,6 +15,7 @@ import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
+import AssigneeDisplay from "./AssigneeDisplay";
 import { getGroupLabel } from "@/lib/item-groups";
 import { isAdminRole } from "@/lib/roles";
 
@@ -43,7 +44,7 @@ export default function GroupItemsPage({
   const canCreateItems = isAdmin || isContributorFeedback;
 
   useEffect(() => {
-    void controller.loadItems({ groupKey, statusKey: activeStatusFilter });
+    void controller.loadItems({ groupKey, statusId: activeStatusFilter });
   }, [groupKey, activeStatusFilter, workspace?.id]);
 
   const groupStatuses = useMemo(
@@ -79,7 +80,7 @@ export default function GroupItemsPage({
     }
     setShowEditor(false);
     setEditingItem(null);
-    await controller.loadItems({ groupKey, statusKey: activeStatusFilter });
+    await controller.loadItems({ groupKey, statusId: activeStatusFilter });
   };
 
   if (controller.loadingConfig) {
@@ -114,7 +115,7 @@ export default function GroupItemsPage({
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 {groupStatuses.map((status) => (
-                  <SelectItem key={status.id || status.status_key} value={status.status_key}>
+                  <SelectItem key={status.id} value={status.id}>
                     {status.label}
                   </SelectItem>
                 ))}
@@ -129,7 +130,7 @@ export default function GroupItemsPage({
           tone="danger"
           title="Unable to load items"
           description={controller.error}
-          action={() => controller.loadItems({ groupKey, statusKey: activeStatusFilter })}
+          action={() => controller.loadItems({ groupKey, statusId: activeStatusFilter })}
           actionLabel="Retry"
         />
       ) : null}
@@ -149,7 +150,8 @@ export default function GroupItemsPage({
         <div className="space-y-4">
           {controller.items.map((item) => {
             const statusLabel =
-              groupStatuses.find((status) => status.status_key === item.status_key)?.label ||
+              groupStatuses.find((status) => status.id === item.status_id)?.label ||
+              item.status_label ||
               item.status_key;
             return (
               <article
@@ -167,7 +169,21 @@ export default function GroupItemsPage({
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{statusLabel}</Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-0 text-white"
+                      style={{ backgroundColor: item.group_color || "#0F172A" }}
+                    >
+                      {statusLabel}
+                    </Badge>
+                    {item.group_key === "feedback" && !isPublicAccess ? (
+                      <AssigneeDisplay
+                        assignee={item.assignee}
+                        fallback="Unassigned"
+                        sizeClassName="h-5 w-5"
+                        textClassName="text-xs text-slate-500"
+                      />
+                    ) : null}
                     {isAdmin ? (
                       <Button
                         variant="ghost"
@@ -199,6 +215,9 @@ export default function GroupItemsPage({
         item={editingItem}
         availableGroupKeys={[groupKey]}
         availableStatusesByGroup={controller.statusesByGroup}
+        itemTypes={controller.itemTypes}
+        assigneeOptions={controller.memberDirectory}
+        canAssign={controller.canManageAssignee}
         canManageGroupTransition={false}
         defaultGroup={groupKey}
       />
@@ -210,8 +229,9 @@ export default function GroupItemsPage({
         controller={controller}
         item={controller.selectedItem}
         isAdmin={isAdmin}
+        showGroupContext={false}
         onDeleted={async () => {
-          await controller.loadItems({ groupKey, statusKey: activeStatusFilter });
+          await controller.loadItems({ groupKey, statusId: activeStatusFilter });
         }}
       />
     </PageShell>

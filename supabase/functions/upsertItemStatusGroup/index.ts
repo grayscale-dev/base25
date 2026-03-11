@@ -25,11 +25,14 @@ Deno.serve(async (req) => {
     const payload = await req.json();
     const workspaceId = payload?.workspace_id;
     const groupKey = payload?.group_key;
-    const displayName = String(payload?.display_name || "").trim();
+    const colorHex = String(payload?.color_hex || "").trim().toUpperCase();
     const displayOrder = Number(payload?.display_order ?? 0);
 
-    if (!workspaceId || !isValidGroupKey(groupKey) || !displayName) {
-      return json({ error: "workspace_id, group_key, and display_name are required" }, 400);
+    if (!workspaceId || !isValidGroupKey(groupKey)) {
+      return json({ error: "workspace_id and group_key are required" }, 400);
+    }
+    if (colorHex && !/^#[0-9A-F]{6}$/.test(colorHex)) {
+      return json({ error: "color_hex must be a valid hex value like #2563EB" }, 400);
     }
 
     const auth = await authorizeWriteAction(req, workspaceId, "admin");
@@ -47,14 +50,14 @@ Deno.serve(async (req) => {
       ? supabaseAdmin
           .from("item_status_groups")
           .update({
-            display_name: displayName,
+            ...(colorHex ? { color_hex: colorHex } : {}),
             display_order: Number.isNaN(displayOrder) ? 0 : displayOrder,
           })
           .eq("id", existing.id)
       : supabaseAdmin.from("item_status_groups").insert({
           workspace_id: workspaceId,
           group_key: groupKey,
-          display_name: displayName,
+          color_hex: colorHex || null,
           display_order: Number.isNaN(displayOrder) ? 0 : displayOrder,
         });
 

@@ -547,6 +547,7 @@ const ENTITY_TABLE_MAP = {
   ItemActivity: "item_activities",
   ItemStatusGroup: "item_status_groups",
   ItemStatus: "item_statuses",
+  ItemType: "item_types",
   ApiToken: "api_tokens",
   AuditLog: "audit_logs",
 };

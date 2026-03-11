@@ -98,8 +98,9 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
     const result = await controller.saveItem({
       payload: {
         id: selectedItem.id,
-        group_key: selectedItem.group_key,
-        status_key: selectedItem.status_key,
+        status_id: selectedItem.status_id,
+        item_type_id: selectedItem.item_type_id,
+        assigned_to: selectedItem.assigned_to || null,
         title: nextTitle,
         description: selectedItem.description || "",
         metadata: selectedItem.metadata || {},

@@ -6,25 +6,45 @@ export const ITEM_GROUP_LABELS = {
   changelog: "Changelog",
 };
 
+export const ITEM_GROUP_COLORS = {
+  feedback: "#2563EB",
+  roadmap: "#7C3AED",
+  changelog: "#059669",
+};
+
 export const DEFAULT_GROUP_STATUSES = {
   feedback: [
-    { key: "open", label: "Open" },
-    { key: "under_review", label: "Under review" },
-    { key: "planned", label: "Planned" },
-    { key: "in_progress", label: "In progress" },
-    { key: "completed", label: "Completed" },
-    { key: "closed", label: "Closed" },
+    { label: "Open" },
+    { label: "Under review" },
+    { label: "Planned" },
+    { label: "In progress" },
+    { label: "Completed" },
+    { label: "Closed" },
   ],
   roadmap: [
-    { key: "planned", label: "Planned" },
-    { key: "in_progress", label: "In progress" },
-    { key: "shipped", label: "Shipped" },
+    { label: "Planned" },
+    { label: "In progress" },
+    { label: "Shipped" },
   ],
-  changelog: [{ key: "published", label: "Published" }],
+  changelog: [{ label: "Published" }],
 };
+
+export const PRIORITY_CONFIG = {
+  low: { label: "Low", color: "#64748B" },
+  medium: { label: "Medium", color: "#2563EB" },
+  high: { label: "High", color: "#D97706" },
+  critical: { label: "Critical", color: "#DC2626" },
+  not_set: { label: "No Priority", color: "#94A3B8" },
+};
+
+export const PRIORITY_OPTIONS = ["low", "medium", "high", "critical"];
 
 export function getGroupLabel(groupKey, fallback = "Items") {
   return ITEM_GROUP_LABELS[groupKey] || fallback;
+}
+
+export function getGroupColor(groupKey, fallback = "#0F172A") {
+  return ITEM_GROUP_COLORS[groupKey] || fallback;
 }
 
 export function normalizeGroupKey(value, fallback = "feedback") {
@@ -40,6 +60,14 @@ export function sanitizeStatusKey(value) {
     .replace(/[^a-z0-9_-]/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
+}
+
+export function getPriorityLabel(priorityKey) {
+  return PRIORITY_CONFIG[priorityKey]?.label || PRIORITY_CONFIG.not_set.label;
+}
+
+export function getPriorityColor(priorityKey) {
+  return PRIORITY_CONFIG[priorityKey]?.color || PRIORITY_CONFIG.not_set.color;
 }
 
 export function getMetadataShapeForGroup(groupKey) {

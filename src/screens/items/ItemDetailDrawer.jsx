@@ -15,6 +15,7 @@ export default function ItemDetailDrawer({
   controller,
   item,
   isAdmin,
+  showGroupContext = true,
   onDeleted,
 }) {
   const [visibleItem, setVisibleItem] = useState(item || null);
@@ -53,8 +54,9 @@ export default function ItemDetailDrawer({
     const result = await controller.saveItem({
       payload: {
         id: visibleItem.id,
-        group_key: visibleItem.group_key,
-        status_key: visibleItem.status_key,
+        status_id: visibleItem.status_id,
+        item_type_id: visibleItem.item_type_id,
+        assigned_to: visibleItem.assigned_to || null,
         title: nextTitle,
         description: visibleItem.description || "",
         metadata: visibleItem.metadata || {},
@@ -210,6 +212,7 @@ export default function ItemDetailDrawer({
                 controller={controller}
                 item={visibleItem}
                 isAdmin={isAdmin}
+                showGroupContext={showGroupContext}
                 onDeleted={handleDeleted}
               />
             </div>
