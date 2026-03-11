@@ -50,6 +50,10 @@ Deno.serve(async (req) => {
       return json({ error: "Only admins can add internal notes" }, 403);
     }
 
+    if (auth.role === "contributor" && activityType !== "comment") {
+      return json({ error: "Contributors can only post comments" }, 403);
+    }
+
     const { data: item, error: itemError } = await supabaseAdmin
       .from("items")
       .select("id")

@@ -44,6 +44,10 @@ Deno.serve(async (req) => {
       return auth.error;
     }
 
+    if (auth.role === "contributor" && groupKey !== "feedback") {
+      return json({ error: "Contributors can only create feedback items" }, 403);
+    }
+
     const metadataCheck = validateMetadata(groupKey, metadata);
     if (!metadataCheck.valid) {
       return json({ error: metadataCheck.message }, 400);

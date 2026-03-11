@@ -47,7 +47,7 @@ export default function Layout({ children, currentPageName }) {
   const [user, setUser] = useState(null);
   const [workspace, setWorkspace] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
-  const [role, setRole] = useState('viewer');
+  const [role, setRole] = useState('contributor');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPublicViewing, setIsPublicViewing] = useState(false);
   const [noAccessMessage, setNoAccessMessage] = useState(null);
@@ -112,7 +112,7 @@ export default function Layout({ children, currentPageName }) {
       if (!storedWorkspace) {
         if (location.pathname.startsWith('/workspace/')) {
           setWorkspace(null);
-          setRole('viewer');
+          setRole('contributor');
           setIsPublicViewing(false);
           return;
         }
@@ -127,7 +127,7 @@ export default function Layout({ children, currentPageName }) {
       }
       
       setWorkspace(storedWorkspace);
-      setRole(storedRole || 'viewer');
+      setRole(storedRole || 'contributor');
       setIsPublicViewing(storedIsPublicAccess);
       
       if (storedIsPublicAccess) {
@@ -158,16 +158,16 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const handleWorkspaceSwitch = async (ws) => {
-    let nextRole = 'viewer';
+    let nextRole = 'contributor';
     if (user?.id) {
       try {
         const roles = await base44.entities.WorkspaceRole.filter({
           workspace_id: ws.id,
           user_id: user.id,
         });
-        nextRole = roles[0]?.role || 'viewer';
+        nextRole = roles[0]?.role || 'contributor';
       } catch {
-        nextRole = 'viewer';
+        nextRole = 'contributor';
       }
     }
 
@@ -265,12 +265,12 @@ export default function Layout({ children, currentPageName }) {
                         </div>
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-64">
+                    <DropdownMenuContent align="start" className="w-64 p-0">
                       {workspaces.map((ws) => (
                         <DropdownMenuItem
                           key={ws.id}
                           onClick={() => handleWorkspaceSwitch(ws)}
-                          className="cursor-pointer !w-full px-3 py-2"
+                          className="cursor-pointer !w-full !justify-start rounded-none px-3 py-2"
                         >
                           <WorkspaceAvatar workspace={ws} size="sm" />
                           <span className="ml-2 flex-1 truncate text-left">{ws.name}</span>

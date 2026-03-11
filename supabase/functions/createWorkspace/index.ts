@@ -1,6 +1,11 @@
 import { requireAuth } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
+import {
+  encryptAccessCode,
+  generateAccessCode,
+  hashAccessCode,
+} from "../_shared/accessCode.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -104,7 +109,6 @@ Deno.serve(async (req) => {
         user_id: authCheck.user.id,
         email: authCheck.user.email,
         role: "owner",
-        assigned_via: "explicit",
       });
 
     if (roleError) {
@@ -116,6 +120,29 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
+    }
+
+    try {
+      const accessCode = generateAccessCode();
+      const codeSalt = crypto.randomUUID();
+      const codeHash = await hashAccessCode(accessCode, codeSalt);
+      const encryptedCode = await encryptAccessCode(accessCode);
+      await supabaseAdmin.from("workspace_access_codes").upsert(
+        {
+          workspace_id: createdWorkspace.id,
+          code_hash: codeHash,
+          code_salt: codeSalt,
+          code_ciphertext: encryptedCode.codeCiphertext,
+          code_nonce: encryptedCode.codeNonce,
+          expires_at: null,
+          created_by: authCheck.user.id,
+        },
+        {
+          onConflict: "workspace_id",
+        },
+      );
+    } catch (accessCodeError) {
+      console.error("Workspace access code bootstrap error:", accessCodeError);
     }
 
     const { error: seedError } = await supabaseAdmin.rpc("seed_default_item_statuses", {

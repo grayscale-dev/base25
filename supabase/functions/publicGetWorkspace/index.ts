@@ -88,8 +88,7 @@ Deno.serve(async (req) => {
             workspace_id: workspace.id,
             user_id: userId,
             email: userEmail,
-            role: "viewer",
-            assigned_via: "public",
+            role: "contributor",
           },
           { onConflict: "workspace_id,user_id" },
         )
@@ -101,7 +100,7 @@ Deno.serve(async (req) => {
         return json({ error: "Unable to join workspace" }, 500);
       }
 
-      resolvedRole = insertedRole?.role || "viewer";
+      resolvedRole = insertedRole?.role || "contributor";
     }
 
     const response = json({

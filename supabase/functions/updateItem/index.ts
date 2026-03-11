@@ -58,6 +58,15 @@ Deno.serve(async (req) => {
       return json({ error: "Item not found" }, 404);
     }
 
+    if (auth.role === "contributor") {
+      if (existing.group_key !== "feedback") {
+        return json({ error: "Contributors can only edit feedback items" }, 403);
+      }
+      if (!existing.submitter_id || existing.submitter_id !== auth.user.id) {
+        return json({ error: "Contributors can only edit their own feedback items" }, 403);
+      }
+    }
+
     const nextGroup = groupKey ?? existing.group_key;
     const nextStatus = statusKey ?? existing.status_key;
     if (!isValidGroupKey(nextGroup)) {
@@ -66,6 +75,14 @@ Deno.serve(async (req) => {
 
     if (nextGroup !== existing.group_key && !isAdminLikeRole(auth.role)) {
       return json({ error: "Only admins can move items across groups" }, 403);
+    }
+
+    if (auth.role === "contributor" && nextGroup !== "feedback") {
+      return json({ error: "Contributors can only edit feedback items" }, 403);
+    }
+
+    if (auth.role === "contributor" && nextStatus !== existing.status_key) {
+      return json({ error: "Contributors cannot change item status" }, 403);
     }
 
     const nextMetadata = metadata ?? existing.metadata;

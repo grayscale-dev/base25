@@ -24,13 +24,13 @@ export function getWorkspacePageName(section) {
   return PAGE_NAME_BY_SECTION[normalized] || null;
 }
 
-export function getDefaultWorkspaceSection(role = "viewer", isPublicAccess = false) {
+export function getDefaultWorkspaceSection(role = "contributor", isPublicAccess = false) {
   return isAdminRole(role) && !isPublicAccess
     ? WORKSPACE_ALL_SECTION
     : WORKSPACE_DEFAULT_SECTION;
 }
 
-export function resolveWorkspaceSection(section, role = "viewer", isPublicAccess = false) {
+export function resolveWorkspaceSection(section, role = "contributor", isPublicAccess = false) {
   const normalized = normalizeWorkspaceSection(section);
   if (!normalized) return null;
 

@@ -20,7 +20,7 @@ export default function ApiDocs() {
     }
 
     if (!isAdminRole(storedRole)) {
-      navigate(workspaceDefaultUrl(storedWorkspace.slug, storedRole || "viewer", false), {
+      navigate(workspaceDefaultUrl(storedWorkspace.slug, storedRole || "contributor", false), {
         replace: true,
       });
       return;

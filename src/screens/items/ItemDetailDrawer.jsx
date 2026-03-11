@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { workspaceItemUrl } from "@/components/utils/workspaceUrl";
 import ItemDetailPanel from "./ItemDetailPanel";
-import { ExternalLink, Pencil, X } from "lucide-react";
+import { ExternalLink, Pencil, Trash2, X } from "lucide-react";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 export default function ItemDetailDrawer({
   open,
@@ -19,6 +20,7 @@ export default function ItemDetailDrawer({
   const [visibleItem, setVisibleItem] = useState(item || null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     if (item) {
@@ -75,6 +77,29 @@ export default function ItemDetailDrawer({
     handleOpenChange(false);
   };
 
+  const canEditTitle =
+    isAdmin ||
+    Boolean(
+      visibleItem &&
+      visibleItem.group_key === "feedback" &&
+      visibleItem.submitter_id &&
+      controller.currentUserId &&
+      visibleItem.submitter_id === controller.currentUserId
+    );
+
+  const canDeleteItem = controller.canDeleteItem(visibleItem);
+
+  const deleteItem = async () => {
+    if (!visibleItem?.id) return;
+    const result = await controller.deleteItem(visibleItem.id);
+    if (!result.ok) {
+      controller.setError(result.error);
+      return;
+    }
+    setDeleteDialogOpen(false);
+    handleDeleted();
+  };
+
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
@@ -123,7 +148,7 @@ export default function ItemDetailDrawer({
                 ) : (
                   <div className="flex items-center gap-2">
                     <h2 className="truncate text-lg font-semibold text-slate-900">{visibleItem.title}</h2>
-                    {isAdmin ? (
+                    {canEditTitle ? (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -142,6 +167,18 @@ export default function ItemDetailDrawer({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {canDeleteItem ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDeleteDialogOpen(true)}
+                    aria-label="Delete item"
+                    title="Delete item"
+                    disabled={controller.deletingItemId === visibleItem.id}
+                  >
+                    <Trash2 className="h-4 w-4 text-rose-500" />
+                  </Button>
+                ) : null}
                 <Button
                   asChild
                   variant="ghost"
@@ -176,6 +213,18 @@ export default function ItemDetailDrawer({
                 onDeleted={handleDeleted}
               />
             </div>
+            <ConfirmDialog
+              open={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+              title="Delete this item?"
+              description="This action permanently removes the item and its discussion history. This cannot be undone."
+              confirmLabel={controller.deletingItemId === visibleItem.id ? "Deleting..." : "Delete Item"}
+              onConfirm={() => {
+                void deleteItem();
+              }}
+              loading={controller.deletingItemId === visibleItem.id}
+              confirmClassName="bg-rose-600 hover:bg-rose-700"
+            />
           </div>
         ) : null}
       </SheetContent>

@@ -6,7 +6,7 @@ import { createPageUrl } from "@/utils";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { getWorkspaceSession } from "@/lib/workspace-session";
 import { workspaceDefaultUrl } from "@/components/utils/workspaceUrl";
-import { isAdminRole } from "@/lib/roles";
+import { isOwnerRole } from "@/lib/roles";
 
 export default function Billing() {
   const navigate = useNavigate();
@@ -19,8 +19,8 @@ export default function Billing() {
       return;
     }
 
-    if (!isAdminRole(storedRole)) {
-      navigate(workspaceDefaultUrl(storedWorkspace.slug, storedRole || "viewer", false), {
+    if (!isOwnerRole(storedRole)) {
+      navigate(workspaceDefaultUrl(storedWorkspace.slug, storedRole || "contributor", false), {
         replace: true,
       });
       return;

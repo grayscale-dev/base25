@@ -1,5 +1,12 @@
 import { requireAdmin, requireAuth, verifyWorkspace } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
+import {
+  decryptAccessCode,
+  encryptAccessCode,
+  generateAccessCode,
+  hashAccessCode,
+  maskAccessCode,
+} from "../_shared/accessCode.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +14,40 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-user-access-token, x-forwarded-authorization",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+async function createOrRotateAccessCode(workspaceId: string, userId: string) {
+  const accessCode = generateAccessCode();
+  const codeSalt = crypto.randomUUID();
+  const codeHash = await hashAccessCode(accessCode, codeSalt);
+  const encryptedCode = await encryptAccessCode(accessCode);
+
+  const { error: upsertError } = await supabaseAdmin
+    .from("workspace_access_codes")
+    .upsert(
+      {
+        workspace_id: workspaceId,
+        code_hash: codeHash,
+        code_salt: codeSalt,
+        code_ciphertext: encryptedCode.codeCiphertext,
+        code_nonce: encryptedCode.codeNonce,
+        expires_at: null,
+        created_by: userId,
+      },
+      { onConflict: "workspace_id" },
+    );
+
+  if (upsertError) {
+    throw upsertError;
+  }
+
+  return accessCode;
+}
 
 Deno.serve(async (req) => {
   try {
@@ -23,13 +64,11 @@ Deno.serve(async (req) => {
     }
 
     const payload = await req.json().catch(() => ({}));
-    const workspaceId = payload.workspace_id;
+    const workspaceId = String(payload.workspace_id || "").trim();
+    const reveal = Boolean(payload.reveal);
 
     if (!workspaceId) {
-      return new Response(JSON.stringify({ error: "Missing workspace_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ error: "Missing workspace_id" }, 400);
     }
 
     const workspaceCheck = await verifyWorkspace(workspaceId);
@@ -48,33 +87,64 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data: existingCodeRow, error: lookupError } = await supabaseAdmin
       .from("workspace_access_codes")
-      .select("expires_at, created_at")
+      .select("code_hash, code_salt, code_ciphertext, code_nonce, created_at, created_by")
       .eq("workspace_id", workspaceId)
       .maybeSingle();
 
-    if (error) {
-      console.error("Access code lookup error:", error);
-      return new Response(JSON.stringify({ error: "Failed to load access code" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (lookupError) {
+      console.error("Access code lookup error:", lookupError);
+      return json({ error: "Failed to load access code" }, 500);
     }
 
-    return new Response(
-      JSON.stringify({
-        has_code: Boolean(data),
-        expires_at: data?.expires_at ?? null,
-        created_at: data?.created_at ?? null,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    let accessCode = "";
+    let createdAt = existingCodeRow?.created_at || null;
+
+    const needsBootstrap = !existingCodeRow
+      || !existingCodeRow.code_hash
+      || !existingCodeRow.code_salt
+      || !existingCodeRow.code_ciphertext
+      || !existingCodeRow.code_nonce;
+
+    if (needsBootstrap) {
+      try {
+        accessCode = await createOrRotateAccessCode(workspaceId, authCheck.user.id);
+        createdAt = new Date().toISOString();
+      } catch (bootstrapError) {
+        console.error("Access code bootstrap error:", bootstrapError);
+        return json({ error: "Failed to initialize access code" }, 500);
+      }
+    } else if (reveal) {
+      try {
+        accessCode = await decryptAccessCode(
+          String(existingCodeRow.code_ciphertext),
+          String(existingCodeRow.code_nonce),
+        );
+      } catch (decryptError) {
+        console.error("Access code decrypt error, rotating code:", decryptError);
+        try {
+          accessCode = await createOrRotateAccessCode(workspaceId, authCheck.user.id);
+          createdAt = new Date().toISOString();
+        } catch (rotationError) {
+          console.error("Access code rotation fallback failed:", rotationError);
+          return json({ error: "Failed to load access code" }, 500);
+        }
+      }
+    }
+
+    const maskedCode = accessCode
+      ? maskAccessCode(accessCode)
+      : maskAccessCode("XXXXXXXXXX");
+
+    return json({
+      has_code: true,
+      masked_code: maskedCode,
+      access_code: reveal ? accessCode : null,
+      created_at: createdAt,
+    });
   } catch (error) {
     console.error("Access code status error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Internal server error" }, 500);
   }
 });

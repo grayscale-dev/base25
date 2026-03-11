@@ -31,7 +31,7 @@ export default function JoinWorkspace() {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
   const [alreadyMember, setAlreadyMember] = useState(false);
-  const [memberRole, setMemberRole] = useState("viewer");
+  const [memberRole, setMemberRole] = useState("contributor");
   const [accessRequired, setAccessRequired] = useState(false);
   const [accessCode, setAccessCode] = useState("");
 
@@ -88,7 +88,7 @@ export default function JoinWorkspace() {
       const role = await getWorkspaceRole(candidate.workspace.id, currentUser.id);
       if (role) {
         setAlreadyMember(true);
-        setMemberRole(role.role || "viewer");
+        setMemberRole(role.role || "contributor");
       }
     } catch (err) {
       console.error("Failed to validate join:", err);
@@ -149,7 +149,7 @@ export default function JoinWorkspace() {
 
   const handleOpenWorkspace = () => {
     if (!workspace) return;
-    const nextRole = memberRole || "viewer";
+    const nextRole = memberRole || "contributor";
     setWorkspaceSession({ workspace, role: nextRole });
     navigate(workspaceDefaultUrl(workspace.slug, nextRole, false));
   };

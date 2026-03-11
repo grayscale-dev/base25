@@ -68,11 +68,11 @@ Deno.serve(async (req) => {
       return json({ error: "Workspace slug is required" }, 400);
     }
 
-    if (nextName !== existingWorkspace.name && !isOwner) {
+    if ((nextName !== existingWorkspace.name || nextSlug !== existingWorkspace.slug) && !isOwner) {
       return json(
         {
-          error: "Only the workspace owner can rename the workspace",
-          code: "OWNER_REQUIRED_FOR_RENAME",
+          error: "Only the workspace owner can change the workspace name or slug",
+          code: "OWNER_REQUIRED_FOR_IDENTITY_UPDATE",
         },
         403,
       );

@@ -31,7 +31,6 @@ Deno.serve(async (req) => {
     const payload = await req.json().catch(() => ({}));
     const workspaceId = String(payload?.workspace_id || "").trim();
     const memberId = String(payload?.member_id || "").trim();
-    const transferToMemberId = String(payload?.transfer_to_member_id || "").trim();
 
     if (!workspaceId || !memberId) {
       return json({ error: "workspace_id and member_id are required" }, 400);
@@ -53,6 +52,8 @@ Deno.serve(async (req) => {
       });
     }
 
+    const actorRole = permissionCheck.role;
+
     const { data: targetMember, error: targetMemberError } = await supabaseAdmin
       .from("workspace_roles")
       .select("id, workspace_id, user_id, email, role")
@@ -70,42 +71,35 @@ Deno.serve(async (req) => {
     }
 
     if (targetMember.role === "owner") {
-      if (!transferToMemberId) {
+      if (actorRole !== "owner") {
         return json(
           {
-            error: "Transfer ownership before removing the owner",
-            code: "OWNERSHIP_TRANSFER_REQUIRED",
+            error: "Only owners can remove owners",
+            code: "OWNER_REQUIRED_FOR_OWNER_REMOVAL",
+          },
+          403,
+        );
+      }
+
+      const { count: ownerCount, error: ownerCountError } = await supabaseAdmin
+        .from("workspace_roles")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .eq("role", "owner");
+
+      if (ownerCountError) {
+        console.error("removeWorkspaceMember owner count error:", ownerCountError);
+        return json({ error: "Failed to validate owner count" }, 500);
+      }
+
+      if ((ownerCount || 0) <= 1) {
+        return json(
+          {
+            error: "Add another owner before removing the last owner",
+            code: "LAST_OWNER_PROTECTION",
           },
           409,
         );
-      }
-      if (transferToMemberId === memberId) {
-        return json({ error: "Choose a different member as the new owner" }, 400);
-      }
-
-      const { data: transferTarget, error: transferTargetError } = await supabaseAdmin
-        .from("workspace_roles")
-        .select("id, user_id")
-        .eq("id", transferToMemberId)
-        .eq("workspace_id", workspaceId)
-        .limit(1)
-        .maybeSingle();
-
-      if (transferTargetError) {
-        console.error("removeWorkspaceMember transfer target lookup error:", transferTargetError);
-        return json({ error: "Failed to load transfer target" }, 500);
-      }
-      if (!transferTarget) {
-        return json({ error: "Transfer target member not found" }, 404);
-      }
-
-      const { error: transferError } = await supabaseAdmin.rpc("transfer_workspace_owner", {
-        target_workspace_id: workspaceId,
-        target_user_id: transferTarget.user_id,
-      });
-      if (transferError) {
-        console.error("removeWorkspaceMember ownership transfer error:", transferError);
-        return json({ error: "Failed to transfer ownership" }, 500);
       }
     }
 

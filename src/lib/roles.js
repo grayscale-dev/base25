@@ -15,8 +15,8 @@ export function canContributeRole(role) {
 }
 
 export function getRoleLabel(role) {
-  if (!role) return "Viewer";
+  if (!role) return "Contributor";
   const normalized = String(role).trim().toLowerCase();
-  if (!normalized) return "Viewer";
+  if (!normalized) return "Contributor";
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }

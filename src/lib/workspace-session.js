@@ -28,7 +28,7 @@ export function getWorkspaceSession() {
     return {
       workspace: null,
       workspaceId: null,
-      role: 'viewer',
+      role: 'contributor',
       isPublicAccess: false,
     };
   }
@@ -38,13 +38,13 @@ export function getWorkspaceSession() {
     storage.getItem(WORKSPACE_SESSION_KEYS.workspaceId) ||
     workspace?.id ||
     null;
-  const role = storage.getItem(WORKSPACE_SESSION_KEYS.role) || 'viewer';
+  const role = storage.getItem(WORKSPACE_SESSION_KEYS.role) || 'contributor';
   const isPublicAccess = storage.getItem(WORKSPACE_SESSION_KEYS.isPublicAccess) === 'true';
 
   return { workspace, workspaceId, role, isPublicAccess };
 }
 
-export function setWorkspaceSession({ workspace = null, workspaceId = null, role = 'viewer', isPublicAccess = false }) {
+export function setWorkspaceSession({ workspace = null, workspaceId = null, role = 'contributor', isPublicAccess = false }) {
   const storage = getSessionStorage();
   if (!storage) return;
 
@@ -57,7 +57,7 @@ export function setWorkspaceSession({ workspace = null, workspaceId = null, role
     storage.setItem(WORKSPACE_SESSION_KEYS.workspaceId, resolvedWorkspaceId);
   }
 
-  storage.setItem(WORKSPACE_SESSION_KEYS.role, role || 'viewer');
+  storage.setItem(WORKSPACE_SESSION_KEYS.role, role || 'contributor');
   storage.setItem(WORKSPACE_SESSION_KEYS.isPublicAccess, String(Boolean(isPublicAccess)));
 
   if (typeof window !== 'undefined') {

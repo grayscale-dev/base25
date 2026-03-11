@@ -17,7 +17,7 @@ export function workspaceUrl(slug, section, options = {}) {
   return options.query ? `${path}${options.query}` : path;
 }
 
-export function workspaceDefaultUrl(slug, role = "viewer", isPublicAccess = false, options = {}) {
+export function workspaceDefaultUrl(slug, role = "contributor", isPublicAccess = false, options = {}) {
   return workspaceUrl(slug, getDefaultWorkspaceSection(role, isPublicAccess), options);
 }
 

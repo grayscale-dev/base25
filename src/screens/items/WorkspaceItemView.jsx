@@ -74,7 +74,13 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
   const fallbackSection = getDefaultWorkspaceSection(role, isPublicAccess);
   const backSection = selectedItem?.group_key || fallbackSection;
   const backLabel = selectedItem?.group_key ? getGroupLabel(selectedItem.group_key) : "Workspace";
-  const canEditTitle = isAdminRole(role) && !isPublicAccess;
+  const canDeleteSelectedItem = controller.canDeleteItem(selectedItem);
+  const canEditTitle =
+    (isAdminRole(role) && !isPublicAccess) ||
+    (role === "contributor" &&
+      !isPublicAccess &&
+      selectedItem?.group_key === "feedback" &&
+      selectedItem?.submitter_id === controller.currentUserId);
 
   useEffect(() => {
     setIsEditingTitle(false);
@@ -193,34 +199,38 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
           )
         }
         actions={
-          canEditTitle && !isEditingTitle ? (
+          (canEditTitle || canDeleteSelectedItem) && !isEditingTitle ? (
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-slate-400 hover:text-slate-600"
-                onClick={() => {
-                  setTitleDraft(selectedItem.title || "");
-                  setIsEditingTitle(true);
-                }}
-                aria-label="Edit item title"
-                title="Edit item title"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
-                onClick={() => {
-                  setDeleteDialogOpen(true);
-                }}
-                aria-label="Delete item"
-                title="Delete item"
-                disabled={controller.deletingItemId === selectedItem.id}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              {canEditTitle ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                  onClick={() => {
+                    setTitleDraft(selectedItem.title || "");
+                    setIsEditingTitle(true);
+                  }}
+                  aria-label="Edit item title"
+                  title="Edit item title"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+              {canDeleteSelectedItem ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                  onClick={() => {
+                    setDeleteDialogOpen(true);
+                  }}
+                  aria-label="Delete item"
+                  title="Delete item"
+                  disabled={controller.deletingItemId === selectedItem.id}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
             </div>
           ) : null
         }

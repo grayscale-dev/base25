@@ -116,7 +116,6 @@ Deno.serve(async (req) => {
         user_id: authCheck.user.id,
         email: authCheck.user.email,
         role: "contributor",
-        assigned_via: "access_code",
       });
     }
 

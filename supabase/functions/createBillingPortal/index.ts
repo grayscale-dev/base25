@@ -1,5 +1,5 @@
 import Stripe from "https://esm.sh/stripe@14.20.0?target=deno";
-import { requireAuth, requireAdmin } from "../_shared/authHelpers.ts";
+import { requireAuth, requireOwner } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
@@ -43,10 +43,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const adminCheck = await requireAdmin(workspaceId, authCheck.user.id);
-    if (!adminCheck.success) {
-      return new Response(adminCheck.error.body, {
-        status: adminCheck.error.status,
+    const ownerCheck = await requireOwner(workspaceId, authCheck.user.id);
+    if (!ownerCheck.success) {
+      return new Response(ownerCheck.error.body, {
+        status: ownerCheck.error.status,
         headers: corsHeaders,
       });
     }

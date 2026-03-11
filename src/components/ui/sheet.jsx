@@ -153,7 +153,7 @@ SheetContent.displayName = "SheetContent";
 
 const SheetHeader = ({ className, ...props }) => (
   <div
-    className={cn("mb-4 flex flex-col space-y-2 text-center sm:text-left", className)}
+    className={cn("mb-5 flex flex-col space-y-2 text-center sm:text-left", className)}
     {...props}
   />
 );
@@ -161,7 +161,7 @@ SheetHeader.displayName = "SheetHeader";
 
 const SheetFooter = ({ className, ...props }) => (
   <div
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
+    className={cn("mt-6 flex flex-col-reverse pt-2 sm:flex-row sm:justify-end sm:space-x-2", className)}
     {...props}
   />
 );

@@ -1,4 +1,4 @@
-import { authorizeWriteAction } from "../_shared/authHelpers.ts";
+import { authorizeWriteAction, isAdminLikeRole } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 
@@ -29,9 +29,36 @@ Deno.serve(async (req) => {
       return json({ error: "workspace_id and item_id are required" }, 400);
     }
 
-    const auth = await authorizeWriteAction(req, workspaceId, "admin");
+    const auth = await authorizeWriteAction(req, workspaceId, "contributor");
     if (!auth.success) {
       return auth.error;
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("items")
+      .select("id, group_key, submitter_id")
+      .eq("workspace_id", workspaceId)
+      .eq("id", itemId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error("deleteItem lookup error:", existingError);
+      return json({ error: "Failed to load item" }, 500);
+    }
+    if (!existing) {
+      return json({ error: "Item not found" }, 404);
+    }
+
+    if (!isAdminLikeRole(auth.role)) {
+      const canDeleteOwnFeedback =
+        auth.role === "contributor" &&
+        existing.group_key === "feedback" &&
+        existing.submitter_id &&
+        existing.submitter_id === auth.user.id;
+      if (!canDeleteOwnFeedback) {
+        return json({ error: "Contributors can only delete their own feedback items" }, 403);
+      }
     }
 
     const { error } = await supabaseAdmin

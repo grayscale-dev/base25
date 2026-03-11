@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import PageLoadingState from "@/components/common/PageLoadingState";
-import { StateBanner, StatePanel } from "@/components/common/StateDisplay";
+import { StatePanel } from "@/components/common/StateDisplay";
+import { toast } from "@/components/ui/use-toast";
 
 const SERVICES = [
   { id: "feedback", label: "Feedback" },
@@ -22,7 +23,6 @@ export default function WorkspaceBillingPanel({ workspace }) {
   const [startingTrial, setStartingTrial] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [actionError, setActionError] = useState("");
 
   const workspaceId = workspace?.id || null;
 
@@ -73,11 +73,14 @@ export default function WorkspaceBillingPanel({ workspace }) {
     if (!workspaceId) return;
     const services = Array.from(selectedServices);
     if (services.length === 0) {
-      setActionError("Select at least one service to continue to checkout.");
+      toast({
+        title: "Action required",
+        description: "Select at least one service to continue to checkout.",
+        variant: "destructive",
+      });
       return;
     }
 
-    setActionError("");
     setStartingTrial(true);
     try {
       const { data } = await base44.functions.invoke("createCheckoutSession", {
@@ -91,7 +94,11 @@ export default function WorkspaceBillingPanel({ workspace }) {
       }
     } catch (error) {
       console.error("Failed to start trial:", error);
-      setActionError("Unable to start checkout. Please try again.");
+      toast({
+        title: "Action failed",
+        description: "Unable to start checkout. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setStartingTrial(false);
     }
@@ -99,7 +106,6 @@ export default function WorkspaceBillingPanel({ workspace }) {
 
   const handleManageBilling = async () => {
     if (!workspaceId) return;
-    setActionError("");
     setOpeningPortal(true);
     try {
       const { data } = await base44.functions.invoke("createBillingPortal", {
@@ -111,7 +117,11 @@ export default function WorkspaceBillingPanel({ workspace }) {
       }
     } catch (error) {
       console.error("Failed to open billing portal:", error);
-      setActionError("Unable to open the billing portal right now.");
+      toast({
+        title: "Action failed",
+        description: "Unable to open the billing portal right now.",
+        variant: "destructive",
+      });
     } finally {
       setOpeningPortal(false);
     }
@@ -158,8 +168,6 @@ export default function WorkspaceBillingPanel({ workspace }) {
 
   return (
     <div className="space-y-6">
-      <StateBanner tone="danger" message={actionError} />
-
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

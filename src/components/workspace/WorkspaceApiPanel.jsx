@@ -42,7 +42,8 @@ import { toast } from "@/components/ui/use-toast";
 import Badge from "@/components/common/Badge";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PageLoadingState from "@/components/common/PageLoadingState";
-import { StateBanner, StatePanel } from "@/components/common/StateDisplay";
+import { StatePanel } from "@/components/common/StateDisplay";
+import { isOwnerRole } from "@/lib/roles";
 
 const API_ENDPOINTS = [
   {
@@ -128,8 +129,9 @@ const ALL_PERMISSIONS = [
   { value: "tokens:write", label: "Manage API Access" },
 ];
 
-export default function WorkspaceApiPanel({ workspace }) {
+export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
   const workspaceId = workspace?.id || null;
+  const isOwner = isOwnerRole(role);
   const [tokens, setTokens] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateToken, setShowCreateToken] = useState(false);
@@ -140,7 +142,6 @@ export default function WorkspaceApiPanel({ workspace }) {
   const [expandedEndpoint, setExpandedEndpoint] = useState(null);
   const [pendingRevokeToken, setPendingRevokeToken] = useState(null);
   const [revokingTokenId, setRevokingTokenId] = useState(null);
-  const [actionError, setActionError] = useState("");
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
@@ -169,7 +170,6 @@ export default function WorkspaceApiPanel({ workspace }) {
   const handleCreateToken = async () => {
     if (!newTokenName || newTokenPerms.length === 0 || !workspaceId) return;
     try {
-      setActionError("");
       const user = await base44.auth.me();
       const tokenValue = "itms_" + Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -190,18 +190,32 @@ export default function WorkspaceApiPanel({ workspace }) {
       setNewTokenName("");
       setNewTokenPerms([]);
       await loadTokens();
+      toast({
+        title: "Token created",
+        description: `${newTokenName} is ready to use.`,
+      });
     } catch (error) {
       console.error("Failed to create token:", error);
-      setActionError("Failed to create API token. Please try again.");
+      toast({
+        title: "Action failed",
+        description: "Failed to create API token. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   const handleRevokeToken = async () => {
-    if (!pendingRevokeToken?.id) return;
-    setActionError("");
+    if (!pendingRevokeToken?.id || !workspaceId || !isOwner) return;
     setRevokingTokenId(pendingRevokeToken.id);
     try {
-      await base44.entities.ApiToken.delete(pendingRevokeToken.id);
+      await base44.functions.invoke(
+        "deleteWorkspaceApiToken",
+        {
+          workspace_id: workspaceId,
+          token_id: pendingRevokeToken.id,
+        },
+        { authMode: "user" }
+      );
       await loadTokens();
       toast({
         title: "Token revoked",
@@ -209,7 +223,11 @@ export default function WorkspaceApiPanel({ workspace }) {
       });
     } catch (error) {
       console.error("Failed to revoke token:", error);
-      setActionError("Failed to revoke API token. Please try again.");
+      toast({
+        title: "Action failed",
+        description: "Failed to revoke API token. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setRevokingTokenId(null);
       setPendingRevokeToken(null);
@@ -254,8 +272,6 @@ export default function WorkspaceApiPanel({ workspace }) {
 
   return (
     <div className="space-y-6">
-      <StateBanner tone="danger" message={actionError} />
-
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
@@ -311,7 +327,8 @@ export default function WorkspaceApiPanel({ workspace }) {
                         size="sm"
                         onClick={() => setPendingRevokeToken(token)}
                         className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                        disabled={revokingTokenId === token.id}
+                        disabled={!isOwner || revokingTokenId === token.id}
+                        title={!isOwner ? "Only owners can delete API keys." : undefined}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -524,7 +541,7 @@ export default function WorkspaceApiPanel({ workspace }) {
       </Dialog>
 
       <ConfirmDialog
-        open={Boolean(pendingRevokeToken)}
+        open={Boolean(pendingRevokeToken) && isOwner}
         onOpenChange={(open) => !open && setPendingRevokeToken(null)}
         title="Revoke API Token"
         description={

@@ -180,7 +180,6 @@ const ROLE_HIERARCHY: Record<string, number> = {
   owner: 4,
   admin: 3,
   contributor: 2,
-  viewer: 1,
 };
 
 export function isAdminLikeRole(role: string | null | undefined) {
@@ -225,6 +224,27 @@ export async function requireMinimumRole(
 
 export async function requireAdmin(workspaceId: string, userId: string) {
   return await requireMinimumRole(workspaceId, userId, "admin");
+}
+
+export async function requireOwner(workspaceId: string, userId: string) {
+  const userRole = await getUserWorkspaceRole(workspaceId, userId);
+
+  if (!userRole || userRole !== "owner") {
+    return {
+      success: false,
+      role: userRole,
+      error: Response.json(
+        {
+          ...ErrorResponses.FORBIDDEN,
+          message: "Requires owner role",
+          current_role: userRole,
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return { success: true, role: userRole, error: null };
 }
 
 export async function requireStaff(workspaceId: string, userId: string) {

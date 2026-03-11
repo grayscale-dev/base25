@@ -88,7 +88,7 @@ export async function ensureWorkspaceMembership({ workspace, user }) {
   if (existingRole) {
     return {
       workspace,
-      role: existingRole.role || "viewer",
+      role: existingRole.role || "contributor",
       alreadyMember: true,
     };
   }
@@ -97,13 +97,12 @@ export async function ensureWorkspaceMembership({ workspace, user }) {
     workspace_id: workspace.id,
     user_id: user.id,
     email: user.email,
-    role: "viewer",
-    assigned_via: workspace.visibility === "public" ? "public" : "explicit",
+    role: "contributor",
   });
 
   return {
     workspace,
-    role: createdRole?.role || "viewer",
+    role: createdRole?.role || "contributor",
     alreadyMember: false,
   };
 }
@@ -123,4 +122,3 @@ export async function joinWorkspaceWithCode({ slug, accessCode }) {
     role: data?.role || "contributor",
   };
 }
-

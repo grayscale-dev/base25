@@ -38,6 +38,9 @@ export default function GroupItemsPage({
   const [editingItem, setEditingItem] = useState(null);
 
   const isAdmin = isAdminRole(role) && !isPublicAccess;
+  const isContributorFeedback =
+    !isPublicAccess && role === "contributor" && groupKey === "feedback";
+  const canCreateItems = isAdmin || isContributorFeedback;
 
   useEffect(() => {
     void controller.loadItems({ groupKey, statusKey: activeStatusFilter });
@@ -49,7 +52,7 @@ export default function GroupItemsPage({
   );
 
   const openCreate = () => {
-    if (!isAdmin) return;
+    if (!canCreateItems) return;
     setEditingItem(null);
     setShowEditor(true);
   };
@@ -89,10 +92,10 @@ export default function GroupItemsPage({
         title={getGroupLabel(groupKey)}
         description={`${getGroupLabel(groupKey)} items for ${workspace?.name}.`}
         actions={
-          isAdmin ? (
+          canCreateItems ? (
             <Button onClick={openCreate} className="bg-slate-900 hover:bg-slate-800">
               <Plus className="mr-2 h-4 w-4" />
-              Create Item
+              {isContributorFeedback ? "Submit Feedback" : "Create Item"}
             </Button>
           ) : null
         }

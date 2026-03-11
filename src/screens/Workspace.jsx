@@ -33,7 +33,7 @@ export default function Workspace({ section = "items", itemId = null }) {
   const [accessCode, setAccessCode] = useState("");
   const [slug, setSlug] = useState(null);
   const [workspace, setWorkspace] = useState(null);
-  const [role, setRole] = useState("viewer");
+  const [role, setRole] = useState("contributor");
   const [isPublicAccess, setIsPublicAccess] = useState(false);
   const [activeSection, setActiveSection] = useState(null);
 
@@ -96,7 +96,7 @@ export default function Workspace({ section = "items", itemId = null }) {
         return;
       }
 
-      let role = "viewer";
+      let role = "contributor";
       let isPublicAccess = false;
 
       try {
@@ -114,7 +114,7 @@ export default function Workspace({ section = "items", itemId = null }) {
           setLoading(false);
           return;
         } else {
-          role = "viewer";
+          role = "contributor";
           isPublicAccess = true;
         }
       } catch {

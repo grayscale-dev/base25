@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -183,6 +183,14 @@ export default function ItemThreadPanel({ controller, item }) {
     cancelCommentEdit();
   };
 
+  const removeComment = async (commentId) => {
+    setThreadError("");
+    const result = await controller.deleteComment(commentId);
+    if (!result.ok) {
+      setThreadError(result.error || "Unable to delete comment.");
+    }
+  };
+
   const submitComment = async () => {
     if (!item?.id) return;
     setThreadError("");
@@ -282,6 +290,20 @@ export default function ItemThreadPanel({ controller, item }) {
                       title="Edit comment"
                     >
                       <Pencil className="h-3 w-3" />
+                    </Button>
+                  ) : null}
+                  {comment.can_delete && editingCommentId !== comment.id ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-rose-400 hover:text-rose-600"
+                      onClick={() => {
+                        void removeComment(comment.id);
+                      }}
+                      aria-label="Delete comment"
+                      title="Delete comment"
+                    >
+                      <Trash2 className="h-3 w-3" />
                     </Button>
                   ) : null}
                 </div>

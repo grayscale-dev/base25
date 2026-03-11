@@ -108,7 +108,7 @@ export async function requireWorkspaceReadAccess(req: Request, payload: Record<s
     success: true,
     workspace: workspaceCheck.workspace,
     user: authCheck.user,
-    role: role || "viewer",
+    role: role || "contributor",
     isPublicAccess: !role,
   };
 }

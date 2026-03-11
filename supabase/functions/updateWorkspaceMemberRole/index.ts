@@ -14,7 +14,7 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-const ALLOWED_ROLES = new Set(["viewer", "contributor", "admin", "owner"]);
+const ALLOWED_ROLES = new Set(["contributor", "admin", "owner"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -58,6 +58,8 @@ Deno.serve(async (req) => {
       });
     }
 
+    const actorRole = permissionCheck.role;
+
     const { data: targetMember, error: targetMemberError } = await supabaseAdmin
       .from("workspace_roles")
       .select("id, workspace_id, user_id, email, role")
@@ -78,39 +80,50 @@ Deno.serve(async (req) => {
       return json(targetMember);
     }
 
-    if (nextRole === "owner") {
-      const { error: transferError } = await supabaseAdmin.rpc("transfer_workspace_owner", {
-        target_workspace_id: workspaceId,
-        target_user_id: targetMember.user_id,
-      });
-      if (transferError) {
-        console.error("updateWorkspaceMemberRole transfer error:", transferError);
-        return json({ error: "Failed to transfer ownership" }, 500);
-      }
+    const targetIsOwner = targetMember.role === "owner";
+    const nextIsOwner = nextRole === "owner";
 
-      const { data: refreshedOwner, error: refreshedOwnerError } = await supabaseAdmin
-        .from("workspace_roles")
-        .select("id, workspace_id, user_id, email, role")
-        .eq("id", memberId)
-        .limit(1)
-        .maybeSingle();
-
-      if (refreshedOwnerError) {
-        console.error("updateWorkspaceMemberRole reload error:", refreshedOwnerError);
-        return json({ error: "Ownership transferred but reload failed" }, 500);
-      }
-
-      return json(refreshedOwner || targetMember);
-    }
-
-    if (targetMember.role === "owner") {
+    if (nextIsOwner && actorRole !== "owner") {
       return json(
         {
-          error: "Transfer ownership first before changing owner role",
-          code: "OWNERSHIP_TRANSFER_REQUIRED",
+          error: "Only owners can grant owner role",
+          code: "OWNER_REQUIRED_FOR_OWNER_ASSIGNMENT",
         },
-        409,
+        403,
       );
+    }
+
+    if (targetIsOwner && actorRole !== "owner") {
+      return json(
+        {
+          error: "Only owners can modify owner roles",
+          code: "OWNER_REQUIRED_FOR_OWNER_MUTATION",
+        },
+        403,
+      );
+    }
+
+    if (targetIsOwner && !nextIsOwner) {
+      const { count: ownerCount, error: ownerCountError } = await supabaseAdmin
+        .from("workspace_roles")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .eq("role", "owner");
+
+      if (ownerCountError) {
+        console.error("updateWorkspaceMemberRole owner count error:", ownerCountError);
+        return json({ error: "Failed to validate owner count" }, 500);
+      }
+
+      if ((ownerCount || 0) <= 1) {
+        return json(
+          {
+            error: "Add another owner before removing owner access",
+            code: "LAST_OWNER_PROTECTION",
+          },
+          409,
+        );
+      }
     }
 
     const { data: updatedMember, error: updateError } = await supabaseAdmin

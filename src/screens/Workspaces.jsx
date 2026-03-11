@@ -190,7 +190,7 @@ export default function Workspaces() {
   const handleJoinAccessibleWorkspace = async (workspace) => {
     const currentUser = await ensureCurrentUser();
     const membership = await ensureWorkspaceMembership({ workspace, user: currentUser });
-    openWorkspace(workspace, membership.role || "viewer");
+    openWorkspace(workspace, membership.role || "contributor");
   };
 
   const handleResolveJoinLink = async () => {
@@ -321,7 +321,7 @@ export default function Workspaces() {
 
   const getRoleForWorkspace = (workspaceId) => {
     const role = workspaceRoles.find((entry) => entry.workspace_id === workspaceId);
-    return role?.role || "viewer";
+    return role?.role || "contributor";
   };
 
   const canCreateWorkspace =

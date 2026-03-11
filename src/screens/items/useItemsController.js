@@ -122,7 +122,21 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
   const canEditComment = (activity) =>
     Boolean(currentUserId && activity?.author_id && activity.author_id === currentUserId);
 
-  const canDeleteComment = () => false;
+  const canDeleteComment = (activity) =>
+    Boolean(currentUserId && activity?.author_id && activity.author_id === currentUserId);
+
+  const canDeleteItem = (item) => {
+    if (!item) return false;
+    if (isAdmin) return true;
+    return Boolean(
+      !isPublicAccess &&
+      role === "contributor" &&
+      item.group_key === "feedback" &&
+      currentUserId &&
+      item.submitter_id &&
+      item.submitter_id === currentUserId
+    );
+  };
 
   const thread = useMemo(() => {
     if (!selectedItem?.id) {
@@ -300,6 +314,21 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       return { ok: false, error: metadataValidation.message };
     }
 
+    const isContributor = role === "contributor" && !isPublicAccess;
+    if (isContributor) {
+      if (payload.group_key !== "feedback") {
+        return { ok: false, error: "Contributors can only submit feedback items." };
+      }
+      if (payload.id) {
+        if (previousItem?.submitter_id !== currentUserId) {
+          return { ok: false, error: "You can only edit feedback you submitted." };
+        }
+        if (previousItem?.status_key && previousItem.status_key !== payload.status_key) {
+          return { ok: false, error: "Contributors cannot change item status." };
+        }
+      }
+    }
+
     try {
       setSavingItem(true);
       setError("");
@@ -439,6 +468,10 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
   const deleteItem = async (itemId) => {
     if (!itemId) return { ok: false, error: "Item ID is required." };
+    const targetItem = items.find((item) => item.id === itemId) || (selectedItem?.id === itemId ? selectedItem : null);
+    if (!canDeleteItem(targetItem)) {
+      return { ok: false, error: "You do not have permission to delete this item." };
+    }
     try {
       setDeletingItemId(itemId);
       await base44.entities.Item.delete(itemId);
@@ -532,7 +565,25 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
   };
 
   const deleteComment = async (commentId) => {
-    return { ok: false, error: "Deleting comments is disabled." };
+    const targetComment = itemActivities.find((activity) => activity.id === commentId) || null;
+    if (!targetComment || targetComment.activity_type !== "comment") {
+      return { ok: false, error: "Comment not found." };
+    }
+    if (!canDeleteComment(targetComment)) {
+      return { ok: false, error: "You do not have permission to delete this comment." };
+    }
+
+    try {
+      setSavingActivity(true);
+      await base44.entities.ItemActivity.delete(commentId);
+      setItemActivities((prev) => prev.filter((activity) => activity.id !== commentId));
+      return { ok: true };
+    } catch (deleteError) {
+      console.error("Failed to delete comment:", deleteError);
+      return { ok: false, error: "Unable to delete comment." };
+    } finally {
+      setSavingActivity(false);
+    }
   };
 
   return {
@@ -559,6 +610,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     canEditInitialPost,
     canEditComment,
     canDeleteComment,
+    canDeleteItem,
     loadItems,
     loadItemActivities,
     saveItem,

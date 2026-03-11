@@ -24,7 +24,7 @@ export default function WorkspaceAvatar({
 }) {
   const styles = SIZE_STYLES[size] || SIZE_STYLES.md;
   const baseClasses = cn(
-    "flex shrink-0 items-center justify-center overflow-hidden",
+    "grid shrink-0 place-items-center overflow-hidden leading-none",
     styles.wrapper,
     className
   );
@@ -44,8 +44,7 @@ export default function WorkspaceAvatar({
       className={baseClasses}
       style={{ backgroundColor: workspace?.primary_color || "#0f172a" }}
     >
-      <Folder className={cn("text-white", styles.icon)} />
+      <Folder className={cn("shrink-0 text-white", styles.icon)} />
     </div>
   );
 }
-

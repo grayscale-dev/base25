@@ -29,7 +29,7 @@ export function WorkspaceProvider({ children }) {
     // Core state
     workspace: null,
     user: null,
-    role: 'viewer',
+    role: 'contributor',
     isPublicAccess: false,
     loading: true,
     
@@ -75,13 +75,13 @@ export function WorkspaceProvider({ children }) {
       const cachedSlug = cachedWorkspace?.slug || null;
 
       let workspace;
-      let role = 'viewer';
+      let role = 'contributor';
       let isPublicAccess = false;
 
       if (cachedSlug === slug) {
         // Cache hit - use sessionStorage
         workspace = cachedWorkspace;
-        role = cachedSession.role || 'viewer';
+        role = cachedSession.role || 'contributor';
         isPublicAccess = cachedSession.isPublicAccess;
       } else {
         // Cache miss or different slug - resolve from API
@@ -125,7 +125,7 @@ export function WorkspaceProvider({ children }) {
             isPublicAccess = false;
           } else {
             // Authenticated but no role
-            role = 'viewer';
+            role = 'contributor';
             isPublicAccess = true;
           }
         } catch {

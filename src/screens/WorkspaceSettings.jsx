@@ -2,7 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "@/lib/router";
-import { Settings, Users, Key, Trash2, Save, Copy, Check, Plus, User, CreditCard } from "lucide-react";
+import {
+  Settings,
+  Users,
+  Key,
+  Trash2,
+  Save,
+  Copy,
+  Check,
+  Plus,
+  User,
+  CreditCard,
+  Eye,
+  EyeOff,
+  RefreshCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,7 +39,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import Badge from "@/components/common/Badge";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
@@ -51,7 +64,7 @@ import {
   ITEM_GROUP_LABELS,
   sanitizeStatusKey,
 } from "@/lib/item-groups";
-import { getRoleLabel, isAdminRole, isOwnerRole } from "@/lib/roles";
+import { isAdminRole, isOwnerRole } from "@/lib/roles";
 
 const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "billing", "api"];
 
@@ -69,7 +82,7 @@ export default function WorkspaceSettings() {
   const location = useLocation();
 
   const [workspace, setWorkspace] = useState(null);
-  const [role, setRole] = useState("viewer");
+  const [role, setRole] = useState("contributor");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState("");
@@ -88,12 +101,15 @@ export default function WorkspaceSettings() {
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
   const [updatingMemberId, setUpdatingMemberId] = useState(null);
   const [memberPendingRemoval, setMemberPendingRemoval] = useState(null);
-  const [ownerTransferTargetMemberId, setOwnerTransferTargetMemberId] = useState("");
-  const [showOwnerTransferDialog, setShowOwnerTransferDialog] = useState(false);
-  const [accessCodeStatus, setAccessCodeStatus] = useState({ hasCode: false, expiresAt: null });
-  const [accessCodeExpiry, setAccessCodeExpiry] = useState("7d");
-  const [generatedAccessCode, setGeneratedAccessCode] = useState("");
-  const [creatingAccessCode, setCreatingAccessCode] = useState(false);
+  const [accessCodeStatus, setAccessCodeStatus] = useState({
+    hasCode: false,
+    maskedCode: "",
+    accessCode: null,
+    createdAt: null,
+  });
+  const [loadingAccessCode, setLoadingAccessCode] = useState(false);
+  const [rotatingAccessCode, setRotatingAccessCode] = useState(false);
+  const [showRotateAccessCodeDialog, setShowRotateAccessCodeDialog] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
   const [statusGroups, setStatusGroups] = useState([]);
@@ -121,7 +137,7 @@ export default function WorkspaceSettings() {
       return;
     }
 
-    const resolvedRole = storedRole || "viewer";
+    const resolvedRole = storedRole || "contributor";
     const adminRole = isAdminRole(resolvedRole);
 
     setRole(resolvedRole);
@@ -147,7 +163,9 @@ export default function WorkspaceSettings() {
     if (!requestedTab || !SETTINGS_TABS.includes(requestedTab)) {
       return;
     }
-    if (requestedTab !== "my-account" && !isAdminRole(role)) {
+    const requiresAdmin = requestedTab !== "my-account";
+    const requiresOwner = requestedTab === "billing";
+    if ((requiresAdmin && !isAdminRole(role)) || (requiresOwner && !isOwnerRole(role))) {
       setActiveTab("my-account");
       params.delete("tab");
       const search = params.toString();
@@ -160,7 +178,7 @@ export default function WorkspaceSettings() {
   }, [location.search, role, navigate]);
 
   const handleTabChange = (nextTab) => {
-    if (!isAdminRole(role) && nextTab !== "my-account") {
+    if ((!isAdminRole(role) && nextTab !== "my-account") || (nextTab === "billing" && !isOwnerRole(role))) {
       return;
     }
     setActiveTab(nextTab);
@@ -195,15 +213,41 @@ export default function WorkspaceSettings() {
   const filteredMembers = useMemo(() => {
     const query = memberSearchQuery.trim().toLowerCase();
     if (!query) return members;
-    return members.filter((member) =>
-      String(member.email || "").toLowerCase().includes(query)
-    );
+    return members.filter((member) => {
+      const nameText = [
+        member.first_name,
+        member.last_name,
+        member.full_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const emailText = String(member.email || "").toLowerCase();
+      return nameText.includes(query) || emailText.includes(query);
+    });
   }, [memberSearchQuery, members]);
 
-  const ownerTransferCandidates = useMemo(() => {
-    if (!memberPendingRemoval) return [];
-    return members.filter((member) => member.id !== memberPendingRemoval.id);
-  }, [memberPendingRemoval, members]);
+  const ownerCount = useMemo(
+    () => members.filter((member) => member.role === "owner").length,
+    [members]
+  );
+
+  const getMemberDisplayName = (member) => {
+    const firstName = String(member?.first_name || "").trim();
+    const lastName = String(member?.last_name || "").trim();
+    const fullName = String(member?.full_name || "").trim();
+    if (firstName || lastName) {
+      return `${firstName} ${lastName}`.trim();
+    }
+    if (fullName) return fullName;
+    const localPart = String(member?.email || "").split("@")[0] || "";
+    if (!localPart) return "Member";
+    return localPart
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((value) => value.charAt(0).toUpperCase() + value.slice(1))
+      .join(" ");
+  };
 
   const loadAll = async (workspaceId) => {
     try {
@@ -212,18 +256,11 @@ export default function WorkspaceSettings() {
 
       const [rolesData, accessCodeData] = await Promise.all([
         loadMembers(workspaceId),
-        base44.functions.invoke(
-          "getWorkspaceAccessCodeStatus",
-          { workspace_id: workspaceId },
-          { authMode: "user" }
-        ),
+        loadAccessCode({ workspaceId, reveal: false }),
       ]);
 
       setMembers(rolesData);
-      setAccessCodeStatus({
-        hasCode: Boolean(accessCodeData?.data?.has_code),
-        expiresAt: accessCodeData?.data?.expires_at ?? null,
-      });
+      setAccessCodeStatus(accessCodeData);
 
       await ensureStatusConfig(workspaceId);
     } catch (error) {
@@ -240,12 +277,32 @@ export default function WorkspaceSettings() {
   };
 
   const loadMembers = async (workspaceId) => {
-    const rolesData = await base44.entities.WorkspaceRole.filter({ workspace_id: workspaceId });
+    const { data } = await base44.functions.invoke(
+      "listWorkspaceMembers",
+      { workspace_id: workspaceId },
+      { authMode: "user" }
+    );
+    const rolesData = data?.members || [];
     return rolesData.sort((left, right) => {
       if (left.role === "owner" && right.role !== "owner") return -1;
       if (left.role !== "owner" && right.role === "owner") return 1;
       return String(left.email || "").localeCompare(String(right.email || ""));
     });
+  };
+
+  const loadAccessCode = async ({ workspaceId, reveal }) => {
+    const { data } = await base44.functions.invoke(
+      "getWorkspaceAccessCodeStatus",
+      { workspace_id: workspaceId, reveal: Boolean(reveal) },
+      { authMode: "user" }
+    );
+
+    return {
+      hasCode: Boolean(data?.has_code),
+      maskedCode: data?.masked_code || "",
+      accessCode: data?.access_code || null,
+      createdAt: data?.created_at || null,
+    };
   };
 
   const ensureStatusConfig = async (workspaceId) => {
@@ -404,12 +461,17 @@ export default function WorkspaceSettings() {
       );
       const refreshed = await loadMembers(workspace.id);
       setMembers(refreshed);
-      notifyStatus("success", nextRole === "owner" ? "Ownership transferred." : "Member role updated.");
+      notifyStatus("success", nextRole === "owner" ? "Owner role granted." : "Member role updated.");
     } catch (error) {
       console.error("Failed to update member role:", error);
       const status = getErrorStatus(error);
+      const code = error?.context?.body?.code ?? error?.body?.code ?? "";
       if (status === 409) {
-        notifyStatus("danger", "Transfer ownership to another member before changing the current owner role.");
+        notifyStatus("danger", "Add another owner before removing owner access.");
+      } else if (status === 403 && code === "OWNER_REQUIRED_FOR_OWNER_ASSIGNMENT") {
+        notifyStatus("danger", "Only owners can grant owner role.");
+      } else if (status === 403 && code === "OWNER_REQUIRED_FOR_OWNER_MUTATION") {
+        notifyStatus("danger", "Only owners can modify owner roles.");
       } else {
         notifyStatus("danger", "Failed to update member role.");
       }
@@ -420,17 +482,8 @@ export default function WorkspaceSettings() {
 
   const handleRemoveMember = async () => {
     if (!memberPendingRemoval) return;
-    if (memberPendingRemoval.role === "owner") {
-      if (!ownerTransferTargetMemberId) {
-        const fallbackTarget = ownerTransferCandidates[0];
-        setOwnerTransferTargetMemberId(fallbackTarget?.id || "");
-      }
-      setShowOwnerTransferDialog(true);
-      return;
-    }
 
     setUpdatingMemberId(memberPendingRemoval.id);
-    let keepPendingRemoval = false;
     try {
       await base44.functions.invoke(
         "removeWorkspaceMember",
@@ -443,84 +496,79 @@ export default function WorkspaceSettings() {
     } catch (error) {
       console.error("Failed to remove member:", error);
       const status = getErrorStatus(error);
+      const code = error?.context?.body?.code ?? error?.body?.code ?? "";
       if (status === 409) {
-        keepPendingRemoval = true;
-        if (!ownerTransferTargetMemberId) {
-          const fallbackTarget = ownerTransferCandidates[0];
-          setOwnerTransferTargetMemberId(fallbackTarget?.id || "");
-        }
-        setShowOwnerTransferDialog(true);
+        notifyStatus("danger", "Add another owner before removing the last owner.");
+      } else if (status === 403 && code === "OWNER_REQUIRED_FOR_OWNER_REMOVAL") {
+        notifyStatus("danger", "Only owners can remove owners.");
       } else {
         notifyStatus("danger", "Failed to remove member.");
       }
     } finally {
       setUpdatingMemberId(null);
-      if (!keepPendingRemoval) {
-        setMemberPendingRemoval(null);
-      }
-    }
-  };
-
-  const handleTransferOwnershipAndRemoveMember = async () => {
-    if (!workspace?.id || !memberPendingRemoval?.id || !ownerTransferTargetMemberId) return;
-    setUpdatingMemberId(memberPendingRemoval.id);
-    try {
-      await base44.functions.invoke(
-        "removeWorkspaceMember",
-        {
-          workspace_id: workspace.id,
-          member_id: memberPendingRemoval.id,
-          transfer_to_member_id: ownerTransferTargetMemberId,
-        },
-        { authMode: "user" }
-      );
-      const refreshed = await loadMembers(workspace.id);
-      setMembers(refreshed);
-      notifyStatus("success", "Ownership transferred and previous owner removed.");
-      setShowOwnerTransferDialog(false);
       setMemberPendingRemoval(null);
-      setOwnerTransferTargetMemberId("");
-    } catch (error) {
-      console.error("Failed to transfer ownership and remove member:", error);
-      notifyStatus("danger", "Failed to transfer ownership.");
-    } finally {
-      setUpdatingMemberId(null);
     }
   };
 
-  const handleCreateAccessCode = async () => {
-    if (!workspace) return;
-    setCreatingAccessCode(true);
+  const handleToggleRevealAccessCode = async () => {
+    if (!workspace?.id) return;
+    if (accessCodeStatus.accessCode) {
+      setAccessCodeStatus((prev) => ({ ...prev, accessCode: null }));
+      return;
+    }
+
+    setLoadingAccessCode(true);
     try {
-      const { data } = await base44.functions.invoke(
-        "setWorkspaceAccessCode",
-        {
-          workspace_id: workspace.id,
-          expires_in: accessCodeExpiry,
-        },
-        { authMode: "user" }
-      );
-      setGeneratedAccessCode(data?.access_code ?? "");
-      setAccessCodeStatus({
-        hasCode: true,
-        expiresAt: data?.expires_at ?? null,
-      });
-      notifyStatus("success", "Access code generated.");
+      const nextStatus = await loadAccessCode({ workspaceId: workspace.id, reveal: true });
+      setAccessCodeStatus(nextStatus);
     } catch (error) {
-      console.error("Failed to create access code:", error);
+      console.error("Failed to reveal access code:", error);
       const status = getErrorStatus(error);
       if (status === 401) {
         notifyStatus("danger", "Your session expired. Sign in again and retry.");
       } else if (status === 403) {
-        notifyStatus("danger", "Only workspace admins can generate access codes.");
-      } else if (status === 404) {
-        notifyStatus("danger", "Workspace not found or no longer active.");
+        notifyStatus("danger", "Only workspace staff can view access code details.");
       } else {
-        notifyStatus("danger", "Failed to create access code.");
+        notifyStatus("danger", "Failed to load access code.");
       }
     } finally {
-      setCreatingAccessCode(false);
+      setLoadingAccessCode(false);
     }
+  };
+
+  const handleRotateAccessCode = async () => {
+    if (!workspace?.id) return;
+    setRotatingAccessCode(true);
+    try {
+      const { data } = await base44.functions.invoke(
+        "setWorkspaceAccessCode",
+        { workspace_id: workspace.id, action: "rotate" },
+        { authMode: "user" }
+      );
+      setAccessCodeStatus({
+        hasCode: true,
+        maskedCode: data?.masked_code || "",
+        accessCode: data?.access_code || null,
+        createdAt: data?.rotated_at || new Date().toISOString(),
+      });
+      setShowRotateAccessCodeDialog(false);
+      notifyStatus("success", "Workspace code rotated. The previous code is no longer valid.");
+    } catch (error) {
+      console.error("Failed to rotate access code:", error);
+      notifyStatus("danger", "Failed to rotate workspace code.");
+    } finally {
+      setRotatingAccessCode(false);
+    }
+  };
+
+  const handleCopyAccessCode = () => {
+    const codeToCopy = accessCodeStatus.accessCode || "";
+    if (!codeToCopy) {
+      notifyStatus("danger", "Reveal the workspace code before copying it.");
+      return;
+    }
+    navigator.clipboard.writeText(codeToCopy);
+    notifyStatus("success", "Workspace code copied.");
   };
 
   const handleGroupNameSave = async (groupId, nextName) => {
@@ -705,10 +753,12 @@ export default function WorkspaceSettings() {
             <Check className="h-4 w-4" />
             Status Groups
           </TabsTrigger>
-          <TabsTrigger value="billing" className="flex items-center gap-2">
-            <CreditCard className="h-4 w-4" />
-            Billing
-          </TabsTrigger>
+          {isOwner ? (
+            <TabsTrigger value="billing" className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              Billing
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="api" className="flex items-center gap-2">
             <Key className="h-4 w-4" />
             API Access
@@ -757,8 +807,12 @@ export default function WorkspaceSettings() {
                     setSlugError("");
                   }}
                   className="mt-1.5 max-w-md font-mono"
+                  disabled={!isOwner}
                 />
                 {slugError ? <p className="mt-1 text-xs text-rose-600">{slugError}</p> : null}
+                {!isOwner ? (
+                  <p className="mt-1 text-xs text-slate-500">Only the workspace owner can change the workspace slug.</p>
+                ) : null}
               </div>
 
               <div>
@@ -884,63 +938,54 @@ export default function WorkspaceSettings() {
         <TabsContent value="access" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Access Code</CardTitle>
-              <CardDescription>Require a code when users join a restricted workspace.</CardDescription>
+              <CardTitle>Workspace Code</CardTitle>
+              <CardDescription>
+                This code is always active for restricted workspace access. Rotating it invalidates the previous code immediately.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-sm text-slate-600">
-                    {accessCodeStatus.hasCode ? "Access code is active." : "No access code created yet."}
-                  </p>
-                  {accessCodeStatus.expiresAt ? (
-                    <p className="mt-1 text-xs text-slate-500">
-                      Expires on {new Date(accessCodeStatus.expiresAt).toLocaleString()}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Select value={accessCodeExpiry} onValueChange={setAccessCodeExpiry}>
-                    <SelectTrigger className="w-40" disabled={visibility !== "restricted"}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="24h">24 hours</SelectItem>
-                      <SelectItem value="7d">7 days</SelectItem>
-                      <SelectItem value="30d">30 days</SelectItem>
-                      <SelectItem value="never">Never</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    onClick={handleCreateAccessCode}
-                    disabled={creatingAccessCode || visibility !== "restricted"}
-                    className="bg-slate-900 hover:bg-slate-800"
-                  >
-                    {creatingAccessCode
-                      ? "Creating..."
-                      : accessCodeStatus.hasCode
-                        ? "Generate New Code"
-                        : "Create Access Code"}
-                  </Button>
-                </div>
+              <div className="flex max-w-xl items-center gap-2">
+                <Input
+                  value={accessCodeStatus.accessCode || accessCodeStatus.maskedCode || "••••••••••"}
+                  readOnly
+                  className="font-mono text-center uppercase tracking-[0.22em]"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    void handleToggleRevealAccessCode();
+                  }}
+                  disabled={loadingAccessCode}
+                  aria-label={accessCodeStatus.accessCode ? "Hide workspace code" : "Reveal workspace code"}
+                  title={accessCodeStatus.accessCode ? "Hide workspace code" : "Reveal workspace code"}
+                >
+                  {accessCodeStatus.accessCode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopyAccessCode}
+                  aria-label="Copy workspace code"
+                  title="Copy workspace code"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRotateAccessCodeDialog(true)}
+                  disabled={!isOwner || rotatingAccessCode}
+                  title={!isOwner ? "Only owners can rotate workspace code." : undefined}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Rotate
+                </Button>
               </div>
-
-                {generatedAccessCode ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <p className="text-sm font-semibold text-emerald-900">Share this access code</p>
-                  <p className="mt-1 text-xs text-emerald-700">This code is shown once. Copy it now.</p>
-                  <div className="mt-3 flex flex-col items-center gap-3 sm:flex-row">
-                    <Input
-                      value={generatedAccessCode}
-                      readOnly
-                      className="font-mono text-center uppercase tracking-[0.3em]"
-                    />
-                    <Button variant="outline" onClick={() => navigator.clipboard.writeText(generatedAccessCode)}>
-                      Copy code
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
+              <div className="text-xs text-slate-500">
+                {accessCodeStatus.createdAt
+                  ? `Last rotated ${new Date(accessCodeStatus.createdAt).toLocaleString()}`
+                  : "Code rotation history is unavailable."}
+              </div>
             </CardContent>
           </Card>
 
@@ -950,6 +995,17 @@ export default function WorkspaceSettings() {
               <CardDescription>Manage workspace member roles.</CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 max-w-sm">
+                <Label htmlFor="member-search">Search users</Label>
+                <Input
+                  id="member-search"
+                  value={memberSearchQuery}
+                  onChange={(event) => setMemberSearchQuery(event.target.value)}
+                  className="mt-1.5"
+                  placeholder="Search by name or email"
+                />
+              </div>
+
               {members.length === 0 ? (
                 <p className="py-4 text-sm text-slate-500">No users yet.</p>
               ) : (
@@ -957,9 +1013,9 @@ export default function WorkspaceSettings() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Name</TableHead>
                         <TableHead>Email</TableHead>
                         <TableHead>Role</TableHead>
-                        <TableHead>Assigned via</TableHead>
                         <TableHead className="w-12" />
                       </TableRow>
                     </TableHeader>
@@ -971,54 +1027,61 @@ export default function WorkspaceSettings() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredMembers.map((member) => (
-                          <TableRow key={member.id}>
-                            <TableCell>{member.email}</TableCell>
-                            <TableCell>
-                              <Select
-                                value={member.role}
-                                onValueChange={(value) => handleUpdateMemberRole(member.id, value)}
-                              >
-                                <SelectTrigger className="w-40" disabled={updatingMemberId === member.id}>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="viewer">Viewer</SelectItem>
-                                  <SelectItem value="contributor">Contributor</SelectItem>
-                                  <SelectItem value="admin">Admin</SelectItem>
-                                  <SelectItem value="owner">Owner</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{member.assigned_via}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                                onClick={() => setMemberPendingRemoval(member)}
-                                disabled={updatingMemberId === member.id}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        filteredMembers.map((member) => {
+                          const isOwnerMember = member.role === "owner";
+                          const canEditRole = isOwner || !isOwnerMember;
+                          const canRemoveMember =
+                            (isOwner || !isOwnerMember) &&
+                            !(isOwnerMember && ownerCount <= 1);
+                          return (
+                            <TableRow key={member.id}>
+                              <TableCell>{getMemberDisplayName(member)}</TableCell>
+                              <TableCell>{member.email}</TableCell>
+                              <TableCell>
+                                <Select
+                                  value={member.role}
+                                  onValueChange={(value) => handleUpdateMemberRole(member.id, value)}
+                                >
+                                  <SelectTrigger
+                                    className="w-40"
+                                    disabled={!canEditRole || updatingMemberId === member.id}
+                                    title={!canEditRole ? "Only owners can modify owner roles." : undefined}
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="contributor">Contributor</SelectItem>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="owner" disabled={!isOwner}>
+                                      Owner
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                  onClick={() => setMemberPendingRemoval(member)}
+                                  disabled={!canRemoveMember || updatingMemberId === member.id}
+                                  title={
+                                    !canRemoveMember
+                                      ? "Only owners can remove owner memberships."
+                                      : isOwnerMember && ownerCount <= 1
+                                        ? "Add another owner before removing the last owner."
+                                        : undefined
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
-                  <div className="mt-4 max-w-sm">
-                    <Label htmlFor="member-search">Search users</Label>
-                    <Input
-                      id="member-search"
-                      value={memberSearchQuery}
-                      onChange={(event) => setMemberSearchQuery(event.target.value)}
-                      className="mt-1.5"
-                      placeholder="Search by email"
-                    />
-                  </div>
                 </>
               )}
             </CardContent>
@@ -1143,12 +1206,14 @@ export default function WorkspaceSettings() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="billing">
-          <WorkspaceBillingPanel workspace={workspace} />
-        </TabsContent>
+        {isOwner ? (
+          <TabsContent value="billing">
+            <WorkspaceBillingPanel workspace={workspace} />
+          </TabsContent>
+        ) : null}
 
         <TabsContent value="api">
-          <WorkspaceApiPanel workspace={workspace} />
+          <WorkspaceApiPanel workspace={workspace} role={role} />
         </TabsContent>
           </>
         ) : null}
@@ -1168,7 +1233,7 @@ export default function WorkspaceSettings() {
       />
 
       <ConfirmDialog
-        open={Boolean(memberPendingRemoval) && !showOwnerTransferDialog}
+        open={Boolean(memberPendingRemoval)}
         onOpenChange={(open) => {
           if (!open) {
             setMemberPendingRemoval(null);
@@ -1178,7 +1243,9 @@ export default function WorkspaceSettings() {
         description={
           memberPendingRemoval
             ? memberPendingRemoval.role === "owner"
-              ? "This member is the current owner. Transfer ownership first, then remove owner access."
+              ? ownerCount <= 1
+                ? "This member is the last owner. Add another owner before removing owner access."
+                : `Remove owner access for ${memberPendingRemoval.email}?`
               : `Remove access for ${memberPendingRemoval.email}? They can be invited again later.`
             : ""
         }
@@ -1188,67 +1255,30 @@ export default function WorkspaceSettings() {
         confirmClassName="bg-rose-600 hover:bg-rose-700"
       />
 
-      <Dialog
-        open={showOwnerTransferDialog}
-        onOpenChange={(open) => {
-          setShowOwnerTransferDialog(open);
-          if (!open) {
-            setOwnerTransferTargetMemberId("");
-            setMemberPendingRemoval(null);
-          }
-        }}
-      >
+      <Dialog open={showRotateAccessCodeDialog} onOpenChange={setShowRotateAccessCodeDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Transfer Ownership</DialogTitle>
+            <DialogTitle>Rotate Workspace Code</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-slate-600">
-            Transfer ownership to another member before removing the current owner.
+            Rotating the workspace code invalidates the previous code immediately. People with the old code will no longer be able to join.
           </p>
-          <div>
-            <Label>New Owner</Label>
-            <Select
-              value={ownerTransferTargetMemberId}
-              onValueChange={setOwnerTransferTargetMemberId}
-              disabled={ownerTransferCandidates.length === 0}
-            >
-              <SelectTrigger className="mt-1.5">
-                <SelectValue placeholder="Select a member" />
-              </SelectTrigger>
-              <SelectContent>
-                {ownerTransferCandidates.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    {member.email} ({getRoleLabel(member.role)})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {ownerTransferCandidates.length === 0 ? (
-              <p className="mt-2 text-xs text-slate-500">
-                Add another workspace member before transferring ownership.
-              </p>
-            ) : null}
-          </div>
           <DialogFooter>
             <Button
               variant="ghost"
-              onClick={() => {
-                setShowOwnerTransferDialog(false);
-                setOwnerTransferTargetMemberId("");
-                setMemberPendingRemoval(null);
-              }}
-              disabled={updatingMemberId === memberPendingRemoval?.id}
+              onClick={() => setShowRotateAccessCodeDialog(false)}
+              disabled={rotatingAccessCode}
             >
               Cancel
             </Button>
             <Button
-              className="bg-slate-900 hover:bg-slate-800"
-              onClick={handleTransferOwnershipAndRemoveMember}
-              disabled={!ownerTransferTargetMemberId || updatingMemberId === memberPendingRemoval?.id}
+              className="bg-rose-600 hover:bg-rose-700"
+              onClick={() => {
+                void handleRotateAccessCode();
+              }}
+              disabled={rotatingAccessCode}
             >
-              {updatingMemberId === memberPendingRemoval?.id
-                ? "Transferring..."
-                : "Transfer and Remove"}
+              {rotatingAccessCode ? "Rotating..." : "Rotate Code"}
             </Button>
           </DialogFooter>
         </DialogContent>
