@@ -41,6 +41,7 @@ export default function Workspace({ section = "items", itemId = null }) {
   const [activeSection, setActiveSection] = useState(null);
   const [billingGate, setBillingGate] = useState(null);
   const [openingBilling, setOpeningBilling] = useState(false);
+  const [syncingBillingStatus, setSyncingBillingStatus] = useState(false);
   const [billingError, setBillingError] = useState("");
 
   useEffect(() => {
@@ -134,6 +135,20 @@ export default function Workspace({ section = "items", itemId = null }) {
         isPublicAccess = true;
       }
 
+      const billingBlocked = resolvedWorkspace.billing_access_allowed === false;
+      setWorkspaceSession({ workspace: resolvedWorkspace, role, isPublicAccess, billingBlocked });
+      setWorkspace(resolvedWorkspace);
+      setRole(role);
+      setIsPublicAccess(isPublicAccess);
+
+      if (billingBlocked) {
+        setBillingGate({
+          status: resolvedWorkspace.billing_status || "inactive",
+        });
+        setLoading(false);
+        return;
+      }
+
       if (sectionParam === "item") {
         if (!itemIdParam) {
           setError("Invalid item URL.");
@@ -141,10 +156,6 @@ export default function Workspace({ section = "items", itemId = null }) {
           return;
         }
 
-        setWorkspaceSession({ workspace: resolvedWorkspace, role, isPublicAccess });
-        setWorkspace(resolvedWorkspace);
-        setRole(role);
-        setIsPublicAccess(isPublicAccess);
         setActiveSection("item");
         setLoading(false);
         return;
@@ -153,19 +164,6 @@ export default function Workspace({ section = "items", itemId = null }) {
       const targetSection = resolveWorkspaceSection(sectionParam, role, isPublicAccess);
       if (!targetSection) {
         setError("Invalid workspace section.");
-        setLoading(false);
-        return;
-      }
-
-      setWorkspaceSession({ workspace: resolvedWorkspace, role, isPublicAccess });
-      setWorkspace(resolvedWorkspace);
-      setRole(role);
-      setIsPublicAccess(isPublicAccess);
-
-      if (resolvedWorkspace.billing_access_allowed === false) {
-        setBillingGate({
-          status: resolvedWorkspace.billing_status || "inactive",
-        });
         setLoading(false);
         return;
       }
@@ -183,6 +181,92 @@ export default function Workspace({ section = "items", itemId = null }) {
       setLoading(false);
     }
   };
+
+  const clearBillingQueryFlag = () => {
+    if (typeof window === "undefined") return;
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.delete("billing");
+    window.history.replaceState({}, "", currentUrl.toString());
+  };
+
+  const syncBillingStatus = async ({ silent = false, clearFlag = false } = {}) => {
+    if (!workspace?.id) return false;
+    const workspaceSlug = String(routeSlug || workspace?.slug || "").trim();
+    if (!workspaceSlug) return false;
+    if (!silent) {
+      setBillingError("");
+      setSyncingBillingStatus(true);
+    }
+    try {
+      const { data } = await base44.functions.invoke(
+        "publicGetWorkspace",
+        { slug: workspaceSlug },
+        { authMode: "user" }
+      );
+
+      if (clearFlag) {
+        clearBillingQueryFlag();
+      }
+
+      const accessAllowed = Boolean(data?.billing_access_allowed);
+      if (accessAllowed) {
+        await initializeWorkspace(routeSlug, routeSection, itemId);
+        return true;
+      }
+
+      setBillingGate({
+        status: String(data?.billing_status || billingGate?.status || "inactive"),
+      });
+      if (!silent) {
+        setBillingError("Billing is still inactive for this workspace.");
+      }
+      return false;
+    } catch (syncError) {
+      console.error("Failed to verify workspace billing status:", syncError);
+      if (clearFlag) {
+        clearBillingQueryFlag();
+      }
+      if (!silent) {
+        setBillingError("Unable to verify billing status right now. Please try again.");
+      }
+      return false;
+    } finally {
+      if (!silent) {
+        setSyncingBillingStatus(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!billingGate || !workspace?.id) return;
+    if (typeof window === "undefined") return;
+
+    const billingParam = new URLSearchParams(window.location.search).get("billing");
+    if (billingParam !== "success") return;
+
+    clearBillingQueryFlag();
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const pollBillingStatus = async () => {
+      attempts += 1;
+      const unlocked = await syncBillingStatus({ silent: true, clearFlag: false });
+      if (cancelled || unlocked) return;
+      if (attempts >= 6) {
+        setBillingError("Billing is still processing. Click \"I've Started Billing\" in a few seconds.");
+        return;
+      }
+      window.setTimeout(() => {
+        void pollBillingStatus();
+      }, 3000);
+    };
+
+    void pollBillingStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [billingGate?.status, workspace?.id, routeSlug, routeSection, itemId]);
 
   const handleOpenBilling = async () => {
     if (!workspace?.id || !isAdminRole(role)) return;
@@ -227,6 +311,7 @@ export default function Workspace({ section = "items", itemId = null }) {
           workspace: data.workspace,
           role: nextRole,
           isPublicAccess: false,
+          billingBlocked: false,
         });
         navigate(workspaceUrl(data.workspace.slug, targetSection), { replace: true });
       }
@@ -331,7 +416,7 @@ export default function Workspace({ section = "items", itemId = null }) {
                 onClick={() => {
                   void handleOpenBilling();
                 }}
-                disabled={openingBilling}
+                disabled={openingBilling || syncingBillingStatus}
                 className="bg-slate-900 hover:bg-slate-800"
               >
                 {openingBilling ? (
@@ -343,8 +428,24 @@ export default function Workspace({ section = "items", itemId = null }) {
               </Button>
               <Button
                 variant="outline"
+                onClick={() => {
+                  void syncBillingStatus();
+                }}
+                disabled={openingBilling || syncingBillingStatus}
+              >
+                {syncingBillingStatus ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Checking...
+                  </>
+                ) : (
+                  "I've Started Billing"
+                )}
+              </Button>
+              <Button
+                variant="outline"
                 onClick={() => navigate("/workspaces")}
-                disabled={openingBilling}
+                disabled={openingBilling || syncingBillingStatus}
               >
                 Back to Workspaces
               </Button>

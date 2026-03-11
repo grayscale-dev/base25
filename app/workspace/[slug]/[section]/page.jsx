@@ -5,7 +5,8 @@ import { getWorkspacePageName, isWorkspaceSection } from "@/lib/workspace-sectio
 import { requireServerAuth } from "@/lib/auth/server-guard";
 
 export default async function WorkspaceSectionPage({ params }) {
-  const { section } = params;
+  const resolvedParams = await params;
+  const { section } = resolvedParams;
   const normalizedSection = String(section || "").toLowerCase();
 
   if (!isWorkspaceSection(normalizedSection)) {
@@ -17,7 +18,7 @@ export default async function WorkspaceSectionPage({ params }) {
     notFound();
   }
 
-  await requireServerAuth(`/workspace/${params?.slug || ""}/${normalizedSection}`);
+  await requireServerAuth(`/workspace/${resolvedParams?.slug || ""}/${normalizedSection}`);
 
   return (
     <RoutePage currentPageName={pageName}>

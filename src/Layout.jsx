@@ -68,6 +68,11 @@ function getQueryParam(search, key) {
   return params.get(key) || '';
 }
 
+function getErrorStatus(error) {
+  if (!error) return null;
+  return error.status ?? error.context?.status ?? error.response?.status ?? null;
+}
+
 export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -77,6 +82,7 @@ export default function Layout({ children, currentPageName }) {
   const [role, setRole] = useState('contributor');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPublicViewing, setIsPublicViewing] = useState(false);
+  const [billingBlocked, setBillingBlocked] = useState(false);
   const [noAccessMessage, setNoAccessMessage] = useState(null);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
@@ -136,6 +142,7 @@ export default function Layout({ children, currentPageName }) {
         workspace: storedWorkspace,
         role: storedRole,
         isPublicAccess: storedIsPublicAccess,
+        billingBlocked: storedBillingBlocked,
       } = getWorkspaceSession();
       
       if (!storedWorkspace) {
@@ -143,6 +150,7 @@ export default function Layout({ children, currentPageName }) {
           setWorkspace(null);
           setRole('contributor');
           setIsPublicViewing(false);
+          setBillingBlocked(false);
           return;
         }
 
@@ -158,6 +166,7 @@ export default function Layout({ children, currentPageName }) {
       setWorkspace(storedWorkspace);
       setRole(storedRole || 'contributor');
       setIsPublicViewing(storedIsPublicAccess);
+      setBillingBlocked(Boolean(storedBillingBlocked));
       
       if (storedIsPublicAccess) {
         setNoAccessMessage('You don\'t have permission to contribute to this workspace. Contact the admin to request access.');
@@ -203,6 +212,7 @@ export default function Layout({ children, currentPageName }) {
     setWorkspaceSession({ workspace: ws, role: nextRole, isPublicAccess: false });
     setWorkspace(ws);
     setRole(nextRole);
+    setBillingBlocked(false);
     const requestedSection = pathSection || currentPageName?.toLowerCase() || 'items';
     const targetSection =
       resolveWorkspaceSection(requestedSection, nextRole, false) ||
@@ -222,6 +232,7 @@ export default function Layout({ children, currentPageName }) {
 
   const isAdmin = isAdminRole(role) && !isPublicViewing;
   const canOpenSettings = Boolean(user && workspace && !isPublicViewing);
+  const disableWorkspaceHeader = billingBlocked && location.pathname.startsWith('/workspace/');
   const isSettingsPage = currentPageName === 'WorkspaceSettings' || location.pathname.startsWith('/workspace-settings');
   const isAlertsPage = location.pathname.startsWith('/alerts');
   const isSearchPage = location.pathname.startsWith('/search');
@@ -260,7 +271,7 @@ export default function Layout({ children, currentPageName }) {
   }, [isSearchPage, location.search]);
 
   useEffect(() => {
-    if (!workspace?.id || !canOpenSettings) {
+    if (!workspace?.id || !canOpenSettings || billingBlocked) {
       setUnreadAlerts(0);
       return;
     }
@@ -277,10 +288,13 @@ export default function Layout({ children, currentPageName }) {
           setUnreadAlerts(Number(data?.unread_count || 0));
         }
       } catch (error) {
+        const status = getErrorStatus(error);
         if (!cancelled) {
           setUnreadAlerts(0);
         }
-        console.error('Failed to load unread alerts:', error);
+        if (status !== 402) {
+          console.error('Failed to load unread alerts:', error);
+        }
       }
     };
 
@@ -308,7 +322,7 @@ export default function Layout({ children, currentPageName }) {
       window.removeEventListener('workspace-alerts-updated', onAlertsUpdated);
       window.removeEventListener('workspace-alerts-read', onAlertsRead);
     };
-  }, [workspace?.id, canOpenSettings]);
+  }, [workspace?.id, canOpenSettings, billingBlocked]);
 
   const handleOpenAlerts = () => {
     navigate(createPageUrl('Alerts'));
@@ -352,7 +366,12 @@ export default function Layout({ children, currentPageName }) {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16">
+          <div
+            className={cn(
+              "flex items-center justify-between h-16",
+              disableWorkspaceHeader && "pointer-events-none select-none opacity-60"
+            )}
+          >
             {/* Left: Logo & Workspace Switcher */}
             <div className="flex items-center gap-4">
               {workspace ? (

@@ -15,6 +15,18 @@ function getErrorMessage(error, fallback) {
   return normalized || fallback;
 }
 
+function appendQueryParam(url, key, value) {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set(key, value);
+    return parsed.toString();
+  } catch {
+    const [pathOnly, hash = ""] = String(url || "").split("#");
+    const separator = pathOnly.includes("?") ? "&" : "?";
+    return `${pathOnly}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}${hash ? `#${hash}` : ""}`;
+  }
+}
+
 export async function openStripeBilling({ workspaceId, returnUrl }) {
   if (!workspaceId) {
     return { ok: false, error: "Workspace is missing." };
@@ -54,8 +66,8 @@ export async function openStripeBilling({ workspaceId, returnUrl }) {
       "createCheckoutSession",
       {
         workspace_id: workspaceId,
-        success_url: resolvedReturnUrl,
-        cancel_url: resolvedReturnUrl,
+        success_url: appendQueryParam(resolvedReturnUrl, "billing", "success"),
+        cancel_url: appendQueryParam(resolvedReturnUrl, "billing", "cancel"),
       },
       { authMode: "user" }
     );

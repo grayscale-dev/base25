@@ -3,6 +3,7 @@ const WORKSPACE_SESSION_KEYS = {
   workspaceId: 'selectedWorkspaceId',
   role: 'currentRole',
   isPublicAccess: 'isPublicAccess',
+  billingBlocked: 'billingBlocked',
   analyticsSessionId: 'analytics_session_id',
   settingsTabIntent: 'workspace_settings_tab_intent',
 };
@@ -31,6 +32,7 @@ export function getWorkspaceSession() {
       workspaceId: null,
       role: 'contributor',
       isPublicAccess: false,
+      billingBlocked: false,
     };
   }
 
@@ -41,11 +43,18 @@ export function getWorkspaceSession() {
     null;
   const role = storage.getItem(WORKSPACE_SESSION_KEYS.role) || 'contributor';
   const isPublicAccess = storage.getItem(WORKSPACE_SESSION_KEYS.isPublicAccess) === 'true';
+  const billingBlocked = storage.getItem(WORKSPACE_SESSION_KEYS.billingBlocked) === 'true';
 
-  return { workspace, workspaceId, role, isPublicAccess };
+  return { workspace, workspaceId, role, isPublicAccess, billingBlocked };
 }
 
-export function setWorkspaceSession({ workspace = null, workspaceId = null, role = 'contributor', isPublicAccess = false }) {
+export function setWorkspaceSession({
+  workspace = null,
+  workspaceId = null,
+  role = 'contributor',
+  isPublicAccess = false,
+  billingBlocked = false,
+}) {
   const storage = getSessionStorage();
   if (!storage) return;
 
@@ -60,6 +69,7 @@ export function setWorkspaceSession({ workspace = null, workspaceId = null, role
 
   storage.setItem(WORKSPACE_SESSION_KEYS.role, role || 'contributor');
   storage.setItem(WORKSPACE_SESSION_KEYS.isPublicAccess, String(Boolean(isPublicAccess)));
+  storage.setItem(WORKSPACE_SESSION_KEYS.billingBlocked, String(Boolean(billingBlocked)));
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('workspace-session-updated'));
@@ -74,6 +84,7 @@ export function clearWorkspaceSession() {
   storage.removeItem(WORKSPACE_SESSION_KEYS.workspaceId);
   storage.removeItem(WORKSPACE_SESSION_KEYS.role);
   storage.removeItem(WORKSPACE_SESSION_KEYS.isPublicAccess);
+  storage.removeItem(WORKSPACE_SESSION_KEYS.billingBlocked);
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('workspace-session-updated'));
