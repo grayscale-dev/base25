@@ -109,7 +109,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    const price = await stripe.prices.retrieve(priceId);
+    let price: Stripe.Price;
+    try {
+      price = await stripe.prices.retrieve(priceId);
+    } catch (stripePriceError) {
+      const detail = stripePriceError instanceof Error ? stripePriceError.message : String(stripePriceError || "");
+      return new Response(
+        JSON.stringify({
+          error: "Failed to retrieve Stripe price. Verify STRIPE_SECRET_KEY and STRIPE_PRICE_FLAT_MONTHLY_ID belong to the same Stripe mode/account.",
+          detail,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
     const isMonthly = price.recurring?.interval === "month";
     const isExpectedAmount = price.unit_amount === FLAT_MONTHLY_PRICE_CENTS;
     if (!isMonthly || !isExpectedAmount) {
@@ -175,7 +190,8 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error("Create checkout session error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
+    const detail = error instanceof Error ? error.message : String(error || "");
+    return new Response(JSON.stringify({ error: "Internal server error", detail }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
