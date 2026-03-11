@@ -2,6 +2,7 @@ import { authorizeWriteAction, isAdminLikeRole } from "../_shared/authHelpers.ts
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 import { validateMetadata } from "../_shared/itemValidation.ts";
+import { createWatcherAlerts } from "../_shared/alerts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +15,23 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+
+function normalizePriority(metadata: unknown) {
+  const value = (metadata && typeof metadata === "object" && !Array.isArray(metadata))
+    ? (metadata as Record<string, unknown>).priority
+    : undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    return "not_set";
+  }
+  return value.trim().toLowerCase();
+}
+
+function normalizeMetadata(payloadMetadata: unknown, fallback: unknown) {
+  if (payloadMetadata && typeof payloadMetadata === "object" && !Array.isArray(payloadMetadata)) {
+    return payloadMetadata;
+  }
+  return fallback;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -102,6 +120,22 @@ Deno.serve(async (req) => {
       return json({ error: "Contributors cannot change item status" }, 403);
     }
 
+    if (auth.role === "contributor" && itemTypeId && itemTypeId !== existing.item_type_id) {
+      return json({ error: "Contributors cannot change item type" }, 403);
+    }
+
+    if (auth.role === "contributor" && typeof title === "string" && title.trim() !== String(existing.title || "").trim()) {
+      return json({ error: "Contributors cannot change item title" }, 403);
+    }
+
+    if (auth.role === "contributor" && Object.prototype.hasOwnProperty.call(payload || {}, "metadata")) {
+      const normalizedIncoming = JSON.stringify(normalizeMetadata(metadata, existing.metadata) || {});
+      const normalizedExisting = JSON.stringify(existing.metadata || {});
+      if (normalizedIncoming !== normalizedExisting) {
+        return json({ error: "Contributors cannot change item metadata" }, 403);
+      }
+    }
+
     if (assignedTo !== undefined && !isAdminLikeRole(auth.role)) {
       return json({ error: "Only admin or owner can change assignee" }, 403);
     }
@@ -179,6 +213,8 @@ Deno.serve(async (req) => {
       return json({ error: "Item not found" }, 404);
     }
 
+    const itemTitle = String(updated.title || existing.title || "Item");
+
     if (existing.group_key !== updated.group_key) {
       await supabaseAdmin.from("item_activities").insert({
         workspace_id: workspaceId,
@@ -205,7 +241,7 @@ Deno.serve(async (req) => {
 
       const fromStatusLabel = oldStatusRow?.label || existing.status_key || "Unknown";
       const toStatusLabel = nextStatusRow.label || updated.status_key || "Unknown";
-      await supabaseAdmin.from("item_activities").insert({
+      const { data: statusActivity } = await supabaseAdmin.from("item_activities").insert({
         workspace_id: workspaceId,
         item_id: updated.id,
         activity_type: "status_change",
@@ -216,6 +252,124 @@ Deno.serve(async (req) => {
         },
         author_id: auth.user.id,
         author_role: isAdminLikeRole(auth.role) ? "admin" : "user",
+      }).select("id").single();
+
+      await createWatcherAlerts({
+        workspaceId,
+        itemId: updated.id,
+        itemActivityId: statusActivity?.id || null,
+        alertType: "status_change",
+        actorUserId: auth.user.id,
+        title: "Status changed on watched item",
+        body: `${itemTitle}: ${fromStatusLabel} -> ${toStatusLabel}`,
+        metadata: {
+          from_status_id: existing.status_id,
+          to_status_id: updated.status_id,
+        },
+      });
+    }
+
+    if (existing.item_type_id !== updated.item_type_id) {
+      const { data: typeRows } = await supabaseAdmin
+        .from("item_types")
+        .select("id, label")
+        .eq("workspace_id", workspaceId)
+        .in("id", [existing.item_type_id, updated.item_type_id].filter(Boolean));
+
+      const typeLabelById = new Map<string, string>();
+      (typeRows || []).forEach((row) => {
+        typeLabelById.set(String(row.id), String(row.label || "Unknown"));
+      });
+
+      const fromTypeLabel = typeLabelById.get(String(existing.item_type_id)) || "Unknown";
+      const toTypeLabel = typeLabelById.get(String(updated.item_type_id)) || "Unknown";
+      const { data: typeActivity } = await supabaseAdmin.from("item_activities").insert({
+        workspace_id: workspaceId,
+        item_id: updated.id,
+        activity_type: "type_change",
+        content: `Type changed from ${fromTypeLabel} to ${toTypeLabel}`,
+        metadata: {
+          from_item_type_id: existing.item_type_id,
+          to_item_type_id: updated.item_type_id,
+        },
+        author_id: auth.user.id,
+        author_role: isAdminLikeRole(auth.role) ? "admin" : "user",
+      }).select("id").single();
+
+      await createWatcherAlerts({
+        workspaceId,
+        itemId: updated.id,
+        itemActivityId: typeActivity?.id || null,
+        alertType: "type_change",
+        actorUserId: auth.user.id,
+        title: "Type changed on watched item",
+        body: `${itemTitle}: ${fromTypeLabel} -> ${toTypeLabel}`,
+        metadata: {
+          from_item_type_id: existing.item_type_id,
+          to_item_type_id: updated.item_type_id,
+        },
+      });
+    }
+
+    const fromPriority = normalizePriority(existing.metadata);
+    const toPriority = normalizePriority(updated.metadata);
+    if (fromPriority !== toPriority) {
+      const { data: priorityActivity } = await supabaseAdmin.from("item_activities").insert({
+        workspace_id: workspaceId,
+        item_id: updated.id,
+        activity_type: "priority_change",
+        content: `Priority changed from ${fromPriority} to ${toPriority}`,
+        metadata: {
+          from_priority: fromPriority,
+          to_priority: toPriority,
+        },
+        author_id: auth.user.id,
+        author_role: isAdminLikeRole(auth.role) ? "admin" : "user",
+      }).select("id").single();
+
+      await createWatcherAlerts({
+        workspaceId,
+        itemId: updated.id,
+        itemActivityId: priorityActivity?.id || null,
+        alertType: "priority_change",
+        actorUserId: auth.user.id,
+        title: "Priority changed on watched item",
+        body: `${itemTitle}: ${fromPriority} -> ${toPriority}`,
+        metadata: {
+          from_priority: fromPriority,
+          to_priority: toPriority,
+        },
+      });
+    }
+
+    if (existing.assigned_to !== updated.assigned_to) {
+      const fromAssignee = existing.assigned_to ? String(existing.assigned_to) : "unassigned";
+      const toAssignee = updated.assigned_to ? String(updated.assigned_to) : "unassigned";
+      const { data: assigneeActivity } = await supabaseAdmin.from("item_activities").insert({
+        workspace_id: workspaceId,
+        item_id: updated.id,
+        activity_type: "assignee_change",
+        content: `Assignee changed from ${fromAssignee} to ${toAssignee}`,
+        metadata: {
+          from_assignee_id: existing.assigned_to,
+          to_assignee_id: updated.assigned_to,
+        },
+        author_id: auth.user.id,
+        author_role: isAdminLikeRole(auth.role) ? "admin" : "user",
+      }).select("id").single();
+
+      await createWatcherAlerts({
+        workspaceId,
+        itemId: updated.id,
+        itemActivityId: assigneeActivity?.id || null,
+        alertType: "assignee_change",
+        actorUserId: auth.user.id,
+        title: "Assignee changed on watched item",
+        body: `${itemTitle}: ${fromAssignee} -> ${toAssignee}`,
+        metadata: {
+          from_assignee_id: existing.assigned_to,
+          to_assignee_id: updated.assigned_to,
+        },
       });
     }
 

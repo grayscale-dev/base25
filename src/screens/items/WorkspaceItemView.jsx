@@ -11,7 +11,7 @@ import { getGroupLabel } from "@/lib/item-groups";
 import { getDefaultWorkspaceSection } from "@/lib/workspace-sections";
 import { useItemsController } from "./useItemsController";
 import ItemDetailPanel from "./ItemDetailPanel";
-import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { Bell, Loader2, Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { isAdminRole } from "@/lib/roles";
 
@@ -75,12 +75,7 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
   const backSection = selectedItem?.group_key || fallbackSection;
   const backLabel = selectedItem?.group_key ? getGroupLabel(selectedItem.group_key) : "Workspace";
   const canDeleteSelectedItem = controller.canDeleteItem(selectedItem);
-  const canEditTitle =
-    (isAdminRole(role) && !isPublicAccess) ||
-    (role === "contributor" &&
-      !isPublicAccess &&
-      selectedItem?.group_key === "feedback" &&
-      selectedItem?.submitter_id === controller.currentUserId);
+  const canEditTitle = isAdminRole(role) && !isPublicAccess;
 
   useEffect(() => {
     setIsEditingTitle(false);
@@ -126,6 +121,14 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
       return;
     }
     navigate(workspaceUrl(workspace.slug, fallbackSection));
+  };
+
+  const toggleWatch = async () => {
+    if (!selectedItem?.id) return;
+    const result = await controller.toggleItemWatch(selectedItem.id);
+    if (!result.ok) {
+      controller.setError(result.error);
+    }
   };
 
   if (controller.loadingConfig || loadingItem) {
@@ -207,8 +210,23 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
           )
         }
         actions={
-          (canEditTitle || canDeleteSelectedItem) && !isEditingTitle ? (
+          !isEditingTitle ? (
             <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  void toggleWatch();
+                }}
+                aria-label={controller.itemEngagement.watched ? "Unwatch item" : "Watch item"}
+                title={controller.itemEngagement.watched ? "Unwatch item" : "Watch item"}
+              >
+                <Bell
+                  className="h-3.5 w-3.5"
+                  style={controller.itemEngagement.watched ? { color: "var(--workspace-brand)" } : undefined}
+                />
+              </Button>
               {canEditTitle ? (
                 <Button
                   variant="ghost"

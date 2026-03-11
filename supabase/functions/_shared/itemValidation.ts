@@ -23,12 +23,6 @@ export function validateMetadata(groupKey: ItemGroupKey, metadata: unknown) {
     }
   }
 
-  if (groupKey === "roadmap") {
-    if (data.display_order !== undefined && Number.isNaN(Number(data.display_order))) {
-      return { valid: false, message: "metadata.display_order must be numeric" };
-    }
-  }
-
   if (groupKey === "changelog") {
     const allowedTypes = ["release", "hotfix", "announcement"];
     if (data.announcement_type && !allowedTypes.includes(String(data.announcement_type))) {

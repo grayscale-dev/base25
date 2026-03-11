@@ -59,9 +59,11 @@ function uniqueStatuses(statuses) {
 }
 
 export default function AllItemsPage({ workspace, controller }) {
+  const canFilterByAssignee = Boolean(controller.isAdmin);
   const [searchQuery, setSearchQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [sortKey, setSortKey] = useState("updated");
   const [sortDirection, setSortDirection] = useState("desc");
   const [pageSize, setPageSize] = useState(25);
@@ -69,6 +71,7 @@ export default function AllItemsPage({ workspace, controller }) {
   const [showFilters, setShowFilters] = useState(false);
   const [draftGroupFilter, setDraftGroupFilter] = useState("all");
   const [draftStatusFilter, setDraftStatusFilter] = useState("all");
+  const [draftAssigneeFilter, setDraftAssigneeFilter] = useState("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [openingItemId, setOpeningItemId] = useState(null);
@@ -81,7 +84,8 @@ export default function AllItemsPage({ workspace, controller }) {
     if (!showFilters) return;
     setDraftGroupFilter(groupFilter);
     setDraftStatusFilter(statusFilter);
-  }, [showFilters, groupFilter, statusFilter]);
+    setDraftAssigneeFilter(assigneeFilter);
+  }, [showFilters, groupFilter, statusFilter, assigneeFilter]);
 
   const statusOptions = useMemo(() => {
     if (groupFilter === "all") return uniqueStatuses(controller.statuses);
@@ -100,6 +104,16 @@ export default function AllItemsPage({ workspace, controller }) {
       .filter((item) => {
         if (groupFilter !== "all" && item.group_key !== groupFilter) return false;
         if (statusFilter !== "all" && item.status_id !== statusFilter) return false;
+        if (canFilterByAssignee) {
+          if (assigneeFilter === "unassigned" && item.group_key === "feedback" && item.assigned_to) return false;
+          if (
+            assigneeFilter !== "all" &&
+            assigneeFilter !== "unassigned" &&
+            item.assigned_to !== assigneeFilter
+          ) {
+            return false;
+          }
+        }
         if (!normalizedQuery) return true;
 
         const haystack =
@@ -113,7 +127,7 @@ export default function AllItemsPage({ workspace, controller }) {
         if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
         return 0;
       });
-  }, [controller.items, searchQuery, groupFilter, statusFilter, sortKey, sortDirection]);
+  }, [controller.items, searchQuery, groupFilter, statusFilter, assigneeFilter, sortKey, sortDirection, canFilterByAssignee]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -142,12 +156,26 @@ export default function AllItemsPage({ workspace, controller }) {
         statusFilter;
       filters.push({ id: "status", label: "Status", value: label });
     }
+    if (canFilterByAssignee && assigneeFilter !== "all") {
+      const assigneeLabel = assigneeFilter === "unassigned"
+        ? "Unassigned"
+        : controller.memberDirectory.find((member) => member.user_id === assigneeFilter)?.display_name
+          || controller.memberDirectory.find((member) => member.user_id === assigneeFilter)?.email
+          || assigneeFilter;
+      filters.push({ id: "assignee", label: "Assignee", value: assigneeLabel });
+    }
     return filters;
-  }, [groupFilter, statusFilter, statusOptions, statusLabelById]);
+  }, [groupFilter, statusFilter, assigneeFilter, statusOptions, statusLabelById, controller.memberDirectory, canFilterByAssignee]);
+
+  useEffect(() => {
+    if (canFilterByAssignee) return;
+    setAssigneeFilter("all");
+    setDraftAssigneeFilter("all");
+  }, [canFilterByAssignee]);
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, groupFilter, statusFilter, pageSize]);
+  }, [searchQuery, groupFilter, statusFilter, assigneeFilter, pageSize]);
 
   const toggleSort = (nextKey) => {
     if (nextKey === sortKey) {
@@ -182,14 +210,17 @@ export default function AllItemsPage({ workspace, controller }) {
     const hasDraftStatus = draftStatusOptions.some((status) => status.id === draftStatusFilter);
     setGroupFilter(draftGroupFilter);
     setStatusFilter(draftStatusFilter === "all" || hasDraftStatus ? draftStatusFilter : "all");
+    setAssigneeFilter(canFilterByAssignee ? draftAssigneeFilter : "all");
     setShowFilters(false);
   };
 
   const clearFilters = () => {
     setGroupFilter("all");
     setStatusFilter("all");
+    setAssigneeFilter("all");
     setDraftGroupFilter("all");
     setDraftStatusFilter("all");
+    setDraftAssigneeFilter("all");
     setShowFilters(false);
   };
 
@@ -344,10 +375,15 @@ export default function AllItemsPage({ workspace, controller }) {
                     >
                       <TableCell className="px-3 sm:px-4">
                         <div>
-                          <p className="font-medium text-slate-900">{item.title}</p>
-                          <p className="line-clamp-1 text-xs text-slate-500">
-                            {item.description || "No description."}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-slate-900">{item.title}</p>
+                            {Number(item.reaction_count || 0) > 0 ? (
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+                                {item.reaction_count}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="line-clamp-1 text-xs text-slate-500">{item.description || "No description."}</p>
                         </div>
                       </TableCell>
                       <TableCell className="px-3 sm:px-4 text-sm text-slate-700">
@@ -474,6 +510,26 @@ export default function AllItemsPage({ workspace, controller }) {
                 </SelectContent>
               </Select>
             </div>
+
+            {canFilterByAssignee ? (
+              <div>
+                <Label>Assignee</Label>
+                <Select value={draftAssigneeFilter} onValueChange={setDraftAssigneeFilter}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All assignees</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {controller.memberDirectory.map((member) => (
+                      <SelectItem key={member.user_id} value={member.user_id}>
+                        {member.display_name || member.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
 
           <DialogFooter>

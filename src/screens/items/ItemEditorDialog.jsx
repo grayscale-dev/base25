@@ -294,35 +294,6 @@ export default function ItemEditorDialog({
             </div>
           ) : null}
 
-          {!isContributorFeedbackSubmit && groupKey === "roadmap" ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <Label>Target quarter</Label>
-                <Input
-                  value={metadata.target_quarter || ""}
-                  onChange={(event) =>
-                    setMetadata({ ...metadata, target_quarter: event.target.value })
-                  }
-                  placeholder="Q2 2026"
-                  className="mt-1.5"
-                  disabled={saving}
-                />
-              </div>
-              <div>
-                <Label>Target date</Label>
-                <Input
-                  type="date"
-                  value={metadata.target_date || ""}
-                  onChange={(event) =>
-                    setMetadata({ ...metadata, target_date: event.target.value })
-                  }
-                  className="mt-1.5"
-                  disabled={saving}
-                />
-              </div>
-            </div>
-          ) : null}
-
           {!isContributorFeedbackSubmit && groupKey === "changelog" ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>

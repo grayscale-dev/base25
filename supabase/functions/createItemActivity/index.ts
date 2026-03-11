@@ -1,6 +1,7 @@
 import { authorizeWriteAction, isAdminLikeRole } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
+import { createWatcherAlerts, isWatchAlertType } from "../_shared/alerts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +15,16 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-const ACTIVITY_TYPES = ["comment", "update", "status_change", "group_change", "system"];
+const ACTIVITY_TYPES = [
+  "comment",
+  "update",
+  "status_change",
+  "group_change",
+  "type_change",
+  "priority_change",
+  "assignee_change",
+  "system",
+];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -56,7 +66,7 @@ Deno.serve(async (req) => {
 
     const { data: item, error: itemError } = await supabaseAdmin
       .from("items")
-      .select("id")
+      .select("id, title")
       .eq("id", itemId)
       .eq("workspace_id", workspaceId)
       .limit(1)
@@ -88,6 +98,21 @@ Deno.serve(async (req) => {
     if (error) {
       console.error("createItemActivity insert error:", error);
       return json({ error: "Failed to create activity" }, 500);
+    }
+
+    if (isWatchAlertType(activityType)) {
+      const title = activityType === "comment" ? "New comment on watched item" : "Watched item updated";
+      const bodyPrefix = item?.title ? `${item.title}: ` : "";
+      await createWatcherAlerts({
+        workspaceId,
+        itemId,
+        itemActivityId: data.id,
+        alertType: activityType,
+        actorUserId: auth.user.id,
+        title,
+        body: `${bodyPrefix}${String(content).trim()}`,
+        metadata: metadata as Record<string, unknown>,
+      });
     }
 
     return json(data);

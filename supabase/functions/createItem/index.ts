@@ -15,6 +15,18 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+function getContributorDefaultFeedbackMetadata() {
+  return {
+    type: "feature_request",
+    priority: "medium",
+    steps_to_reproduce: "",
+    expected_behavior: "",
+    actual_behavior: "",
+    environment: "",
+    attachments: [],
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -27,7 +39,7 @@ Deno.serve(async (req) => {
     const statusId = payload?.status_id;
     const title = payload?.title;
     const description = payload?.description ?? "";
-    const metadata = payload?.metadata ?? {};
+    const incomingMetadata = payload?.metadata ?? {};
     const tags = Array.isArray(payload?.tags) ? payload.tags : [];
     const visibility = payload?.visibility ?? "public";
     const requestedItemTypeId = payload?.item_type_id || null;
@@ -65,8 +77,37 @@ Deno.serve(async (req) => {
       return json({ error: "Contributors can only create feedback items" }, 403);
     }
 
+    if (auth.role === "contributor") {
+      const { data: defaultFeedbackStatus, error: defaultStatusError } = await supabaseAdmin
+        .from("item_statuses")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("group_key", "feedback")
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (defaultStatusError) {
+        console.error("createItem default status lookup error:", defaultStatusError);
+        return json({ error: "Failed to resolve default feedback status" }, 500);
+      }
+      if (!defaultFeedbackStatus?.id) {
+        return json({ error: "No default feedback status is configured for this workspace" }, 409);
+      }
+      if (statusRow.id !== defaultFeedbackStatus.id) {
+        return json({ error: "Contributors cannot choose feedback status" }, 403);
+      }
+    }
+
     if (requestedAssigneeId && !isAdminLikeRole(auth.role)) {
       return json({ error: "Only admin or owner can assign items" }, 403);
+    }
+
+    let metadata = incomingMetadata;
+    if (auth.role === "contributor") {
+      metadata = getContributorDefaultFeedbackMetadata();
     }
 
     const metadataCheck = validateMetadata(statusRow.group_key, metadata);
@@ -75,6 +116,9 @@ Deno.serve(async (req) => {
     }
 
     let itemTypeId: string | null = requestedItemTypeId;
+    if (auth.role === "contributor") {
+      itemTypeId = null;
+    }
 
     if (itemTypeId) {
       const { data: typeRow, error: typeError } = await supabaseAdmin

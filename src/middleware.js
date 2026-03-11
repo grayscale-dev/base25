@@ -13,6 +13,8 @@ const canonicalStaticPaths = {
   "/workspaces": "/workspaces",
   "/joinworkspace": "/join-workspace",
   "/billing": "/billing",
+  "/alerts": "/alerts",
+  "/search": "/search",
   "/apidocs": "/api-docs",
   "/workspacesettings": "/workspace-settings",
   "/auth/signin": "/auth/sign-in",

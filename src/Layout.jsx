@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from '@/lib/router';
 import Link from '@/components/common/AppLink';
 import { 
-  LogOut, ChevronDown, Settings,
+  LogOut, ChevronDown, Settings, Bell, Search as SearchIcon,
   LayoutDashboard, MessageSquare, Map, History, Menu, X, ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,13 +33,11 @@ const adminNavItems = [
   { name: 'All', icon: LayoutDashboard, page: 'All', section: 'all' },
   { name: 'Feedback', icon: MessageSquare, page: 'Feedback', section: 'feedback' },
   { name: 'Roadmap', icon: Map, page: 'Roadmap', section: 'roadmap' },
-  { name: 'Changelog', icon: History, page: 'Changelog', section: 'changelog' },
 ];
 
 const memberNavItems = [
   { name: 'Feedback', icon: MessageSquare, page: 'Feedback', section: 'feedback' },
   { name: 'Roadmap', icon: Map, page: 'Roadmap', section: 'roadmap' },
-  { name: 'Changelog', icon: History, page: 'Changelog', section: 'changelog' },
 ];
 
 const DEFAULT_WORKSPACE_BRAND = '#0f172a';
@@ -64,6 +63,11 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function getQueryParam(search, key) {
+  const params = new URLSearchParams(String(search || ''));
+  return params.get(key) || '';
+}
+
 export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -74,6 +78,8 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPublicViewing, setIsPublicViewing] = useState(false);
   const [noAccessMessage, setNoAccessMessage] = useState(null);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+  const [headerSearchQuery, setHeaderSearchQuery] = useState('');
   const pathParts = location.pathname.split('/').filter(Boolean);
   const pathSection = pathParts[0] === 'workspace' ? pathParts[2]?.toLowerCase() : null;
 
@@ -217,8 +223,11 @@ export default function Layout({ children, currentPageName }) {
   const isAdmin = isAdminRole(role) && !isPublicViewing;
   const canOpenSettings = Boolean(user && workspace && !isPublicViewing);
   const isSettingsPage = currentPageName === 'WorkspaceSettings' || location.pathname.startsWith('/workspace-settings');
+  const isAlertsPage = location.pathname.startsWith('/alerts');
+  const isSearchPage = location.pathname.startsWith('/search');
+  const isWorkspaceUtilityPage = isSettingsPage || isAlertsPage || isSearchPage;
   const visibleNavItems = isAdmin ? adminNavItems : memberNavItems;
-  const activeSection = isSettingsPage
+  const activeSection = isWorkspaceUtilityPage
     ? null
     : (
       resolveWorkspaceSection(pathSection || currentPageName?.toLowerCase(), role, isPublicViewing) ||
@@ -243,6 +252,74 @@ export default function Layout({ children, currentPageName }) {
   }, [workspaceBrandColor]);
   const workspaceHomeSection = getDefaultWorkspaceSection(role, isPublicViewing);
   const isActive = (section) => !isSettingsPage && section === activeSection;
+  const isChangelogPage = activeSection === 'changelog';
+
+  useEffect(() => {
+    if (!isSearchPage) return;
+    setHeaderSearchQuery(getQueryParam(location.search, 'q'));
+  }, [isSearchPage, location.search]);
+
+  useEffect(() => {
+    if (!workspace?.id || !canOpenSettings) {
+      setUnreadAlerts(0);
+      return;
+    }
+
+    let cancelled = false;
+    const loadUnreadAlerts = async () => {
+      try {
+        const { data } = await base44.functions.invoke(
+          'getUnreadAlertCount',
+          { workspace_id: workspace.id },
+          { authMode: 'user' },
+        );
+        if (!cancelled) {
+          setUnreadAlerts(Number(data?.unread_count || 0));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setUnreadAlerts(0);
+        }
+        console.error('Failed to load unread alerts:', error);
+      }
+    };
+
+    const onAlertsUpdated = (event) => {
+      const eventWorkspaceId = event?.detail?.workspaceId || null;
+      if (eventWorkspaceId && eventWorkspaceId !== workspace.id) return;
+      void loadUnreadAlerts();
+    };
+    const onAlertsRead = (event) => {
+      const eventWorkspaceId = event?.detail?.workspaceId || null;
+      if (eventWorkspaceId && eventWorkspaceId !== workspace.id) return;
+      setUnreadAlerts(0);
+    };
+
+    void loadUnreadAlerts();
+    const intervalId = window.setInterval(() => {
+      void loadUnreadAlerts();
+    }, 60000);
+    window.addEventListener('workspace-alerts-updated', onAlertsUpdated);
+    window.addEventListener('workspace-alerts-read', onAlertsRead);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('workspace-alerts-updated', onAlertsUpdated);
+      window.removeEventListener('workspace-alerts-read', onAlertsRead);
+    };
+  }, [workspace?.id, canOpenSettings]);
+
+  const handleOpenAlerts = () => {
+    navigate(createPageUrl('Alerts'));
+  };
+
+  const handleHeaderSearchSubmit = (event) => {
+    event.preventDefault();
+    const query = String(headerSearchQuery || '').trim();
+    if (!query) return;
+    navigate(`${createPageUrl('Search')}?q=${encodeURIComponent(query)}`);
+  };
 
   // No layout for public pages, workspaces hub, or join page
   if (['Home', 'About', 'Pricing', 'Features', 'Workspaces', 'JoinWorkspace'].includes(currentPageName)) {
@@ -383,8 +460,53 @@ export default function Layout({ children, currentPageName }) {
                   </div>
                 )}
                 
-                {canOpenSettings && (
+                {canOpenSettings && workspace && (
                   <div className="hidden md:flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleOpenAlerts}
+                      aria-label="Open alerts"
+                      title="Alerts"
+                      className={cn(
+                        "relative h-9 w-9",
+                        isAlertsPage ? "bg-slate-100 text-slate-900" : "hover:bg-slate-50"
+                      )}
+                    >
+                      <Bell
+                        className={cn(
+                          "h-4 w-4",
+                          unreadAlerts > 0 ? "text-blue-600" : "text-slate-500"
+                        )}
+                      />
+                      {unreadAlerts > 0 ? (
+                        <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-600" />
+                      ) : null}
+                    </Button>
+                    <form onSubmit={handleHeaderSearchSubmit} className="relative hidden md:block">
+                      <SearchIcon className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                      <Input
+                        value={headerSearchQuery}
+                        onChange={(event) => setHeaderSearchQuery(event.target.value)}
+                        placeholder="Search workspace..."
+                        className="h-9 w-56 bg-white pl-8"
+                        aria-label="Search workspace items"
+                      />
+                    </form>
+                    <Link to={workspaceUrl(workspace.slug, 'changelog')}>
+                      <Button
+                        variant="ghost"
+                        className={cn(
+                          "h-auto gap-2 rounded-lg px-4 py-2 text-sm font-medium hover:text-slate-900",
+                          isChangelogPage
+                            ? "bg-slate-100 text-slate-900"
+                            : "text-slate-600 hover:bg-slate-50"
+                        )}
+                      >
+                        <History className="h-4 w-4" />
+                        Changelog
+                      </Button>
+                    </Link>
                     <Link to={createPageUrl('WorkspaceSettings')}>
                       <Button
                         variant="ghost"
@@ -440,8 +562,61 @@ export default function Layout({ children, currentPageName }) {
                     
                     {canOpenSettings && (
                       <>
-                        <div className="border-t border-slate-200 pt-4 mt-2">
-                          <p className="px-4 text-xs font-medium text-slate-400 uppercase mb-2">Settings</p>
+                        <div className="border-t border-slate-200 pt-4 mt-2 space-y-1">
+                          <p className="px-4 text-xs font-medium text-slate-400 uppercase mb-2">Workspace</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMobileMenuOpen(false);
+                              handleOpenAlerts();
+                            }}
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg px-4 py-3 text-sm",
+                              isAlertsPage
+                                ? "bg-[var(--workspace-brand-soft)] font-medium text-[var(--workspace-brand-fg)]"
+                                : "text-slate-600 hover:bg-slate-50"
+                            )}
+                          >
+                            <div className="relative">
+                              <Bell className={cn("h-5 w-5", unreadAlerts > 0 ? "text-blue-600" : "text-slate-500")} />
+                              {unreadAlerts > 0 ? (
+                                <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-600" />
+                              ) : null}
+                            </div>
+                            Alerts
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMobileMenuOpen(false);
+                              navigate(createPageUrl('Search'));
+                            }}
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg px-4 py-3 text-sm",
+                              isSearchPage
+                                ? "bg-[var(--workspace-brand-soft)] font-medium text-[var(--workspace-brand-fg)]"
+                                : "text-slate-600 hover:bg-slate-50"
+                            )}
+                          >
+                            <SearchIcon className="h-5 w-5" />
+                            Search
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMobileMenuOpen(false);
+                              navigate(workspaceUrl(workspace.slug, 'changelog'));
+                            }}
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg px-4 py-3 text-sm",
+                              isChangelogPage
+                                ? "bg-[var(--workspace-brand-soft)] font-medium text-[var(--workspace-brand-fg)]"
+                                : "text-slate-600 hover:bg-slate-50"
+                            )}
+                          >
+                            <History className="h-5 w-5" />
+                            Changelog
+                          </button>
                           <button
                             type="button"
                             onClick={() => {

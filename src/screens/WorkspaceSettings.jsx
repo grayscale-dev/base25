@@ -163,10 +163,18 @@ export default function WorkspaceSettings() {
 
   const notifyStatus = (tone, message) => {
     if (!message) return;
+    const normalizedTone = String(tone || "").toLowerCase();
+    const variant = normalizedTone === "danger"
+      ? "error"
+      : normalizedTone === "warning"
+        ? "warning"
+        : normalizedTone === "info" || normalizedTone === "neutral"
+          ? "info"
+          : "success";
     toast({
-      title: tone === "danger" ? "Action failed" : "Success",
+      title: normalizedTone === "danger" ? "Action failed" : "Success",
       description: message,
-      variant: tone === "danger" ? "destructive" : "default",
+      variant,
     });
   };
 

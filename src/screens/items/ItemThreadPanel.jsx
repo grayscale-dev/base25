@@ -7,6 +7,8 @@ import RelativeDate from "@/components/common/RelativeDate";
 import { StateBanner } from "@/components/common/StateDisplay";
 import { getGroupColor, getGroupLabel } from "@/lib/item-groups";
 
+const REACTION_EMOJIS = ["👍", "❤️", "🎉", "👀"];
+
 function resolveStatusLabel(controller, statusId, fallbackStatusKey = null) {
   if (statusId) {
     const byId = controller.statusById?.get(statusId);
@@ -186,11 +188,16 @@ function renderActivityContent(activity, controller) {
   }
 
   if (from && to) {
+    const activityLabel = activity.activity_type === "type_change"
+      ? "Type"
+      : activity.activity_type === "priority_change"
+        ? "Priority"
+        : activity.activity_type === "assignee_change"
+          ? "Assignee"
+          : (activity.activity_type_label || "Activity");
     return (
       <>
-        <span className="font-semibold text-slate-800">
-          {activity.activity_type_label || "Activity"}
-        </span>{" "}
+        <span className="font-semibold text-slate-800">{activityLabel}</span>{" "}
         from <StatusPill colorHex={fromColor}>{from}</StatusPill> to <StatusPill colorHex={toColor}>{to}</StatusPill>
       </>
     );
@@ -300,9 +307,54 @@ export default function ItemThreadPanel({ controller, item }) {
     }
   };
 
+  const toggleItemReaction = async (emoji) => {
+    if (!item?.id) return;
+    await controller.toggleItemReaction(item.id, emoji);
+  };
+
+  const toggleCommentReaction = async (commentId, emoji) => {
+    await controller.toggleCommentReaction(commentId, emoji);
+  };
+
   return (
     <div className="space-y-6">
       <StateBanner tone="danger" message={threadError} />
+
+      <section className="space-y-3 border-t border-slate-200 pt-3">
+        <p className="text-sm font-medium text-slate-900">Reactions</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {(controller.itemEngagement.item_reactions || []).map((reaction) => (
+            <button
+              key={reaction.emoji}
+              type="button"
+              onClick={() => {
+                void toggleItemReaction(reaction.emoji);
+              }}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${
+                reaction.reacted
+                  ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span>{reaction.emoji}</span>
+              <span>{reaction.count}</span>
+            </button>
+          ))}
+          {REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => {
+                void toggleItemReaction(emoji);
+              }}
+              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+              aria-label={`React with ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section className="space-y-3 border-t border-slate-200 pt-3">
         <p className="text-sm font-medium text-slate-900">Description</p>
@@ -459,6 +511,38 @@ export default function ItemThreadPanel({ controller, item }) {
               ) : (
                 <>
                   <p className="whitespace-pre-wrap text-sm text-slate-700">{comment.content}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {(comment.reactions || []).map((reaction) => (
+                      <button
+                        key={reaction.emoji}
+                        type="button"
+                        onClick={() => {
+                          void toggleCommentReaction(comment.id, reaction.emoji);
+                        }}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${
+                          reaction.reacted
+                            ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span>{reaction.emoji}</span>
+                        <span>{reaction.count}</span>
+                      </button>
+                    ))}
+                    {REACTION_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => {
+                          void toggleCommentReaction(comment.id, emoji);
+                        }}
+                        className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                        aria-label={`React with ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </>
               )}
             </article>

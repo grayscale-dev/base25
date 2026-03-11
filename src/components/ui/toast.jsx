@@ -26,13 +26,17 @@ const toastVariants = cva(
   {
     variants: {
       variant: {
-        default: "border bg-background text-foreground",
+        default: "info border-slate-200 bg-white text-slate-900",
+        info: "info border-slate-200 bg-white text-slate-900",
+        success: "success border-emerald-200 bg-emerald-50 text-emerald-900",
+        warning: "warning border-amber-200 bg-amber-50 text-amber-900",
+        error: "error border-rose-200 bg-rose-50 text-rose-900",
         destructive:
-          "destructive group border-destructive bg-destructive text-destructive-foreground",
+          "error border-rose-200 bg-rose-50 text-rose-900",
       },
     },
     defaultVariants: {
-      variant: "default",
+      variant: "info",
     },
   }
 );
@@ -67,6 +71,7 @@ const ToastClose = React.forwardRef(({ className, ...props }, ref) => (
     ref={ref}
     className={cn(
       "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
+      "group-[.error]:text-rose-500 group-[.error]:hover:text-rose-700 group-[.warning]:text-amber-600 group-[.warning]:hover:text-amber-700 group-[.success]:text-emerald-600 group-[.success]:hover:text-emerald-700",
       className
     )}
     {...props}

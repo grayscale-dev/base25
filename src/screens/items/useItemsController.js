@@ -101,6 +101,13 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
   const [items, setItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [itemActivities, setItemActivities] = useState([]);
+  const [itemEngagement, setItemEngagement] = useState({
+    watched: false,
+    watcher_count: 0,
+    item_reactions: [],
+    item_reaction_count: 0,
+    comment_reactions: {},
+  });
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [loadingActivities, setLoadingActivities] = useState(false);
@@ -254,6 +261,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
         author_label: resolveActivityAuthorLabel(activity, currentUserId),
         can_edit: canEditComment(activity),
         can_delete: canDeleteComment(activity),
+        reactions: itemEngagement.comment_reactions?.[activity.id] || [],
       }));
 
     const systemActivity = itemActivities
@@ -269,7 +277,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       }));
 
     return { initialPost, comments, systemActivity };
-  }, [selectedItem, itemActivities, currentUserId, isAdmin]);
+  }, [selectedItem, itemActivities, currentUserId, isAdmin, itemEngagement.comment_reactions]);
 
   useEffect(() => {
     if (!workspace?.id) {
@@ -369,19 +377,64 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     setSelectedItem(hydrateItem(item));
     try {
       setLoadingActivities(true);
-      const rows = await base44.entities.ItemActivity.filter(
+      const authMode = isPublicAccess ? "anon" : "user";
+      const { data } = await base44.functions.invoke(
+        "listItemActivities",
         {
           workspace_id: workspace.id,
           item_id: item.id,
+          limit: 300,
         },
-        "-created_at"
+        { authMode }
       );
-      setItemActivities(rows || []);
+      setItemActivities(data?.activities || []);
+      await loadItemEngagement(item.id);
     } catch (activityError) {
       console.error("Failed to load item activities:", activityError);
       setItemActivities([]);
+      setItemEngagement({
+        watched: false,
+        watcher_count: 0,
+        item_reactions: [],
+        item_reaction_count: 0,
+        comment_reactions: {},
+      });
     } finally {
       setLoadingActivities(false);
+    }
+  };
+
+  const loadItemEngagement = async (itemId) => {
+    if (!workspace?.id || !itemId) return;
+    try {
+      const authMode = isPublicAccess ? "anon" : "user";
+      const { data } = await base44.functions.invoke(
+        "getItemEngagement",
+        {
+          workspace_id: workspace.id,
+          item_id: itemId,
+        },
+        { authMode }
+      );
+      setItemEngagement({
+        watched: Boolean(data?.watched),
+        watcher_count: Number(data?.watcher_count || 0),
+        item_reactions: Array.isArray(data?.item_reactions) ? data.item_reactions : [],
+        item_reaction_count: Number(data?.item_reaction_count || 0),
+        comment_reactions:
+          data?.comment_reactions && typeof data.comment_reactions === "object"
+            ? data.comment_reactions
+            : {},
+      });
+    } catch (engagementError) {
+      console.error("Failed to load item engagement:", engagementError);
+      setItemEngagement({
+        watched: false,
+        watcher_count: 0,
+        item_reactions: [],
+        item_reaction_count: 0,
+        comment_reactions: {},
+      });
     }
   };
 
@@ -416,6 +469,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
         effectivePayload.item_type_id = previousItem.item_type_id;
         effectivePayload.metadata = previousItem.metadata || contributorDefaultMetadata;
         effectivePayload.assigned_to = null;
+        effectivePayload.title = previousItem.title;
       } else {
         if (!defaultFeedbackStatus) {
           return { ok: false, error: "Feedback status configuration is missing." };
@@ -479,7 +533,22 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
       let saved = null;
       if (effectivePayload.id) {
-        saved = await base44.entities.Item.update(effectivePayload.id, record);
+        const { data } = await base44.functions.invoke(
+          "updateItem",
+          {
+            workspace_id: workspace.id,
+            item_id: effectivePayload.id,
+            status_id: effectivePayload.status_id,
+            item_type_id: effectivePayload.item_type_id,
+            assigned_to: isAdmin ? effectivePayload.assigned_to || null : null,
+            title: effectivePayload.title,
+            description: effectivePayload.description,
+            metadata: effectivePayload.metadata,
+            visibility: effectivePayload.visibility || "public",
+          },
+          { authMode: "user" }
+        );
+        saved = data || null;
       } else {
         const { data } = await base44.functions.invoke(
           "createItem",
@@ -502,41 +571,6 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       }
 
       syncItemInState(saved);
-
-      if (effectivePayload.id && saved && previousItem?.group_key && previousItem.group_key !== selectedStatus.group_key) {
-        await base44.entities.ItemActivity.create({
-          workspace_id: workspace.id,
-          item_id: saved.id,
-          activity_type: "group_change",
-          content: `Moved from ${getGroupLabel(previousItem.group_key)} to ${getGroupLabel(selectedStatus.group_key)}`,
-          metadata: {
-            from_group: previousItem.group_key,
-            to_group: selectedStatus.group_key,
-          },
-          author_id: currentUserId,
-          author_role: isAdminRole(role) ? "admin" : "user",
-        });
-      }
-
-      if (effectivePayload.id && saved && previousItem?.status_id && previousItem.status_id !== effectivePayload.status_id) {
-        const fromStatus = statusById.get(previousItem.status_id);
-        const toStatus = statusById.get(effectivePayload.status_id);
-        const fromStatusLabel = fromStatus?.label || previousItem.status_label || "Unknown";
-        const toStatusLabel = toStatus?.label || saved.status_label || "Unknown";
-
-        await base44.entities.ItemActivity.create({
-          workspace_id: workspace.id,
-          item_id: saved.id,
-          activity_type: "status_change",
-          content: `Status changed from ${fromStatusLabel} to ${toStatusLabel}`,
-          metadata: {
-            from_status_id: previousItem.status_id,
-            to_status_id: effectivePayload.status_id,
-          },
-          author_id: currentUserId,
-          author_role: isAdminRole(role) ? "admin" : "user",
-        });
-      }
 
       return { ok: true, item: saved };
     } catch (saveError) {
@@ -641,15 +675,17 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
     try {
       setSavingActivity(true);
-      await base44.entities.ItemActivity.create({
-        workspace_id: workspace.id,
-        item_id: itemId,
-        activity_type: "comment",
-        content: comment.trim(),
-        metadata: {},
-        author_id: authorId,
-        author_role: isAdminRole(role) ? "admin" : "user",
-      });
+      await base44.functions.invoke(
+        "createItemActivity",
+        {
+          workspace_id: workspace.id,
+          item_id: itemId,
+          activity_type: "comment",
+          content: comment.trim(),
+          metadata: {},
+        },
+        { authMode: "user" }
+      );
 
       if (selectedItem?.id === itemId) {
         await loadItemActivities(selectedItem);
@@ -714,6 +750,97 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     }
   };
 
+  const toggleItemWatch = async (itemId) => {
+    if (!workspace?.id || !itemId) {
+      return { ok: false, error: "Item is required." };
+    }
+    try {
+      const { data } = await base44.functions.invoke(
+        "toggleItemWatch",
+        {
+          workspace_id: workspace.id,
+          item_id: itemId,
+        },
+        { authMode: "user" }
+      );
+      setItemEngagement((prev) => ({
+        ...prev,
+        watched: Boolean(data?.watched),
+        watcher_count: Number(data?.watcher_count || 0),
+      }));
+      return { ok: true, watched: Boolean(data?.watched) };
+    } catch (watchError) {
+      console.error("Failed to toggle item watch:", watchError);
+      return { ok: false, error: "Unable to update watch state." };
+    }
+  };
+
+  const toggleItemReaction = async (itemId, emoji) => {
+    if (!workspace?.id || !itemId || !emoji) {
+      return { ok: false, error: "Reaction is required." };
+    }
+    try {
+      const { data } = await base44.functions.invoke(
+        "toggleItemReaction",
+        {
+          workspace_id: workspace.id,
+          item_id: itemId,
+          emoji,
+        },
+        { authMode: "user" }
+      );
+      setItemEngagement((prev) => ({
+        ...prev,
+        item_reactions: Array.isArray(data?.reactions) ? data.reactions : [],
+        item_reaction_count: Number(data?.reaction_count || 0),
+      }));
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId
+            ? { ...item, reaction_count: Number(data?.reaction_count || 0) }
+            : item
+        )
+      );
+      setSelectedItem((prev) =>
+        prev?.id === itemId
+          ? { ...prev, reaction_count: Number(data?.reaction_count || 0) }
+          : prev
+      );
+      return { ok: true };
+    } catch (reactionError) {
+      console.error("Failed to toggle item reaction:", reactionError);
+      return { ok: false, error: "Unable to update reaction." };
+    }
+  };
+
+  const toggleCommentReaction = async (commentId, emoji) => {
+    if (!workspace?.id || !commentId || !emoji) {
+      return { ok: false, error: "Reaction is required." };
+    }
+    try {
+      const { data } = await base44.functions.invoke(
+        "toggleCommentReaction",
+        {
+          workspace_id: workspace.id,
+          item_activity_id: commentId,
+          emoji,
+        },
+        { authMode: "user" }
+      );
+      setItemEngagement((prev) => ({
+        ...prev,
+        comment_reactions: {
+          ...(prev.comment_reactions || {}),
+          [commentId]: Array.isArray(data?.reactions) ? data.reactions : [],
+        },
+      }));
+      return { ok: true };
+    } catch (reactionError) {
+      console.error("Failed to toggle comment reaction:", reactionError);
+      return { ok: false, error: "Unable to update reaction." };
+    }
+  };
+
   return {
     currentUser,
     currentUserId,
@@ -740,6 +867,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     savingActivity,
     deletingItemId,
     error,
+    itemEngagement,
     setError,
     setSelectedItem,
     hydrateItem,
@@ -755,5 +883,9 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
     addComment,
     updateComment,
     deleteComment,
+    loadItemEngagement,
+    toggleItemWatch,
+    toggleItemReaction,
+    toggleCommentReaction,
   };
 }

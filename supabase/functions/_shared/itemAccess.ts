@@ -4,6 +4,7 @@ import {
   verifyWorkspace,
 } from "./authHelpers.ts";
 import { supabaseAdmin } from "./supabase.ts";
+import { getWorkspaceBillingAccessState } from "./billing.ts";
 
 export async function resolveWorkspaceFromPayload(payload: Record<string, unknown>) {
   const workspaceId = typeof payload.workspace_id === "string" ? payload.workspace_id : null;
@@ -104,11 +105,32 @@ export async function requireWorkspaceReadAccess(req: Request, payload: Record<s
     };
   }
 
+  const billingState = await getWorkspaceBillingAccessState(workspaceLookup.workspaceId);
+  if (!billingState.accessAllowed) {
+    return {
+      success: false,
+      status: 402,
+      error: "Workspace billing is required before access is granted",
+      workspace: workspaceCheck.workspace,
+      user: authCheck.user,
+      role: role || "contributor",
+      isPublicAccess: !role,
+      billing: {
+        status: billingState.status,
+        access_allowed: false,
+      },
+    };
+  }
+
   return {
     success: true,
     workspace: workspaceCheck.workspace,
     user: authCheck.user,
     role: role || "contributor",
     isPublicAccess: !role,
+    billing: {
+      status: billingState.status,
+      access_allowed: true,
+    },
   };
 }

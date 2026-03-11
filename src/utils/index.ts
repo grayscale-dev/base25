@@ -7,6 +7,8 @@ const routeByPageName: Record<string, string> = {
   WorkspaceSelector: "/workspaces",
   JoinWorkspace: "/join-workspace",
   Billing: "/billing",
+  Alerts: "/alerts",
+  Search: "/search",
   ApiDocs: "/api-docs",
   WorkspaceSettings: "/workspace-settings",
 };

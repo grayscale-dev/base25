@@ -84,12 +84,7 @@ export function getMetadataShapeForGroup(groupKey) {
   }
 
   if (groupKey === "roadmap") {
-    return {
-      target_date: "",
-      target_quarter: "",
-      display_order: 0,
-      release_note_ready: false,
-    };
+    return {};
   }
 
   return {
@@ -111,10 +106,6 @@ export function validateMetadata(groupKey, metadata) {
     const allowedPriority = ["low", "medium", "high", "critical"];
     if (metadata.priority && !allowedPriority.includes(metadata.priority)) {
       return { valid: false, message: "Priority is invalid." };
-    }
-  } else if (groupKey === "roadmap") {
-    if (metadata.display_order !== undefined && Number.isNaN(Number(metadata.display_order))) {
-      return { valid: false, message: "Display order must be a number." };
     }
   } else if (groupKey === "changelog") {
     if (

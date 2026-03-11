@@ -85,8 +85,29 @@ Deno.serve(async (req) => {
       };
     });
 
+    const itemIds = items.map((item) => String(item.id || "")).filter(Boolean);
+    const reactionCountByItemId = new Map<string, number>();
+    if (itemIds.length > 0) {
+      const { data: reactionRows, error: reactionError } = await supabaseAdmin
+        .from("item_reactions")
+        .select("item_id")
+        .eq("workspace_id", access.workspace.id)
+        .in("item_id", itemIds);
+      if (reactionError) {
+        console.error("listItems reaction lookup error:", reactionError);
+        return json({ error: "Failed to list items" }, 500);
+      }
+      (reactionRows || []).forEach((row) => {
+        const key = String(row.item_id || "");
+        reactionCountByItemId.set(key, (reactionCountByItemId.get(key) || 0) + 1);
+      });
+    }
+
     return json({
-      items,
+      items: items.map((item) => ({
+        ...item,
+        reaction_count: reactionCountByItemId.get(String(item.id || "")) || 0,
+      })),
       workspace: {
         id: access.workspace.id,
         slug: access.workspace.slug,

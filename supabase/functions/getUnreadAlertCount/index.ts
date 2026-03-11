@@ -1,5 +1,5 @@
-import { supabaseAdmin } from "../_shared/supabase.ts";
 import { requireWorkspaceReadAccess } from "../_shared/itemAccess.ts";
+import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 
 const corsHeaders = {
@@ -22,40 +22,30 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const itemId = payload?.item_id;
-    if (!itemId) {
-      return json({ error: "item_id is required" }, 400);
-    }
-
     const access = await requireWorkspaceReadAccess(req, payload);
     if (!access.success) {
       return json({ error: access.error }, access.status || 403);
     }
 
-    const limit = Math.min(Math.max(Number(payload.limit || 100), 1), 300);
-    let query = supabaseAdmin
-      .from("item_activities")
-      .select("*")
+    if (!access.user?.id) {
+      return json({ error: "Authentication required" }, 401);
+    }
+
+    const { count, error } = await supabaseAdmin
+      .from("user_alerts")
+      .select("id", { head: true, count: "exact" })
       .eq("workspace_id", access.workspace.id)
-      .eq("item_id", itemId);
+      .eq("user_id", access.user.id)
+      .eq("is_read", false);
 
-    if (access.isPublicAccess) {
-      query = query.eq("is_internal_note", false);
-    }
-
-    if (access.role === "contributor") {
-      query = query.in("activity_type", ["comment", "status_change", "type_change"]);
-    }
-
-    const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
     if (error) {
-      console.error("listItemActivities query error:", error);
-      return json({ error: "Failed to list activities" }, 500);
+      console.error("getUnreadAlertCount query error:", error);
+      return json({ error: "Failed to load unread count" }, 500);
     }
 
-    return json({ activities: data ?? [] });
+    return json({ unread_count: count || 0 });
   } catch (error) {
-    console.error("listItemActivities error:", error);
+    console.error("getUnreadAlertCount error:", error);
     return json({ error: "Internal server error" }, 500);
   }
 });

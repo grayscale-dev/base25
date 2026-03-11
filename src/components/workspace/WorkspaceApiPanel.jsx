@@ -101,7 +101,7 @@ const API_ENDPOINTS = [
   "id": "it_124",
   "group_key": "roadmap",
   "status_id": "130cf2d9-4658-412d-a5fc-97b8d511d153",
-  "metadata": { "target_quarter": "Q2 2026" }
+  "metadata": {}
 }`,
   },
   {
@@ -196,13 +196,14 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
       toast({
         title: "Token created",
         description: `${newTokenName} is ready to use.`,
+        variant: "success",
       });
     } catch (error) {
       console.error("Failed to create token:", error);
       toast({
         title: "Action failed",
         description: "Failed to create API token. Please try again.",
-        variant: "destructive",
+        variant: "error",
       });
     } finally {
       setCreatingToken(false);
@@ -225,13 +226,14 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
       toast({
         title: "Token revoked",
         description: `${pendingRevokeToken.name} was removed.`,
+        variant: "success",
       });
     } catch (error) {
       console.error("Failed to revoke token:", error);
       toast({
         title: "Action failed",
         description: "Failed to revoke API token. Please try again.",
-        variant: "destructive",
+        variant: "error",
       });
     } finally {
       setRevokingTokenId(null);
@@ -254,6 +256,7 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
     toast({
       title: "Copied",
       description: "Token copied to clipboard.",
+      variant: "info",
     });
   };
 

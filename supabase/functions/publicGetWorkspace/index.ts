@@ -1,6 +1,7 @@
 import { requireAuth } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, addCacheHeaders, RATE_LIMITS } from "../_shared/rateLimiter.ts";
+import { getWorkspaceBillingAccessState } from "../_shared/billing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,6 +104,8 @@ Deno.serve(async (req) => {
       resolvedRole = insertedRole?.role || "contributor";
     }
 
+    const billing = await getWorkspaceBillingAccessState(workspace.id);
+
     const response = json({
       id: workspace.id,
       name: workspace.name,
@@ -112,6 +115,8 @@ Deno.serve(async (req) => {
       primary_color: workspace.primary_color || "#0f172a",
       visibility: workspace.visibility,
       role: resolvedRole,
+      billing_status: billing.status,
+      billing_access_allowed: billing.accessAllowed,
     });
 
     return addCacheHeaders(response, 120);

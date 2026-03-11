@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { workspaceItemUrl } from "@/components/utils/workspaceUrl";
 import ItemDetailPanel from "./ItemDetailPanel";
-import { ExternalLink, Loader2, Pencil, Trash2, X } from "lucide-react";
+import { Bell, ExternalLink, Loader2, Pencil, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 export default function ItemDetailDrawer({
@@ -79,15 +79,7 @@ export default function ItemDetailDrawer({
     handleOpenChange(false);
   };
 
-  const canEditTitle =
-    isAdmin ||
-    Boolean(
-      visibleItem &&
-      visibleItem.group_key === "feedback" &&
-      visibleItem.submitter_id &&
-      controller.currentUserId &&
-      visibleItem.submitter_id === controller.currentUserId
-    );
+  const canEditTitle = isAdmin;
 
   const canDeleteItem = controller.canDeleteItem(visibleItem);
 
@@ -100,6 +92,14 @@ export default function ItemDetailDrawer({
     }
     setDeleteDialogOpen(false);
     handleDeleted();
+  };
+
+  const toggleWatch = async () => {
+    if (!visibleItem?.id) return;
+    const result = await controller.toggleItemWatch(visibleItem.id);
+    if (!result.ok) {
+      controller.setError(result.error);
+    }
   };
 
   return (
@@ -176,6 +176,20 @@ export default function ItemDetailDrawer({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    void toggleWatch();
+                  }}
+                  aria-label={controller.itemEngagement.watched ? "Unwatch item" : "Watch item"}
+                  title={controller.itemEngagement.watched ? "Unwatch item" : "Watch item"}
+                >
+                  <Bell
+                    className="h-4 w-4"
+                    style={controller.itemEngagement.watched ? { color: "var(--workspace-brand)" } : undefined}
+                  />
+                </Button>
                 {canDeleteItem ? (
                   <Button
                     variant="ghost"

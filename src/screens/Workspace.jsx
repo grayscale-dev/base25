@@ -14,6 +14,9 @@ import {
   resolveWorkspaceSection,
 } from "@/lib/workspace-sections";
 import { startWorkspaceLogin } from "@/lib/start-workspace-login";
+import { openStripeBilling } from "@/lib/openStripeBilling";
+import { isAdminRole, isOwnerRole } from "@/lib/roles";
+import { CreditCard, Loader2 } from "lucide-react";
 import Items from "./Items";
 import WorkspaceItemView from "./items/WorkspaceItemView";
 
@@ -36,6 +39,9 @@ export default function Workspace({ section = "items", itemId = null }) {
   const [role, setRole] = useState("contributor");
   const [isPublicAccess, setIsPublicAccess] = useState(false);
   const [activeSection, setActiveSection] = useState(null);
+  const [billingGate, setBillingGate] = useState(null);
+  const [openingBilling, setOpeningBilling] = useState(false);
+  const [billingError, setBillingError] = useState("");
 
   useEffect(() => {
     void initializeWorkspace(routeSlug, routeSection, itemId);
@@ -47,6 +53,8 @@ export default function Workspace({ section = "items", itemId = null }) {
       setError(null);
       setAccessRequired(false);
       setActiveSection(null);
+      setBillingGate(null);
+      setBillingError("");
 
       if (!routeSlugParam) {
         setError("Invalid workspace URL");
@@ -154,6 +162,14 @@ export default function Workspace({ section = "items", itemId = null }) {
       setRole(role);
       setIsPublicAccess(isPublicAccess);
 
+      if (resolvedWorkspace.billing_access_allowed === false) {
+        setBillingGate({
+          status: resolvedWorkspace.billing_status || "inactive",
+        });
+        setLoading(false);
+        return;
+      }
+
       if (targetSection !== sectionParam) {
         navigate(workspaceUrl(workspaceSlug, targetSection), { replace: true });
         return;
@@ -165,6 +181,32 @@ export default function Workspace({ section = "items", itemId = null }) {
       console.error("Workspace initialization error:", initializationError);
       setError("Unable to open workspace");
       setLoading(false);
+    }
+  };
+
+  const handleOpenBilling = async () => {
+    if (!workspace?.id || !isAdminRole(role)) return;
+    setBillingError("");
+
+    if (!isOwnerRole(role)) {
+      setBillingError("Only workspace owners can start billing for this workspace.");
+      return;
+    }
+
+    setOpeningBilling(true);
+    try {
+      const result = await openStripeBilling({
+        workspaceId: workspace.id,
+        returnUrl: window.location.href,
+      });
+      if (!result.ok) {
+        setBillingError(result.error || "Unable to open Stripe billing.");
+      }
+    } catch (billingOpenError) {
+      console.error("Failed to open Stripe billing from workspace gate:", billingOpenError);
+      setBillingError("Unable to open Stripe billing right now.");
+    } finally {
+      setOpeningBilling(false);
     }
   };
 
@@ -262,6 +304,61 @@ export default function Workspace({ section = "items", itemId = null }) {
           secondaryAction={isPrivateWorkspaceError ? () => navigate("/") : undefined}
           secondaryActionLabel={isPrivateWorkspaceError ? "Go Home" : undefined}
         />
+      </div>
+    );
+  }
+
+  if (billingGate && workspace) {
+    const adminLike = isAdminRole(role);
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <h2 className="text-2xl font-semibold text-slate-900">
+            {adminLike ? "Billing setup required" : "Workspace temporarily unavailable"}
+          </h2>
+          <p className="mt-3 text-sm text-slate-600">
+            {adminLike
+              ? "This workspace is blocked until an active or trialing subscription is started."
+              : "This workspace is currently down. Please come back later."}
+          </p>
+          <p className="mt-2 text-xs uppercase tracking-wide text-slate-500">
+            Billing status: {String(billingGate.status || "inactive")}
+          </p>
+
+          {adminLike ? (
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <Button
+                onClick={() => {
+                  void handleOpenBilling();
+                }}
+                disabled={openingBilling}
+                className="bg-slate-900 hover:bg-slate-800"
+              >
+                {openingBilling ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CreditCard className="mr-2 h-4 w-4" />
+                )}
+                {openingBilling ? "Opening Stripe..." : "Start Billing"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate("/workspaces")}
+                disabled={openingBilling}
+              >
+                Back to Workspaces
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-6">
+              <Button variant="outline" onClick={() => navigate("/workspaces")}>
+                Back to Workspaces
+              </Button>
+            </div>
+          )}
+
+          {billingError ? <p className="mt-4 text-sm text-rose-600">{billingError}</p> : null}
+        </div>
       </div>
     );
   }
