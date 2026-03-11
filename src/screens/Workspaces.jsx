@@ -62,6 +62,7 @@ export default function Workspaces() {
   const [createError, setCreateError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [slugStatus, setSlugStatus] = useState(EMPTY_SLUG_STATUS);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     void loadData();
@@ -314,9 +315,15 @@ export default function Workspaces() {
     }
   };
 
-  const handleLogout = () => {
-    sessionStorage.clear();
-    base44.auth.logout(window.location.origin + createPageUrl("Home"));
+  const handleLogout = async () => {
+    setSigningOut(true);
+    try {
+      sessionStorage.clear();
+      await base44.auth.logout(window.location.origin + createPageUrl("Home"));
+    } catch (error) {
+      console.error("Failed to sign out:", error);
+      setSigningOut(false);
+    }
   };
 
   const getRoleForWorkspace = (workspaceId) => {
@@ -351,9 +358,9 @@ export default function Workspaces() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-600">
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign Out
+              <Button variant="ghost" size="sm" onClick={handleLogout} disabled={signingOut} className="text-slate-600">
+                {signingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
+                {signingOut ? "Signing Out..." : "Sign Out"}
               </Button>
             </div>
           </div>
@@ -454,6 +461,7 @@ export default function Workspaces() {
                         }}
                         placeholder="Paste workspace URL or slug"
                         className="mt-1.5"
+                        disabled={joining}
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
                             void handleResolveJoinLink();
@@ -480,6 +488,7 @@ export default function Workspaces() {
                           }}
                           placeholder="Enter access code"
                           className="mt-1.5 font-mono tracking-[0.2em]"
+                          disabled={joining}
                           onKeyDown={(event) => {
                             if (event.key === "Enter") {
                               void handleJoinWithCode();
@@ -570,6 +579,7 @@ export default function Workspaces() {
                       }
                       placeholder="e.g., Product Team"
                       className="mt-1.5"
+                      disabled={creating}
                     />
                   </div>
                   <div>
@@ -583,13 +593,15 @@ export default function Workspaces() {
                       }}
                       placeholder="e.g., product-feedback"
                       className="mt-1.5"
+                      disabled={creating}
                     />
                     {slugStatus.message ? (
                       <p
-                        className={`mt-2 text-xs ${
+                        className={`mt-2 flex items-center gap-1 text-xs ${
                           slugStatus.available === false ? "text-rose-600" : "text-slate-500"
                         }`}
                       >
+                        {slugStatus.checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                         {slugStatus.message}
                       </p>
                     ) : null}
@@ -603,6 +615,7 @@ export default function Workspaces() {
                       }
                       placeholder="Brief description of this workspace"
                       className="mt-1.5"
+                      disabled={creating}
                     />
                   </div>
                   <div className="flex justify-end gap-3 pt-4">
@@ -611,6 +624,7 @@ export default function Workspaces() {
                       onClick={() => {
                         setShowCreateModal(false);
                       }}
+                      disabled={creating}
                     >
                       Cancel
                     </Button>
@@ -619,7 +633,14 @@ export default function Workspaces() {
                       disabled={!canCreateWorkspace}
                       className="bg-slate-900 hover:bg-slate-800"
                     >
-                      {creating ? "Creating..." : "Create Workspace"}
+                      {creating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create Workspace"
+                      )}
                     </Button>
                   </div>
                   {createError ? <p className="text-xs text-rose-600">{createError}</p> : null}

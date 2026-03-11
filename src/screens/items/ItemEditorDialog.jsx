@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -38,7 +39,9 @@ export default function ItemEditorDialog({
   canAssign = false,
   canManageGroupTransition,
   defaultGroup = "feedback",
+  contributorFeedbackMode = false,
 }) {
+  const isContributorFeedbackSubmit = contributorFeedbackMode && !item;
   const initialGroup = normalizeGroupKey(item?.group_key || defaultGroup);
   const [groupKey, setGroupKey] = useState(initialGroup);
   const [statusId, setStatusId] = useState(item?.status_id || "");
@@ -101,20 +104,26 @@ export default function ItemEditorDialog({
   };
 
   const submit = () => {
+    const resolvedStatusId = statusId || statusOptions[0]?.id || "";
+    const resolvedItemTypeId = itemTypeId || sortedItemTypes[0]?.id || "";
+    const resolvedMetadata = isContributorFeedbackSubmit
+      ? getMetadataShapeForGroup(groupKey)
+      : metadata;
+
     if (!title.trim()) {
       setError("Title is required.");
       return;
     }
-    if (!statusId) {
+    if (!resolvedStatusId) {
       setError("Status is required.");
       return;
     }
-    if (!itemTypeId) {
+    if (!resolvedItemTypeId) {
       setError("Item type is required.");
       return;
     }
 
-    const metadataValidation = validateMetadata(groupKey, metadata);
+    const metadataValidation = validateMetadata(groupKey, resolvedMetadata);
     if (!metadataValidation.valid) {
       setError(metadataValidation.message);
       return;
@@ -122,12 +131,12 @@ export default function ItemEditorDialog({
 
     onSave({
       id: item?.id || null,
-      status_id: statusId,
-      item_type_id: itemTypeId,
-      assigned_to: assignedTo || null,
+      status_id: resolvedStatusId,
+      item_type_id: resolvedItemTypeId,
+      assigned_to: isContributorFeedbackSubmit ? null : assignedTo || null,
       title: title.trim(),
       description: description.trim(),
-      metadata,
+      metadata: resolvedMetadata,
       visibility: item?.visibility || "public",
     });
   };
@@ -136,110 +145,122 @@ export default function ItemEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{item ? "Edit item" : "Create item"}</DialogTitle>
+          <DialogTitle>{item ? "Edit item" : isContributorFeedbackSubmit ? "Submit feedback" : "Create item"}</DialogTitle>
           <DialogDescription>
-            Create a question-style item. The initial post becomes the first message in the thread.
+            {isContributorFeedbackSubmit
+              ? "Share your feedback with a clear title and description."
+              : "Create an item. The description appears above comments in the item view."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <Label>Group</Label>
-              <Select
-                value={groupKey}
-                onValueChange={handleGroupChange}
-                disabled={item && !canManageGroupTransition}
-              >
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableGroupKeys.map((key) => (
-                    <SelectItem key={key} value={key}>
-                      {getGroupLabel(key)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Status</Label>
-              <Select value={statusId} onValueChange={setStatusId}>
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((status) => (
-                    <SelectItem key={status.id} value={status.id}>
-                      {status.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <Label>Item Type</Label>
-              <Select value={itemTypeId} onValueChange={setItemTypeId}>
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sortedItemTypes.map((itemType) => (
-                    <SelectItem key={itemType.id} value={itemType.id}>
-                      {itemType.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {groupKey === "feedback" ? (
+          {!isContributorFeedbackSubmit ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <Label>Assignee</Label>
-                <Select value={assignedTo || "unassigned"} onValueChange={(value) => setAssignedTo(value === "unassigned" ? "" : value)} disabled={!canAssign}>
+                <Label>Group</Label>
+                <Select
+                  value={groupKey}
+                  onValueChange={handleGroupChange}
+                  disabled={saving || (item && !canManageGroupTransition)}
+                >
                   <SelectTrigger className="mt-1.5">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {assigneeOptions.map((member) => (
-                      <SelectItem key={member.user_id} value={member.user_id}>
-                        {member.display_name || member.email}
+                    {availableGroupKeys.map((key) => (
+                      <SelectItem key={key} value={key}>
+                        {getGroupLabel(key)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            ) : null}
-          </div>
+
+              <div>
+                <Label>Status</Label>
+                <Select value={statusId} onValueChange={setStatusId} disabled={saving}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((status) => (
+                      <SelectItem key={status.id} value={status.id}>
+                        {status.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : null}
+
+          {!isContributorFeedbackSubmit ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label>Item Type</Label>
+                <Select value={itemTypeId} onValueChange={setItemTypeId} disabled={saving}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortedItemTypes.map((itemType) => (
+                      <SelectItem key={itemType.id} value={itemType.id}>
+                        {itemType.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {groupKey === "feedback" ? (
+                <div>
+                  <Label>Assignee</Label>
+                  <Select
+                    value={assignedTo || "unassigned"}
+                    onValueChange={(value) => setAssignedTo(value === "unassigned" ? "" : value)}
+                    disabled={saving || !canAssign}
+                  >
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {assigneeOptions.map((member) => (
+                        <SelectItem key={member.user_id} value={member.user_id}>
+                          {member.display_name || member.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div>
             <Label>Title</Label>
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1.5" />
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1.5" disabled={saving} />
           </div>
 
           <div>
-            <Label>Initial post</Label>
+            <Label>Description</Label>
             <Textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               className="mt-1.5 min-h-[120px]"
-              placeholder="Describe the request or issue. This becomes the first post in the discussion thread."
+              placeholder="Describe the request or issue."
+              disabled={saving}
             />
           </div>
 
-          {groupKey === "feedback" ? (
+          {!isContributorFeedbackSubmit && groupKey === "feedback" ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label>Type</Label>
                 <Select
                   value={metadata.type || "feature_request"}
                   onValueChange={(value) => setMetadata({ ...metadata, type: value })}
+                  disabled={saving}
                 >
                   <SelectTrigger className="mt-1.5">
                     <SelectValue />
@@ -257,6 +278,7 @@ export default function ItemEditorDialog({
                 <Select
                   value={metadata.priority || "medium"}
                   onValueChange={(value) => setMetadata({ ...metadata, priority: value })}
+                  disabled={saving}
                 >
                   <SelectTrigger className="mt-1.5">
                     <SelectValue />
@@ -272,7 +294,7 @@ export default function ItemEditorDialog({
             </div>
           ) : null}
 
-          {groupKey === "roadmap" ? (
+          {!isContributorFeedbackSubmit && groupKey === "roadmap" ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label>Target quarter</Label>
@@ -283,6 +305,7 @@ export default function ItemEditorDialog({
                   }
                   placeholder="Q2 2026"
                   className="mt-1.5"
+                  disabled={saving}
                 />
               </div>
               <div>
@@ -294,12 +317,13 @@ export default function ItemEditorDialog({
                     setMetadata({ ...metadata, target_date: event.target.value })
                   }
                   className="mt-1.5"
+                  disabled={saving}
                 />
               </div>
             </div>
           ) : null}
 
-          {groupKey === "changelog" ? (
+          {!isContributorFeedbackSubmit && groupKey === "changelog" ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label>Release date</Label>
@@ -310,6 +334,7 @@ export default function ItemEditorDialog({
                     setMetadata({ ...metadata, release_date: event.target.value })
                   }
                   className="mt-1.5"
+                  disabled={saving}
                 />
               </div>
               <div>
@@ -319,6 +344,7 @@ export default function ItemEditorDialog({
                   onValueChange={(value) =>
                     setMetadata({ ...metadata, announcement_type: value })
                   }
+                  disabled={saving}
                 >
                   <SelectTrigger className="mt-1.5">
                     <SelectValue />
@@ -337,11 +363,22 @@ export default function ItemEditorDialog({
         {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
           <Button onClick={submit} disabled={saving} className="bg-slate-900 hover:bg-slate-800">
-            {saving ? "Saving..." : item ? "Save changes" : "Create item"}
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : item ? (
+              "Save changes"
+            ) : isContributorFeedbackSubmit ? (
+              "Submit feedback"
+            ) : (
+              "Create item"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

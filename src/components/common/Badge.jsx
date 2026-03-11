@@ -21,7 +21,8 @@ export default function Badge({
   variant = 'default', 
   size = 'default',
   className,
-  dot
+  dot,
+  ...props
 }) {
   return (
     <span className={cn(
@@ -29,7 +30,7 @@ export default function Badge({
       variants[variant],
       sizes[size],
       className
-    )}>
+    )} {...props}>
       {dot && (
         <span className={cn(
           'w-1.5 h-1.5 rounded-full mr-1.5',

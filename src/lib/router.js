@@ -39,24 +39,54 @@ export function useLocation() {
   const [hash, setHash] = useState('');
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && !window.__base25LocationPatched) {
+      const originalPushState = window.history.pushState;
+      const originalReplaceState = window.history.replaceState;
+      const emitLocationChange = () => {
+        window.setTimeout(() => {
+          window.dispatchEvent(new Event('locationchange'));
+        }, 0);
+      };
+
+      window.history.pushState = function pushStatePatched(...args) {
+        const result = originalPushState.apply(this, args);
+        emitLocationChange();
+        return result;
+      };
+
+      window.history.replaceState = function replaceStatePatched(...args) {
+        const result = originalReplaceState.apply(this, args);
+        emitLocationChange();
+        return result;
+      };
+
+      window.addEventListener('popstate', () => {
+        emitLocationChange();
+      });
+
+      window.__base25LocationPatched = true;
+    }
+
     const syncLocation = () => {
-      setSearch(window.location.search || '');
-      setHash(window.location.hash || '');
+      const nextSearch = window.location.search || '';
+      const nextHash = window.location.hash || '';
+      setSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+      setHash((prev) => (prev === nextHash ? prev : nextHash));
     };
 
     syncLocation();
     window.addEventListener('hashchange', syncLocation);
-    window.addEventListener('popstate', syncLocation);
+    window.addEventListener('locationchange', syncLocation);
 
     return () => {
       window.removeEventListener('hashchange', syncLocation);
-      window.removeEventListener('popstate', syncLocation);
+      window.removeEventListener('locationchange', syncLocation);
     };
   }, [pathname]);
 
   return {
     pathname: pathname || '/',
-    search: search || '',
+    search,
     hash,
   };
 }

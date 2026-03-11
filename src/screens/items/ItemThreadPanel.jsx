@@ -1,17 +1,11 @@
 import { useEffect, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Loader2, Pencil, SendHorizontal, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import RelativeDate from "@/components/common/RelativeDate";
 import { StateBanner } from "@/components/common/StateDisplay";
-import { getGroupLabel } from "@/lib/item-groups";
-
-function formatDate(value) {
-  if (!value) return "Unknown";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return date.toLocaleString();
-}
+import { getGroupColor, getGroupLabel } from "@/lib/item-groups";
 
 function resolveStatusLabel(controller, statusId, fallbackStatusKey = null) {
   if (statusId) {
@@ -27,9 +21,57 @@ function resolveStatusLabel(controller, statusId, fallbackStatusKey = null) {
   return String(fallbackStatusKey || statusId || "Unknown");
 }
 
-function StatusPill({ children }) {
+function hexToRgba(hex, alpha) {
+  const normalized = String(hex || "").trim().toLowerCase();
+  if (!normalized) return null;
+
+  const short = normalized.match(/^#([0-9a-f]{3})$/i);
+  if (short) {
+    const [r, g, b] = short[1].split("").map((value) => parseInt(value + value, 16));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  const full = normalized.match(/^#([0-9a-f]{6})$/i);
+  if (full) {
+    const r = parseInt(full[1].slice(0, 2), 16);
+    const g = parseInt(full[1].slice(2, 4), 16);
+    const b = parseInt(full[1].slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  return null;
+}
+
+function resolveGroupColor(controller, groupKey) {
+  if (!groupKey) return null;
+  const normalizedGroupKey = String(groupKey).toLowerCase();
+  const color = (
+    controller?.groups?.find((group) => String(group?.group_key || "").toLowerCase() === normalizedGroupKey)?.color_hex ||
+    getGroupColor(normalizedGroupKey)
+  );
+  const normalizedColor = String(color || "").trim().toUpperCase();
+  if (normalizedColor === "#FFF" || normalizedColor === "#FFFFFF") {
+    return getGroupColor(normalizedGroupKey);
+  }
+  return color;
+}
+
+function StatusPill({ children, colorHex = null }) {
+  const rgbaBackground = hexToRgba(colorHex, 0.14);
+  const rgbaBorder = hexToRgba(colorHex, 0.36);
+  const style = colorHex
+    ? {
+        backgroundColor: rgbaBackground || undefined,
+        borderColor: rgbaBorder || colorHex,
+        color: colorHex,
+      }
+    : undefined;
+
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+    <span
+      className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700"
+      style={style}
+    >
       {children}
     </span>
   );
@@ -64,23 +106,41 @@ function resolveFromToValues(activity, controller) {
   const metadata = activity?.metadata || {};
 
   if (activity.activity_type === "status_change") {
+    const fromStatusRecord = metadata.from_status_id ? controller.statusById?.get(metadata.from_status_id) : null;
+    const toStatusRecord = metadata.to_status_id ? controller.statusById?.get(metadata.to_status_id) : null;
     const fromStatus = (metadata.from_status_id || metadata.from_status)
       ? resolveStatusLabel(controller, metadata.from_status_id, metadata.from_status)
       : null;
     const toStatus = (metadata.to_status_id || metadata.to_status)
       ? resolveStatusLabel(controller, metadata.to_status_id, metadata.to_status)
       : null;
-    if (fromStatus && toStatus) return { from: fromStatus, to: toStatus };
+    if (fromStatus && toStatus) {
+      return {
+        from: fromStatus,
+        to: toStatus,
+        fromGroupKey: fromStatusRecord?.group_key || null,
+        toGroupKey: toStatusRecord?.group_key || null,
+      };
+    }
   }
 
   if (activity.activity_type === "group_change") {
-    const fromGroup = metadata.from_group
-      ? getGroupLabel(metadata.from_group, String(metadata.from_group))
+    const fromGroupKey = metadata.from_group || null;
+    const toGroupKey = metadata.to_group || null;
+    const fromGroup = fromGroupKey
+      ? getGroupLabel(fromGroupKey, String(fromGroupKey))
       : null;
-    const toGroup = metadata.to_group
-      ? getGroupLabel(metadata.to_group, String(metadata.to_group))
+    const toGroup = toGroupKey
+      ? getGroupLabel(toGroupKey, String(toGroupKey))
       : null;
-    if (fromGroup && toGroup) return { from: fromGroup, to: toGroup };
+    if (fromGroup && toGroup) {
+      return {
+        from: fromGroup,
+        to: toGroup,
+        fromGroupKey,
+        toGroupKey,
+      };
+    }
   }
 
   const metadataFromKey = Object.keys(metadata).find((key) => key.startsWith("from_"));
@@ -89,20 +149,29 @@ function resolveFromToValues(activity, controller) {
     return {
       from: String(metadata[metadataFromKey]),
       to: String(metadata[metadataToKey]),
+      fromGroupKey: null,
+      toGroupKey: null,
     };
   }
 
-  return parseFromToContent(activity?.content);
+  const parsed = parseFromToContent(activity?.content);
+  return {
+    ...parsed,
+    fromGroupKey: null,
+    toGroupKey: null,
+  };
 }
 
 function renderActivityContent(activity, controller) {
-  const { from, to } = resolveFromToValues(activity, controller);
+  const { from, to, fromGroupKey, toGroupKey } = resolveFromToValues(activity, controller);
+  const fromColor = resolveGroupColor(controller, fromGroupKey);
+  const toColor = resolveGroupColor(controller, toGroupKey);
 
   if (activity.activity_type === "status_change" && from && to) {
     return (
       <>
         <span className="font-semibold text-slate-800">Status</span> changed from{" "}
-        <StatusPill>{from}</StatusPill> to <StatusPill>{to}</StatusPill>
+        <StatusPill colorHex={fromColor}>{from}</StatusPill> to <StatusPill colorHex={toColor}>{to}</StatusPill>
       </>
     );
   }
@@ -111,7 +180,7 @@ function renderActivityContent(activity, controller) {
     return (
       <>
         <span className="font-semibold text-slate-800">Moved</span> from{" "}
-        <StatusPill>{from}</StatusPill> to <StatusPill>{to}</StatusPill>
+        <StatusPill colorHex={fromColor}>{from}</StatusPill> to <StatusPill colorHex={toColor}>{to}</StatusPill>
       </>
     );
   }
@@ -122,17 +191,17 @@ function renderActivityContent(activity, controller) {
         <span className="font-semibold text-slate-800">
           {activity.activity_type_label || "Activity"}
         </span>{" "}
-        from <StatusPill>{from}</StatusPill> to <StatusPill>{to}</StatusPill>
+        from <StatusPill colorHex={fromColor}>{from}</StatusPill> to <StatusPill colorHex={toColor}>{to}</StatusPill>
       </>
     );
   }
 
   if (activity.activity_type === "update") {
     const normalized = String(activity.content || "").trim();
-    if (normalized.toLowerCase() === "initial post updated") {
+    if (normalized.toLowerCase() === "initial post updated" || normalized.toLowerCase() === "description updated") {
       return (
         <>
-          <span className="font-semibold text-slate-800">Updated</span> initial post
+          <span className="font-semibold text-slate-800">Updated</span> description
         </>
       );
     }
@@ -148,6 +217,10 @@ export default function ItemThreadPanel({ controller, item }) {
   const [editingInitialPost, setEditingInitialPost] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editingCommentDraft, setEditingCommentDraft] = useState("");
+  const [savingInitialPost, setSavingInitialPost] = useState(false);
+  const [savingCommentId, setSavingCommentId] = useState(null);
+  const [deletingCommentId, setDeletingCommentId] = useState(null);
+  const [postingComment, setPostingComment] = useState(false);
 
   const thread = controller.thread;
 
@@ -159,12 +232,17 @@ export default function ItemThreadPanel({ controller, item }) {
   const saveInitialPost = async () => {
     if (!item?.id) return;
     setThreadError("");
-    const result = await controller.updateInitialPost(item.id, initialPostDraft);
-    if (!result.ok) {
-      setThreadError(result.error || "Unable to update initial post.");
-      return;
+    setSavingInitialPost(true);
+    try {
+      const result = await controller.updateInitialPost(item.id, initialPostDraft);
+      if (!result.ok) {
+        setThreadError(result.error || "Unable to update description.");
+        return;
+      }
+      setEditingInitialPost(false);
+    } finally {
+      setSavingInitialPost(false);
     }
-    setEditingInitialPost(false);
   };
 
   const startCommentEdit = (comment) => {
@@ -180,40 +258,54 @@ export default function ItemThreadPanel({ controller, item }) {
   const saveCommentEdit = async () => {
     if (!editingCommentId) return;
     setThreadError("");
-    const result = await controller.updateComment(editingCommentId, editingCommentDraft);
-    if (!result.ok) {
-      setThreadError(result.error || "Unable to update comment.");
-      return;
+    setSavingCommentId(editingCommentId);
+    try {
+      const result = await controller.updateComment(editingCommentId, editingCommentDraft);
+      if (!result.ok) {
+        setThreadError(result.error || "Unable to update comment.");
+        return;
+      }
+      cancelCommentEdit();
+    } finally {
+      setSavingCommentId(null);
     }
-    cancelCommentEdit();
   };
 
   const removeComment = async (commentId) => {
     setThreadError("");
-    const result = await controller.deleteComment(commentId);
-    if (!result.ok) {
-      setThreadError(result.error || "Unable to delete comment.");
+    setDeletingCommentId(commentId);
+    try {
+      const result = await controller.deleteComment(commentId);
+      if (!result.ok) {
+        setThreadError(result.error || "Unable to delete comment.");
+      }
+    } finally {
+      setDeletingCommentId(null);
     }
   };
 
   const submitComment = async () => {
     if (!item?.id) return;
     setThreadError("");
-    const result = await controller.addComment(item.id, newComment);
-    if (!result.ok) {
-      setThreadError(result.error || "Unable to post comment.");
-      return;
+    setPostingComment(true);
+    try {
+      const result = await controller.addComment(item.id, newComment);
+      if (!result.ok) {
+        setThreadError(result.error || "Unable to post comment.");
+        return;
+      }
+      setNewComment("");
+    } finally {
+      setPostingComment(false);
     }
-    setNewComment("");
   };
 
   return (
     <div className="space-y-6">
       <StateBanner tone="danger" message={threadError} />
 
-      <div className="space-y-3 border-t border-slate-200 pt-3">
-        <p className="text-sm font-medium text-slate-900">Discussion</p>
-
+      <section className="space-y-3 border-t border-slate-200 pt-3">
+        <p className="text-sm font-medium text-slate-900">Description</p>
         {thread.initialPost ? (
           <article className="rounded-lg border border-slate-200 bg-white p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
@@ -222,18 +314,18 @@ export default function ItemThreadPanel({ controller, item }) {
               </p>
               <div className="flex items-center gap-5">
                 <p className="text-xs text-slate-500">
-                  {formatDate(thread.initialPost.created_at)}
+                  <RelativeDate value={thread.initialPost.created_at} />
                 </p>
                 {thread.initialPost.can_edit && !editingInitialPost ? (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-2 w-2 text-slate-400 hover:text-slate-600"
+                    className="h-6 w-6 text-slate-400 hover:text-slate-600"
                     onClick={() => setEditingInitialPost(true)}
-                    aria-label="Edit initial post"
-                    title="Edit initial post"
+                    aria-label="Edit description"
+                    title="Edit description"
                   >
-                    <Pencil className="h-1 w-1" />
+                    <Pencil className="h-3 w-3" />
                   </Button>
                 ) : null}
               </div>
@@ -249,10 +341,17 @@ export default function ItemThreadPanel({ controller, item }) {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={saveInitialPost}
-                    disabled={controller.savingItem}
+                    disabled={savingInitialPost}
                     className="bg-slate-900 hover:bg-slate-800"
                   >
-                    {controller.savingItem ? "Saving..." : "Save initial post"}
+                    {savingInitialPost ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save description"
+                    )}
                   </Button>
                   <Button
                     variant="outline"
@@ -260,7 +359,7 @@ export default function ItemThreadPanel({ controller, item }) {
                       setInitialPostDraft(thread.initialPost?.content || "");
                       setEditingInitialPost(false);
                     }}
-                    disabled={controller.savingItem}
+                    disabled={savingInitialPost}
                   >
                     Cancel
                   </Button>
@@ -268,12 +367,17 @@ export default function ItemThreadPanel({ controller, item }) {
               </div>
             ) : (
               <p className="whitespace-pre-wrap text-sm text-slate-700">
-                {thread.initialPost.content || "No initial post content."}
+                {thread.initialPost.content || "No description provided."}
               </p>
             )}
           </article>
-        ) : null}
+        ) : (
+          <p className="text-sm text-slate-500">No description provided.</p>
+        )}
+      </section>
 
+      <section className="space-y-3 border-t border-slate-200 pt-3">
+        <p className="text-sm font-medium text-slate-900">Comments</p>
         {thread.comments.length === 0 ? (
           <p className="text-sm text-slate-500">No replies yet.</p>
         ) : (
@@ -284,7 +388,9 @@ export default function ItemThreadPanel({ controller, item }) {
                   {comment.author_label}
                 </p>
                 <div className="flex items-center gap-2">
-                  <p className="text-xs text-slate-500">{formatDate(comment.created_at_resolved)}</p>
+                  <p className="text-xs text-slate-500">
+                    <RelativeDate value={comment.created_at_resolved} />
+                  </p>
                   {comment.can_edit && editingCommentId !== comment.id ? (
                     <Button
                       variant="ghost"
@@ -307,8 +413,13 @@ export default function ItemThreadPanel({ controller, item }) {
                       }}
                       aria-label="Delete comment"
                       title="Delete comment"
+                      disabled={deletingCommentId === comment.id}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      {deletingCommentId === comment.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3 w-3" />
+                      )}
                     </Button>
                   ) : null}
                 </div>
@@ -324,12 +435,23 @@ export default function ItemThreadPanel({ controller, item }) {
                   <div className="flex items-center gap-2">
                     <Button
                       onClick={saveCommentEdit}
-                      disabled={controller.savingActivity}
+                      disabled={savingCommentId === comment.id}
                       className="bg-slate-900 hover:bg-slate-800"
                     >
-                      {controller.savingActivity ? "Saving..." : "Save reply"}
+                      {savingCommentId === comment.id ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save reply"
+                      )}
                     </Button>
-                    <Button variant="outline" onClick={cancelCommentEdit}>
+                    <Button
+                      variant="outline"
+                      onClick={cancelCommentEdit}
+                      disabled={savingCommentId === comment.id}
+                    >
                       Cancel
                     </Button>
                   </div>
@@ -344,25 +466,34 @@ export default function ItemThreadPanel({ controller, item }) {
         )}
 
         {controller.canComment ? (
-          <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+          <div className="space-y-2">
             <Label htmlFor="thread-new-reply">Reply</Label>
+            <div className="relative">
             <Textarea
               id="thread-new-reply"
               value={newComment}
               onChange={(event) => setNewComment(event.target.value)}
-              className="min-h-[96px]"
+              className="min-h-[96px] pr-12"
               placeholder="Write your reply..."
             />
             <Button
               onClick={submitComment}
-              disabled={!newComment.trim() || controller.savingActivity}
-              className="bg-slate-900 hover:bg-slate-800"
+              size="icon"
+              disabled={!newComment.trim() || postingComment}
+              className="absolute bottom-2 right-2 h-8 w-8 rounded-full bg-slate-900 hover:bg-slate-800"
+              aria-label="Send reply"
+              title="Send reply"
             >
-              {controller.savingActivity ? "Posting..." : "Post reply"}
+              {postingComment ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <SendHorizontal className="h-4 w-4" />
+              )}
             </Button>
+            </div>
           </div>
         ) : null}
-      </div>
+      </section>
 
       <div className="space-y-2 border-t border-slate-200 pt-3">
         <p className="text-sm font-medium text-slate-900">Activity</p>
@@ -375,7 +506,7 @@ export default function ItemThreadPanel({ controller, item }) {
                 {renderActivityContent(activity, controller)}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                {activity.author_label} • {formatDate(activity.created_at_resolved)}
+                {activity.author_label} • <RelativeDate value={activity.created_at_resolved} />
               </p>
             </div>
           ))

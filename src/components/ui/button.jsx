@@ -43,7 +43,19 @@ const composeHandlers = (first, second) => {
 
 const Button = React.forwardRef(
   ({ className, variant, size, asChild = false, children, onClick, ...props }, ref) => {
-    const resolvedClassName = cn(buttonVariants({ variant, size, className }));
+    const rawClassName = typeof className === "string" ? className : "";
+    const useWorkspaceBrand = rawClassName.includes("bg-slate-900");
+    const normalizedClassName = useWorkspaceBrand
+      ? rawClassName
+          .replace(/\bbg-slate-900\b/g, "")
+          .replace(/\bhover:bg-slate-800\b/g, "")
+          .trim()
+      : className;
+    const resolvedClassName = cn(
+      buttonVariants({ variant, size }),
+      normalizedClassName,
+      useWorkspaceBrand && "base25-brand-button"
+    );
 
     if (asChild && React.isValidElement(children)) {
       return React.cloneElement(children, {

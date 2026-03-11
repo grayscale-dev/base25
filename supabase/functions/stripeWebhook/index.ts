@@ -3,7 +3,6 @@ import { supabaseAdmin } from "../_shared/supabase.ts";
 
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
-const servicePriceIdsRaw = Deno.env.get("STRIPE_PRICE_SERVICE_IDS") ?? "{}";
 
 const stripe = new Stripe(stripeSecretKey, { apiVersion: "2023-10-16" });
 
@@ -13,64 +12,36 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function parseServicePriceIds() {
-  try {
-    const parsed = JSON.parse(servicePriceIdsRaw);
-    if (parsed && typeof parsed === "object") {
-      return parsed as Record<string, string>;
-    }
-  } catch {
-    // fallthrough
+async function resolveWorkspaceIdForSubscription(subscription: Stripe.Subscription) {
+  if (subscription.metadata?.workspace_id) {
+    return subscription.metadata.workspace_id;
   }
 
-  const mapping: Record<string, string> = {};
-  servicePriceIdsRaw.split(",").forEach((pair) => {
-    const [service, priceId] = pair.split(":").map((value) => value.trim());
-    if (service && priceId) {
-      mapping[service] = priceId;
+  const subscriptionId = subscription.id;
+  if (subscriptionId) {
+    const { data } = await supabaseAdmin
+      .from("billing_customers")
+      .select("workspace_id")
+      .eq("stripe_subscription_id", subscriptionId)
+      .maybeSingle();
+    if (data?.workspace_id) {
+      return data.workspace_id;
     }
-  });
-  return mapping;
-}
-
-function servicesFromSubscription(subscription: Stripe.Subscription) {
-  const priceMap = parseServicePriceIds();
-  const reverseMap = Object.entries(priceMap).reduce<Record<string, string>>(
-    (acc, [service, priceId]) => {
-      acc[priceId] = service;
-      return acc;
-    },
-    {},
-  );
-
-  const enabled: string[] = [];
-
-  subscription.items.data.forEach((item) => {
-    const priceId = item.price?.id;
-    if (!priceId) return;
-    const service = reverseMap[priceId];
-    if (service) {
-      enabled.push(service);
-    }
-  });
-
-  return { enabled };
-}
-
-async function upsertBillingServices(workspaceId: string, enabledServices: string[]) {
-  const ALL_SERVICES = ["feedback", "roadmap", "changelog"];
-  const rows = ALL_SERVICES.map((service) => ({
-    workspace_id: workspaceId,
-    service,
-    enabled: enabledServices.includes(service),
-  }));
-
-  const { error } = await supabaseAdmin.from("billing_services").upsert(rows, {
-    onConflict: "workspace_id,service",
-  });
-  if (error) {
-    console.error("Billing services upsert error:", error);
   }
+
+  const customerId = subscription.customer as string | null;
+  if (customerId) {
+    const { data } = await supabaseAdmin
+      .from("billing_customers")
+      .select("workspace_id")
+      .eq("stripe_customer_id", customerId)
+      .maybeSingle();
+    if (data?.workspace_id) {
+      return data.workspace_id;
+    }
+  }
+
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -118,15 +89,12 @@ Deno.serve(async (req) => {
 
     if (event.type.startsWith("customer.subscription")) {
       const subscription = event.data.object as Stripe.Subscription;
-      const workspaceId = subscription.metadata?.workspace_id;
+      const workspaceId = await resolveWorkspaceIdForSubscription(subscription);
       if (!workspaceId) {
         return new Response(JSON.stringify({ received: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
-      const { enabled } = servicesFromSubscription(subscription);
-      await upsertBillingServices(workspaceId, enabled);
 
       await supabaseAdmin.from("billing_customers").upsert({
         workspace_id: workspaceId,

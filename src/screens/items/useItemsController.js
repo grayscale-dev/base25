@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { canContributeRole, isAdminRole } from "@/lib/roles";
 import {
+  getMetadataShapeForGroup,
   ITEM_GROUP_KEYS,
   ITEM_GROUP_LABELS,
   getGroupColor,
@@ -57,6 +58,38 @@ function buildMemberName(member) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function resolveApiErrorMessage(error, fallback = "") {
+  const message =
+    error?.context?.body?.error ||
+    error?.body?.error ||
+    error?.message ||
+    "";
+  const normalized = String(message || "").trim();
+  return normalized || fallback;
+}
+
+function normalizeHexColor(value) {
+  const normalized = String(value || "").trim();
+  const short = normalized.match(/^#([0-9a-fA-F]{3})$/);
+  if (short) {
+    const [r, g, b] = short[1].split("");
+    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
+  }
+  const full = normalized.match(/^#([0-9a-fA-F]{6})$/);
+  if (full) {
+    return `#${full[1].toUpperCase()}`;
+  }
+  return null;
+}
+
+function resolveSafeGroupColor(groupKey, preferredColor) {
+  const normalized = normalizeHexColor(preferredColor);
+  if (normalized && normalized !== "#FFFFFF") {
+    return normalized;
+  }
+  return getGroupColor(groupKey);
 }
 
 export function useItemsController({ workspace, role, isPublicAccess }) {
@@ -142,10 +175,24 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
   const hydrateItem = (item) => {
     if (!item) return item;
-    const statusRecord = statusById.get(item.status_id) || null;
-    const groupKey = statusRecord?.group_key || item.group_key;
+    const statusRecord =
+      statusById.get(item.status_id) ||
+      statuses.find(
+        (status) =>
+          status?.status_key &&
+          item?.status_key &&
+          String(status.status_key) === String(item.status_key)
+      ) ||
+      null;
+    const rawGroupKey = statusRecord?.group_key || item.group_key;
+    const normalizedGroupKey = typeof rawGroupKey === "string" ? rawGroupKey.toLowerCase() : rawGroupKey;
+    const groupKey = ITEM_GROUP_KEYS.includes(normalizedGroupKey) ? normalizedGroupKey : rawGroupKey;
     const groupLabel = ITEM_GROUP_LABELS[groupKey] || getGroupLabel(groupKey);
-    const groupColor = groups.find((group) => group.group_key === groupKey)?.color_hex || getGroupColor(groupKey);
+    const resolvedGroupColor =
+      groups.find((group) => group.group_key === groupKey)?.color_hex ||
+      item.group_color ||
+      getGroupColor(groupKey);
+    const groupColor = resolveSafeGroupColor(groupKey, resolvedGroupColor);
     const statusLabel = statusRecord?.label || item.status_label || item.status_key || "Unknown";
     const typeRecord = itemTypesById.get(item.item_type_id) || null;
     const assigneeRecord = item.assigned_to ? memberDirectoryById.get(item.assigned_to) || null : null;
@@ -177,15 +224,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
   const canDeleteItem = (item) => {
     if (!item) return false;
-    if (isAdmin) return true;
-    return Boolean(
-      !isPublicAccess &&
-      role === "contributor" &&
-      item.group_key === "feedback" &&
-      currentUserId &&
-      item.submitter_id &&
-      item.submitter_id === currentUserId
-    );
+    return isAdmin;
   };
 
   const thread = useMemo(() => {
@@ -356,36 +395,70 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
   const saveItem = async ({ payload, previousItem = null }) => {
     if (!workspace?.id) return { ok: false, error: "Workspace is missing." };
 
-    const selectedStatus = statusById.get(payload.status_id) || null;
+    const isContributor = role === "contributor" && !isPublicAccess;
+    const defaultFeedbackStatus = (statusesByGroup.feedback || [])
+      .find((status) => status?.is_active !== false)
+      || (statusesByGroup.feedback || [])[0]
+      || null;
+    const defaultItemType = itemTypes
+      .filter((itemType) => itemType?.is_active !== false)
+      .slice()
+      .sort((left, right) => (left.display_order || 0) - (right.display_order || 0))[0] || null;
+    const contributorDefaultMetadata = getMetadataShapeForGroup("feedback");
+    const effectivePayload = { ...payload };
+
+    if (isContributor) {
+      if (payload.id) {
+        if (!previousItem || previousItem.submitter_id !== currentUserId) {
+          return { ok: false, error: "You can only edit feedback you submitted." };
+        }
+        effectivePayload.status_id = previousItem.status_id;
+        effectivePayload.item_type_id = previousItem.item_type_id;
+        effectivePayload.metadata = previousItem.metadata || contributorDefaultMetadata;
+        effectivePayload.assigned_to = null;
+      } else {
+        if (!defaultFeedbackStatus) {
+          return { ok: false, error: "Feedback status configuration is missing." };
+        }
+        if (!defaultItemType) {
+          return { ok: false, error: "Item type configuration is missing." };
+        }
+        effectivePayload.status_id = defaultFeedbackStatus.id;
+        effectivePayload.item_type_id = defaultItemType.id;
+        effectivePayload.metadata = contributorDefaultMetadata;
+        effectivePayload.assigned_to = null;
+      }
+    }
+
+    const selectedStatus = statusById.get(effectivePayload.status_id) || null;
     if (!selectedStatus || selectedStatus.is_active === false) {
       return { ok: false, error: "Selected status is invalid." };
     }
 
-    const metadataValidation = validateMetadata(selectedStatus.group_key, payload.metadata);
+    const metadataValidation = validateMetadata(selectedStatus.group_key, effectivePayload.metadata);
     if (!metadataValidation.valid) {
       return { ok: false, error: metadataValidation.message };
     }
 
-    if (!payload.item_type_id || !itemTypesById.get(payload.item_type_id)) {
+    if (!effectivePayload.item_type_id || !itemTypesById.get(effectivePayload.item_type_id)) {
       return { ok: false, error: "Selected item type is invalid." };
     }
 
-    const isContributor = role === "contributor" && !isPublicAccess;
     if (isContributor) {
       if (selectedStatus.group_key !== "feedback") {
         return { ok: false, error: "Contributors can only submit feedback items." };
       }
-      if (payload.id) {
-        if (previousItem?.submitter_id !== currentUserId) {
-          return { ok: false, error: "You can only edit feedback you submitted." };
-        }
-        if (previousItem?.status_id && previousItem.status_id !== payload.status_id) {
+      if (effectivePayload.id) {
+        if (previousItem?.status_id && previousItem.status_id !== effectivePayload.status_id) {
           return { ok: false, error: "Contributors cannot change item status." };
+        }
+        if (previousItem?.item_type_id && previousItem.item_type_id !== effectivePayload.item_type_id) {
+          return { ok: false, error: "Contributors cannot change item type." };
         }
       }
     }
 
-    if (!isAdmin && payload.assigned_to) {
+    if (!isAdmin && effectivePayload.assigned_to) {
       return { ok: false, error: "Only admin or owner can assign items." };
     }
 
@@ -395,43 +468,42 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
       const record = {
         workspace_id: workspace.id,
-        status_id: payload.status_id,
-        title: payload.title,
-        description: payload.description,
-        metadata: payload.metadata,
-        visibility: payload.visibility || "public",
-        item_type_id: payload.item_type_id,
-        assigned_to: isAdmin ? payload.assigned_to || null : null,
+        status_id: effectivePayload.status_id,
+        title: effectivePayload.title,
+        description: effectivePayload.description,
+        metadata: effectivePayload.metadata,
+        visibility: effectivePayload.visibility || "public",
+        item_type_id: effectivePayload.item_type_id,
+        assigned_to: isAdmin ? effectivePayload.assigned_to || null : null,
       };
 
       let saved = null;
-      if (payload.id) {
-        saved = await base44.entities.Item.update(payload.id, record);
+      if (effectivePayload.id) {
+        saved = await base44.entities.Item.update(effectivePayload.id, record);
       } else {
-        let submitterId = currentUserId;
-        let submitterEmail = currentUser?.email || null;
-        if (!submitterId) {
-          try {
-            const user = await base44.auth.me();
-            submitterId = user?.id || null;
-            submitterEmail = user?.email || null;
-            setCurrentUser(user || null);
-          } catch {
-            submitterId = null;
-            submitterEmail = null;
-          }
+        const { data } = await base44.functions.invoke(
+          "createItem",
+          {
+            workspace_id: workspace.id,
+            status_id: effectivePayload.status_id,
+            title: effectivePayload.title,
+            description: effectivePayload.description || "",
+            metadata: effectivePayload.metadata,
+            visibility: effectivePayload.visibility || "public",
+            item_type_id: effectivePayload.item_type_id,
+            assigned_to: isAdmin ? effectivePayload.assigned_to || null : null,
+          },
+          { authMode: "user" }
+        );
+        saved = data?.item || data || null;
+        if (!saved?.id) {
+          return { ok: false, error: "Unable to create item." };
         }
-
-        saved = await base44.entities.Item.create({
-          ...record,
-          submitter_email: submitterEmail,
-          submitter_id: submitterId,
-        });
       }
 
       syncItemInState(saved);
 
-      if (payload.id && saved && previousItem?.group_key && previousItem.group_key !== selectedStatus.group_key) {
+      if (effectivePayload.id && saved && previousItem?.group_key && previousItem.group_key !== selectedStatus.group_key) {
         await base44.entities.ItemActivity.create({
           workspace_id: workspace.id,
           item_id: saved.id,
@@ -446,9 +518,9 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
         });
       }
 
-      if (payload.id && saved && previousItem?.status_id && previousItem.status_id !== payload.status_id) {
+      if (effectivePayload.id && saved && previousItem?.status_id && previousItem.status_id !== effectivePayload.status_id) {
         const fromStatus = statusById.get(previousItem.status_id);
-        const toStatus = statusById.get(payload.status_id);
+        const toStatus = statusById.get(effectivePayload.status_id);
         const fromStatusLabel = fromStatus?.label || previousItem.status_label || "Unknown";
         const toStatusLabel = toStatus?.label || saved.status_label || "Unknown";
 
@@ -459,7 +531,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
           content: `Status changed from ${fromStatusLabel} to ${toStatusLabel}`,
           metadata: {
             from_status_id: previousItem.status_id,
-            to_status_id: payload.status_id,
+            to_status_id: effectivePayload.status_id,
           },
           author_id: currentUserId,
           author_role: isAdminRole(role) ? "admin" : "user",
@@ -469,7 +541,8 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       return { ok: true, item: saved };
     } catch (saveError) {
       console.error("Failed to save item:", saveError);
-      return { ok: false, error: "Unable to save item." };
+      const detail = resolveApiErrorMessage(saveError, "Unable to save item.");
+      return { ok: false, error: detail };
     } finally {
       setSavingItem(false);
     }
@@ -485,7 +558,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
       : items.find((item) => item.id === itemId) || null;
 
     if (!targetItem || !canEditInitialPost(targetItem)) {
-      return { ok: false, error: "You do not have permission to edit this initial post." };
+      return { ok: false, error: "You do not have permission to edit this description." };
     }
 
     try {
@@ -501,7 +574,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
           workspace_id: workspace.id,
           item_id: itemId,
           activity_type: "update",
-          content: "Initial post updated",
+          content: "Description updated",
           metadata: {},
           author_id: currentUserId,
           author_role: isAdminRole(role) ? "admin" : "user",
@@ -514,8 +587,8 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
 
       return { ok: true, item: updatedItem };
     } catch (updateError) {
-      console.error("Failed to update initial post:", updateError);
-      return { ok: false, error: "Unable to update initial post." };
+      console.error("Failed to update description:", updateError);
+      return { ok: false, error: "Unable to update description." };
     } finally {
       setSavingItem(false);
     }

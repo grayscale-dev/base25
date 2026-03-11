@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { User, Upload } from 'lucide-react';
+import { Loader2, Upload, User } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 
 /**
@@ -91,6 +91,7 @@ export default function ProfileCompletionModal({
     } catch (error) {
       console.error('Failed to update profile:', error);
       setError('Failed to save profile. Please try again.');
+    } finally {
       setSaving(false);
     }
   };
@@ -99,12 +100,16 @@ export default function ProfileCompletionModal({
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open && allowCancel) {
+        if (!open && allowCancel && !saving) {
           onCancel();
         }
       }}
     >
-      <DialogContent className="sm:max-w-md" closable={allowCancel} dismissableMask={allowCancel}>
+      <DialogContent
+        className="sm:max-w-md"
+        closable={allowCancel && !saving}
+        dismissableMask={allowCancel && !saving}
+      >
         <DialogHeader>
           <DialogTitle>Complete Your Profile</DialogTitle>
           <DialogDescription>
@@ -125,6 +130,7 @@ export default function ProfileCompletionModal({
                 placeholder="First name"
                 className="w-full"
                 autoFocus
+                disabled={saving}
               />
             </div>
             <div>
@@ -137,6 +143,7 @@ export default function ProfileCompletionModal({
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder="Last name"
                 className="w-full"
+                disabled={saving}
               />
             </div>
           </div>
@@ -162,6 +169,7 @@ export default function ProfileCompletionModal({
                       setPhotoPreview(null);
                       setProfilePhoto(null);
                     }}
+                    disabled={saving}
                     className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs"
                   >
                     ×
@@ -179,6 +187,7 @@ export default function ProfileCompletionModal({
                   accept="image/*"
                   onChange={handlePhotoSelect}
                   className="hidden"
+                  disabled={saving}
                 />
                 <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
                   <Upload className="h-4 w-4 text-slate-600" />
@@ -212,7 +221,14 @@ export default function ProfileCompletionModal({
               disabled={!firstName.trim() || !lastName.trim() || saving}
               className="bg-slate-900 hover:bg-slate-800"
             >
-              {saving ? 'Saving...' : 'Save and Continue'}
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save and Continue'
+              )}
             </Button>
           </div>
         </form>

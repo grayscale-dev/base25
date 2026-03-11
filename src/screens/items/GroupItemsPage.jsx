@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil } from "lucide-react";
+import { Loader2, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -13,18 +13,12 @@ import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
+import RelativeDate from "@/components/common/RelativeDate";
 import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
 import AssigneeDisplay from "./AssigneeDisplay";
 import { getGroupLabel } from "@/lib/item-groups";
 import { isAdminRole } from "@/lib/roles";
-
-function formatDate(value) {
-  if (!value) return "Unknown";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return date.toLocaleString();
-}
 
 export default function GroupItemsPage({
   groupKey,
@@ -37,6 +31,7 @@ export default function GroupItemsPage({
   const [showEditor, setShowEditor] = useState(false);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [openingItemId, setOpeningItemId] = useState(null);
 
   const isAdmin = isAdminRole(role) && !isPublicAccess;
   const isContributorFeedback =
@@ -65,8 +60,13 @@ export default function GroupItemsPage({
   };
 
   const openItemThread = async (item) => {
-    await controller.loadItemActivities(item);
-    setShowItemDrawer(true);
+    setOpeningItemId(item.id);
+    try {
+      await controller.loadItemActivities(item);
+      setShowItemDrawer(true);
+    } finally {
+      setOpeningItemId(null);
+    }
   };
 
   const handleSaveItem = async (payload) => {
@@ -94,9 +94,18 @@ export default function GroupItemsPage({
         description={`${getGroupLabel(groupKey)} items for ${workspace?.name}.`}
         actions={
           canCreateItems ? (
-            <Button onClick={openCreate} className="bg-slate-900 hover:bg-slate-800">
-              <Plus className="mr-2 h-4 w-4" />
-              {isContributorFeedback ? "Submit Feedback" : "Create Item"}
+            <Button
+              onClick={openCreate}
+              disabled={controller.savingItem}
+              aria-busy={controller.savingItem}
+              className="bg-slate-900 hover:bg-slate-800"
+            >
+              {controller.savingItem ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              {controller.savingItem ? "Saving..." : isContributorFeedback ? "Submit Feedback" : "Create Item"}
             </Button>
           ) : null
         }
@@ -192,14 +201,19 @@ export default function GroupItemsPage({
                           event.stopPropagation();
                           openEdit(item);
                         }}
+                        disabled={openingItemId === item.id}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
                     ) : null}
+                    {openingItemId === item.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                    ) : null}
                   </div>
                 </div>
                 <div className="mt-3 text-xs text-slate-500">
-                  Updated {formatDate(item.updated_date || item.updated_at || item.created_date || item.created_at)}
+                  Updated{" "}
+                  <RelativeDate value={item.updated_date || item.updated_at || item.created_date || item.created_at} />
                 </div>
               </article>
             );
@@ -220,6 +234,7 @@ export default function GroupItemsPage({
         canAssign={controller.canManageAssignee}
         canManageGroupTransition={false}
         defaultGroup={groupKey}
+        contributorFeedbackMode={isContributorFeedback && !editingItem}
       />
 
       <ItemDetailDrawer

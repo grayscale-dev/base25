@@ -11,7 +11,7 @@ import { getGroupLabel } from "@/lib/item-groups";
 import { getDefaultWorkspaceSection } from "@/lib/workspace-sections";
 import { useItemsController } from "./useItemsController";
 import ItemDetailPanel from "./ItemDetailPanel";
-import { Pencil, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { isAdminRole } from "@/lib/roles";
 
@@ -179,7 +179,14 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
                 disabled={controller.savingItem}
                 className="bg-slate-900 hover:bg-slate-800"
               >
-                {controller.savingItem ? "Saving..." : "Save"}
+                {controller.savingItem ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save"
+                )}
               </Button>
               <Button
                 size="sm"
@@ -229,7 +236,11 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
                   title="Delete item"
                   disabled={controller.deletingItemId === selectedItem.id}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  {controller.deletingItemId === selectedItem.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
                 </Button>
               ) : null}
             </div>

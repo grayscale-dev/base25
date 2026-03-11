@@ -5,13 +5,13 @@ import {
   ChevronRight,
   Code,
   Copy,
+  Loader2,
   Lock,
   Plus,
   Server,
   Trash2,
   Zap,
 } from "lucide-react";
-import { format } from "date-fns";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/use-toast";
 import Badge from "@/components/common/Badge";
+import RelativeDate from "@/components/common/RelativeDate";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { StatePanel } from "@/components/common/StateDisplay";
@@ -142,6 +143,7 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
   const [expandedEndpoint, setExpandedEndpoint] = useState(null);
   const [pendingRevokeToken, setPendingRevokeToken] = useState(null);
   const [revokingTokenId, setRevokingTokenId] = useState(null);
+  const [creatingToken, setCreatingToken] = useState(false);
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
@@ -170,6 +172,7 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
   const handleCreateToken = async () => {
     if (!newTokenName || newTokenPerms.length === 0 || !workspaceId) return;
     try {
+      setCreatingToken(true);
       const user = await base44.auth.me();
       const tokenValue = "itms_" + Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -201,6 +204,8 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
         description: "Failed to create API token. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setCreatingToken(false);
     }
   };
 
@@ -319,7 +324,7 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-slate-500">
-                      {format(new Date(token.created_date), "MMM d, yyyy")}
+                      <RelativeDate value={token.created_date || token.created_at} />
                     </TableCell>
                     <TableCell>
                       <Button
@@ -330,7 +335,11 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
                         disabled={!isOwner || revokingTokenId === token.id}
                         title={!isOwner ? "Only owners can delete API keys." : undefined}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {revokingTokenId === token.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -524,15 +533,22 @@ export default function WorkspaceApiPanel({ workspace, role = "contributor" }) {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="ghost" onClick={() => setShowCreateToken(false)}>
+                <Button variant="ghost" onClick={() => setShowCreateToken(false)} disabled={creatingToken}>
                   Cancel
                 </Button>
                 <Button
                   onClick={handleCreateToken}
-                  disabled={!newTokenName || newTokenPerms.length === 0}
+                  disabled={!newTokenName || newTokenPerms.length === 0 || creatingToken}
                   className="bg-slate-900 hover:bg-slate-800"
                 >
-                  Create Token
+                  {creatingToken ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create Token"
+                  )}
                 </Button>
               </DialogFooter>
             </>

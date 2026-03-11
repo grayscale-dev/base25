@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-forwarded-authorization, x-user-access-token, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-const SERVICE_PRICE = 25;
+const FLAT_MONTHLY_PRICE = 30;
 
 Deno.serve(async (req) => {
   try {
@@ -46,13 +46,6 @@ Deno.serve(async (req) => {
       .eq("workspace_id", workspaceId)
       .maybeSingle();
 
-    const { data: services } = await supabaseAdmin
-      .from("billing_services")
-      .select("service, enabled")
-      .eq("workspace_id", workspaceId);
-
-    const enabledServices = (services || []).filter((s) => s.enabled);
-
     let periodStart = billingRow?.current_period_start;
     let periodEnd = billingRow?.current_period_end;
     const now = new Date();
@@ -64,19 +57,23 @@ Deno.serve(async (req) => {
       periodEnd = end.toISOString();
     }
 
-    const activeServiceCount = enabledServices.length;
-    const serviceCost = activeServiceCount * SERVICE_PRICE;
+    const status = billingRow?.status ?? "inactive";
+    const isActiveSubscription = ["active", "trialing", "past_due", "unpaid", "incomplete"].includes(status);
+    const activeServiceCount = isActiveSubscription ? 1 : 0;
+    const serviceCost = isActiveSubscription ? FLAT_MONTHLY_PRICE : 0;
 
     return new Response(
       JSON.stringify({
-        status: billingRow?.status ?? "inactive",
+        status,
         trial_end: billingRow?.trial_end ?? null,
         current_period_start: periodStart,
         current_period_end: periodEnd,
-        enabled_services: enabledServices,
+        enabled_services: [],
         active_service_count: activeServiceCount,
-        service_unit_price: SERVICE_PRICE,
+        service_unit_price: FLAT_MONTHLY_PRICE,
         service_cost: serviceCost,
+        plan_monthly_price: FLAT_MONTHLY_PRICE,
+        billing_model: "flat_monthly",
         cancel_at_period_end: billingRow?.cancel_at_period_end ?? false,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

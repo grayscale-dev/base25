@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LogOut, Save, Trash2, Upload, User } from "lucide-react";
+import { Loader2, LogOut, Save, Trash2, Upload, User } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
@@ -216,6 +216,7 @@ export default function AccountSettingsPanel({ onStatusChange }) {
                 onChange={(event) => setFirstName(event.target.value)}
                 className="mt-1.5"
                 placeholder="First name"
+                disabled={savingProfile}
               />
             </div>
             <div>
@@ -227,6 +228,7 @@ export default function AccountSettingsPanel({ onStatusChange }) {
                 onChange={(event) => setLastName(event.target.value)}
                 className="mt-1.5"
                 placeholder="Last name"
+                disabled={savingProfile}
               />
             </div>
           </div>
@@ -248,7 +250,13 @@ export default function AccountSettingsPanel({ onStatusChange }) {
 
               <div className="flex flex-wrap items-center gap-2">
                 <label className="cursor-pointer">
-                  <input type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoSelect}
+                    disabled={savingProfile || deletingAccount || signingOut}
+                  />
                   <Button variant="outline" size="sm" asChild>
                     <span>
                       <Upload className="mr-2 h-4 w-4" />
@@ -268,6 +276,7 @@ export default function AccountSettingsPanel({ onStatusChange }) {
                       setProfilePhotoFile(null);
                       setProfilePhotoUrl("");
                     }}
+                    disabled={savingProfile}
                   >
                     Remove
                   </Button>
@@ -278,7 +287,7 @@ export default function AccountSettingsPanel({ onStatusChange }) {
 
           <div className="flex justify-end">
             <Button onClick={handleSaveProfile} disabled={!canSaveProfile}>
-              <Save className="mr-2 h-4 w-4" />
+              {savingProfile ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               {savingProfile ? "Saving..." : "Save Profile"}
             </Button>
           </div>
@@ -299,7 +308,7 @@ export default function AccountSettingsPanel({ onStatusChange }) {
             onClick={() => setShowDeleteConfirm(true)}
             disabled={deletingAccount}
           >
-            <Trash2 className="mr-2 h-4 w-4" />
+            {deletingAccount ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
             Delete Account
           </Button>
         </CardContent>
@@ -307,7 +316,7 @@ export default function AccountSettingsPanel({ onStatusChange }) {
 
       <div className="flex justify-end">
         <Button variant="outline" onClick={handleSignOut} disabled={signingOut}>
-          <LogOut className="mr-2 h-4 w-4" />
+          {signingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
           {signingOut ? "Signing Out..." : "Sign Out"}
         </Button>
       </div>

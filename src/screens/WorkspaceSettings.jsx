@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "@/lib/router";
+import { useNavigate } from "@/lib/router";
 import {
   Settings,
   Users,
@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Pencil,
   GripVertical,
+  Loader2,
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
@@ -48,12 +49,18 @@ import { createPageUrl } from "@/utils";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import { StatePanel } from "@/components/common/StateDisplay";
-import { getWorkspaceSession, setWorkspaceSession } from "@/lib/workspace-session";
+import { cn } from "@/lib/utils";
+import {
+  consumeWorkspaceSettingsTabIntent,
+  getWorkspaceSession,
+  setWorkspaceSession,
+} from "@/lib/workspace-session";
 import { workspaceDefaultUrl, workspaceUrl } from "@/components/utils/workspaceUrl";
 import AccountSettingsPanel from "@/components/workspace/AccountSettingsPanel";
 import WorkspaceApiPanel from "@/components/workspace/WorkspaceApiPanel";
-import WorkspaceBillingPanel from "@/components/workspace/WorkspaceBillingPanel";
 import { useToast } from "@/components/ui/use-toast";
+import RelativeDate from "@/components/common/RelativeDate";
+import { openStripeBilling } from "@/lib/openStripeBilling";
 import {
   Dialog,
   DialogContent,
@@ -63,12 +70,13 @@ import {
 } from "@/components/ui/dialog";
 import {
   DEFAULT_GROUP_STATUSES,
+  ITEM_GROUP_COLORS,
   ITEM_GROUP_KEYS,
   ITEM_GROUP_LABELS,
 } from "@/lib/item-groups";
 import { isAdminRole, isOwnerRole } from "@/lib/roles";
 
-const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "item-types", "billing", "api"];
+const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "item-types", "api"];
 
 function byDisplayOrder(a, b) {
   return (a.display_order || 0) - (b.display_order || 0);
@@ -79,12 +87,23 @@ function getErrorStatus(error) {
   return error.status ?? error.context?.status ?? error.response?.status ?? null;
 }
 
+function getDefaultSettingsTab(role) {
+  return isAdminRole(role) ? "general" : "my-account";
+}
+
+function canAccessSettingsTab(tab, role) {
+  if (!SETTINGS_TABS.includes(tab)) return false;
+  if (tab === "my-account") return true;
+  if (!isAdminRole(role)) return false;
+  return true;
+}
+
 export default function WorkspaceSettings() {
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [workspace, setWorkspace] = useState(null);
   const [role, setRole] = useState("contributor");
+  const [roleInitialized, setRoleInitialized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState("");
@@ -117,19 +136,29 @@ export default function WorkspaceSettings() {
   const [statusGroups, setStatusGroups] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [statusDrafts, setStatusDrafts] = useState({});
+  const [savingGroupColorId, setSavingGroupColorId] = useState(null);
   const [editingStatusId, setEditingStatusId] = useState(null);
   const [editingStatusLabel, setEditingStatusLabel] = useState("");
   const [savingStatusId, setSavingStatusId] = useState(null);
+  const [showAddStatusDialog, setShowAddStatusDialog] = useState(false);
+  const [addStatusGroupKey, setAddStatusGroupKey] = useState("");
+  const [newStatusLabel, setNewStatusLabel] = useState("");
+  const [creatingStatus, setCreatingStatus] = useState(false);
+  const [statusPendingDelete, setStatusPendingDelete] = useState(null);
+  const [deletingStatusId, setDeletingStatusId] = useState(null);
   const [statusMovePending, setStatusMovePending] = useState(null);
   const [statusMoveTargetId, setStatusMoveTargetId] = useState("");
   const [savingStatusMove, setSavingStatusMove] = useState(false);
   const [itemTypes, setItemTypes] = useState([]);
   const [editingItemTypeId, setEditingItemTypeId] = useState(null);
   const [editingItemTypeLabel, setEditingItemTypeLabel] = useState("");
+  const [reorderingItemTypeId, setReorderingItemTypeId] = useState(null);
+  const [deletingItemTypeId, setDeletingItemTypeId] = useState(null);
   const [savingItemType, setSavingItemType] = useState(false);
   const [showDeleteWorkspaceDialog, setShowDeleteWorkspaceDialog] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [activeTab, setActiveTab] = useState("my-account");
+  const [openingBilling, setOpeningBilling] = useState(false);
   const { toast } = useToast();
 
   const notifyStatus = (tone, message) => {
@@ -150,9 +179,14 @@ export default function WorkspaceSettings() {
 
     const resolvedRole = storedRole || "contributor";
     const adminRole = isAdminRole(resolvedRole);
+    const requestedInitialTab = consumeWorkspaceSettingsTabIntent();
+    const initialTab =
+      requestedInitialTab && canAccessSettingsTab(requestedInitialTab, resolvedRole)
+        ? requestedInitialTab
+        : getDefaultSettingsTab(resolvedRole);
 
     setRole(resolvedRole);
-    setActiveTab(adminRole ? "general" : "my-account");
+    setActiveTab(initialTab);
     setWorkspace(storedWorkspace);
     setName(storedWorkspace.name);
     setSlug(storedWorkspace.slug);
@@ -163,47 +197,26 @@ export default function WorkspaceSettings() {
     setPrimaryColor(storedWorkspace.primary_color || "#0f172a");
     if (adminRole) {
       void loadAll(storedWorkspace.id);
+      setRoleInitialized(true);
       return;
     }
+    setRoleInitialized(true);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search || "");
-    const requestedTab = params.get("tab");
-    if (!requestedTab || !SETTINGS_TABS.includes(requestedTab)) {
-      return;
+    if (!roleInitialized) return;
+    if (!canAccessSettingsTab(activeTab, role)) {
+      setActiveTab(getDefaultSettingsTab(role));
     }
-    const requiresAdmin = requestedTab !== "my-account";
-    const requiresOwner = requestedTab === "billing";
-    if ((requiresAdmin && !isAdminRole(role)) || (requiresOwner && !isOwnerRole(role))) {
-      setActiveTab("my-account");
-      params.delete("tab");
-      const search = params.toString();
-      navigate(`${createPageUrl("WorkspaceSettings")}${search ? `?${search}` : ""}`, {
-        replace: true,
-      });
-      return;
-    }
-    setActiveTab(requestedTab);
-  }, [location.search, role, navigate]);
+  }, [activeTab, role, roleInitialized]);
 
   const handleTabChange = (nextTab) => {
-    if ((!isAdminRole(role) && nextTab !== "my-account") || (nextTab === "billing" && !isOwnerRole(role))) {
+    if (!roleInitialized) return;
+    if (!canAccessSettingsTab(nextTab, role)) {
       return;
     }
     setActiveTab(nextTab);
-
-    const params = new URLSearchParams(location.search || "");
-    const defaultTab = isAdminRole(role) ? "general" : "my-account";
-    if (nextTab === defaultTab) {
-      params.delete("tab");
-    } else {
-      params.set("tab", nextTab);
-    }
-    const search = params.toString();
-    const nextUrl = `${createPageUrl("WorkspaceSettings")}${search ? `?${search}` : ""}`;
-    navigate(nextUrl, { replace: true });
   };
 
   const groupedStatuses = useMemo(() => {
@@ -358,6 +371,7 @@ export default function WorkspaceSettings() {
         workspace_id: workspaceId,
         group_key: groupKey,
         display_name: ITEM_GROUP_LABELS[groupKey],
+        color_hex: ITEM_GROUP_COLORS[groupKey] || "#0F172A",
         display_order: index,
       });
       createdGroups.push(group);
@@ -466,6 +480,25 @@ export default function WorkspaceSettings() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleOpenBilling = async () => {
+    if (!workspace?.id || !isOwner) return;
+    setOpeningBilling(true);
+    try {
+      const result = await openStripeBilling({
+        workspaceId: workspace.id,
+        returnUrl: window.location.href,
+      });
+      if (!result.ok) {
+        notifyStatus("danger", result.error || "Unable to open Stripe billing.");
+      }
+    } catch (error) {
+      console.error("Failed to open Stripe billing:", error);
+      notifyStatus("danger", "Unable to open Stripe billing right now.");
+    } finally {
+      setOpeningBilling(false);
     }
   };
 
@@ -622,6 +655,7 @@ export default function WorkspaceSettings() {
       return;
     }
     try {
+      setSavingGroupColorId(group.id);
       const { data } = await base44.functions.invoke(
         "upsertItemStatusGroup",
         {
@@ -639,6 +673,8 @@ export default function WorkspaceSettings() {
     } catch (error) {
       console.error("Failed to update status group color:", error);
       notifyStatus("danger", "Failed to update status group color.");
+    } finally {
+      setSavingGroupColorId(null);
     }
   };
 
@@ -693,16 +729,23 @@ export default function WorkspaceSettings() {
     }
   };
 
-  const handleAddStatus = async (groupKey) => {
-    if (!workspace?.id) return;
+  const handleAddStatus = async () => {
+    if (!workspace?.id || !addStatusGroupKey) return;
+    const label = String(newStatusLabel || "").trim();
+    if (!label) {
+      notifyStatus("danger", "Status name is required.");
+      return;
+    }
+    const groupKey = addStatusGroupKey;
     const groupStatuses = groupedStatuses[groupKey] || [];
     try {
+      setCreatingStatus(true);
       const { data } = await base44.functions.invoke(
         "upsertItemStatus",
         {
           workspace_id: workspace.id,
           group_key: groupKey,
-          label: "New Status",
+          label,
           display_order: groupStatuses.length,
           is_active: true,
         },
@@ -713,17 +756,28 @@ export default function WorkspaceSettings() {
       } else {
         await loadStatusConfig(workspace.id);
       }
+      setShowAddStatusDialog(false);
+      setNewStatusLabel("");
+      setAddStatusGroupKey("");
       notifyStatus("success", "Status added.");
     } catch (error) {
       console.error("Failed to add status:", error);
       notifyStatus("danger", "Failed to add status.");
+    } finally {
+      setCreatingStatus(false);
     }
   };
 
   const handleDeleteStatus = async (statusRecord) => {
     if (!workspace?.id || !statusRecord?.id) return;
+    const statusesInGroup = groupedStatuses[statusRecord.group_key] || [];
+    if (statusesInGroup.length <= 1) {
+      notifyStatus("danger", "Each status group must keep at least one status.");
+      return;
+    }
 
     try {
+      setDeletingStatusId(statusRecord.id);
       await base44.functions.invoke(
         "deleteItemStatus",
         {
@@ -733,17 +787,72 @@ export default function WorkspaceSettings() {
         { authMode: "user" }
       );
       setStatuses((prev) => prev.filter((status) => status.id !== statusRecord.id));
+      setStatusPendingDelete(null);
       notifyStatus("success", "Status removed.");
     } catch (error) {
       console.error("Failed to delete status:", error);
       notifyStatus("danger", "Failed to remove status.");
+    } finally {
+      setDeletingStatusId(null);
     }
+  };
+
+  const buildOptimisticStatusOrder = (statusRows, { statusId, targetGroupKey, targetIndex }) => {
+    const movedStatus = statusRows.find((row) => row.id === statusId);
+    if (!movedStatus) return statusRows;
+
+    const grouped = {};
+    const orderedGroupKeys = [...ITEM_GROUP_KEYS];
+
+    statusRows.forEach((row) => {
+      if (!orderedGroupKeys.includes(row.group_key)) {
+        orderedGroupKeys.push(row.group_key);
+      }
+      if (!grouped[row.group_key]) {
+        grouped[row.group_key] = [];
+      }
+      if (row.id !== statusId) {
+        grouped[row.group_key].push({ ...row });
+      }
+    });
+
+    Object.keys(grouped).forEach((groupKey) => {
+      grouped[groupKey].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+    });
+
+    if (!grouped[targetGroupKey]) {
+      grouped[targetGroupKey] = [];
+      if (!orderedGroupKeys.includes(targetGroupKey)) {
+        orderedGroupKeys.push(targetGroupKey);
+      }
+    }
+
+    const targetList = grouped[targetGroupKey];
+    const boundedIndex = Math.max(0, Math.min(Number(targetIndex) || 0, targetList.length));
+    targetList.splice(boundedIndex, 0, { ...movedStatus, group_key: targetGroupKey });
+
+    const next = [];
+    orderedGroupKeys.forEach((groupKey) => {
+      const rows = grouped[groupKey] || [];
+      rows.forEach((row, index) => {
+        next.push({
+          ...row,
+          display_order: index,
+        });
+      });
+    });
+    return next;
   };
 
   const applyStatusReorder = async ({ statusId, targetGroupKey, targetIndex, reassignmentStatusId }) => {
     if (!workspace?.id) return;
+    let previousStatusesSnapshot = null;
     try {
       setSavingStatusMove(true);
+      setStatuses((prev) => {
+        previousStatusesSnapshot = prev;
+        return buildOptimisticStatusOrder(prev, { statusId, targetGroupKey, targetIndex });
+      });
       const { data } = await base44.functions.invoke(
         "reorderItemStatuses",
         {
@@ -756,13 +865,16 @@ export default function WorkspaceSettings() {
         { authMode: "user" }
       );
       if (data?.statuses) {
-        setStatuses((data.statuses || []).sort(byDisplayOrder));
+        setStatuses(data.statuses || []);
       } else {
         await loadStatusConfig(workspace.id);
       }
       notifyStatus("success", "Status ordering updated.");
     } catch (error) {
       console.error("Failed to reorder status:", error);
+      if (previousStatusesSnapshot) {
+        setStatuses(previousStatusesSnapshot);
+      }
       notifyStatus("danger", "Failed to reorder status.");
     } finally {
       setSavingStatusMove(false);
@@ -808,15 +920,17 @@ export default function WorkspaceSettings() {
       return;
     }
 
-    await applyStatusReorder({
-      statusId: statusMovePending.status.id,
-      targetGroupKey: statusMovePending.destinationGroupKey,
-      targetIndex: statusMovePending.destinationIndex,
-      reassignmentStatusId: statusMoveTargetId,
-    });
-
+    const pendingMove = statusMovePending;
+    const pendingTargetStatus = statusMoveTargetId;
     setStatusMovePending(null);
     setStatusMoveTargetId("");
+
+    await applyStatusReorder({
+      statusId: pendingMove.status.id,
+      targetGroupKey: pendingMove.destinationGroupKey,
+      targetIndex: pendingMove.destinationIndex,
+      reassignmentStatusId: pendingTargetStatus,
+    });
   };
 
   const moveItemType = async (itemTypeId, direction) => {
@@ -833,6 +947,7 @@ export default function WorkspaceSettings() {
     const orderedIds = next.map((row) => row.id);
 
     try {
+      setReorderingItemTypeId(itemTypeId);
       const { data } = await base44.functions.invoke(
         "reorderItemTypes",
         { workspace_id: workspace.id, ordered_type_ids: orderedIds },
@@ -842,6 +957,8 @@ export default function WorkspaceSettings() {
     } catch (error) {
       console.error("Failed to reorder item types:", error);
       notifyStatus("danger", "Failed to reorder item types.");
+    } finally {
+      setReorderingItemTypeId(null);
     }
   };
 
@@ -894,6 +1011,7 @@ export default function WorkspaceSettings() {
     }
 
     try {
+      setDeletingItemTypeId(itemType.id);
       await base44.functions.invoke(
         "deleteItemType",
         {
@@ -908,6 +1026,8 @@ export default function WorkspaceSettings() {
     } catch (error) {
       console.error("Failed to remove item type:", error);
       notifyStatus("danger", "Failed to remove item type.");
+    } finally {
+      setDeletingItemTypeId(null);
     }
   };
 
@@ -947,8 +1067,12 @@ export default function WorkspaceSettings() {
     return (
       <PageShell className="mx-auto max-w-5xl">
         <PageHeader
-          title="Workspace Settings"
-          description="Configure your workspace and manage access."
+          title={isAdmin ? "Workspace Settings" : "Settings"}
+          description={
+            isAdmin
+              ? "Configure your workspace and manage access."
+              : "Manage your account information."
+          }
         />
         <StatePanel
           tone="danger"
@@ -965,11 +1089,41 @@ export default function WorkspaceSettings() {
     );
   }
 
+  if (!isAdmin) {
+    return (
+      <PageShell className="mx-auto max-w-5xl space-y-6">
+        <PageHeader
+          title="Settings"
+          description="You can edit your account profile details from this page."
+        />
+
+        <AccountSettingsPanel
+          onStatusChange={(nextStatus) => {
+            if (!nextStatus?.message) return;
+            notifyStatus(nextStatus.tone, nextStatus.message);
+          }}
+        />
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title="Workspace Settings"
         description="Manage your account, workspace policies, and item status configuration."
+        actions={
+          isOwner ? (
+            <Button onClick={() => void handleOpenBilling()} disabled={openingBilling}>
+              {openingBilling ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CreditCard className="mr-2 h-4 w-4" />
+              )}
+              {openingBilling ? "Opening Stripe..." : "Billing"}
+            </Button>
+          ) : null
+        }
       />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
@@ -986,7 +1140,7 @@ export default function WorkspaceSettings() {
           </TabsTrigger>
           <TabsTrigger value="access" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
-            Users
+            Access
           </TabsTrigger>
           <TabsTrigger value="status-groups" className="flex items-center gap-2">
             <Check className="h-4 w-4" />
@@ -996,12 +1150,6 @@ export default function WorkspaceSettings() {
             <Check className="h-4 w-4" />
             Item Types
           </TabsTrigger>
-          {isOwner ? (
-            <TabsTrigger value="billing" className="flex items-center gap-2">
-              <CreditCard className="h-4 w-4" />
-              Billing
-            </TabsTrigger>
-          ) : null}
           <TabsTrigger value="api" className="flex items-center gap-2">
             <Key className="h-4 w-4" />
             API Access
@@ -1080,7 +1228,10 @@ export default function WorkspaceSettings() {
                   <label className="cursor-pointer">
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                     <Button variant="outline" size="sm" asChild>
-                      <span>{uploadingLogo ? "Uploading..." : logoUrl ? "Change Logo" : "Upload Logo"}</span>
+                      <span>
+                        {uploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        {uploadingLogo ? "Uploading..." : logoUrl ? "Change Logo" : "Upload Logo"}
+                      </span>
                     </Button>
                   </label>
                   {logoUrl ? (
@@ -1127,25 +1278,9 @@ export default function WorkspaceSettings() {
           <Card>
             <CardHeader>
               <CardTitle>Workspace Behavior</CardTitle>
-              <CardDescription>Configure visibility and contribution settings.</CardDescription>
+              <CardDescription>Configure contribution settings.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex max-w-md items-center justify-between">
-                <div>
-                  <Label>Visibility</Label>
-                  <p className="text-sm text-slate-500">Who can view this workspace.</p>
-                </div>
-                <Select value={visibility} onValueChange={setVisibility}>
-                  <SelectTrigger className="w-36">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="public">Public</SelectItem>
-                    <SelectItem value="restricted">Restricted</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div className="flex max-w-md items-center justify-between">
                 <div>
                   <Label>File Attachments</Label>
@@ -1172,7 +1307,7 @@ export default function WorkspaceSettings() {
               Delete Workspace
             </Button>
             <Button onClick={handleSaveSettings} disabled={saving} className="bg-slate-900 hover:bg-slate-800">
-              <Save className="mr-2 h-4 w-4" />
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               {saving ? "Saving..." : "Save Changes"}
             </Button>
           </div>
@@ -1181,60 +1316,98 @@ export default function WorkspaceSettings() {
         <TabsContent value="access" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Workspace Code</CardTitle>
+              <CardTitle>Access Settings</CardTitle>
               <CardDescription>
-                This code is always active for restricted workspace access. Rotating it invalidates the previous code immediately.
+                Configure workspace visibility and private access controls.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex max-w-xl items-center gap-2">
-                <Input
-                  value={accessCodeStatus.accessCode || accessCodeStatus.maskedCode || "••••••••••"}
-                  readOnly
-                  className="font-mono text-center uppercase tracking-[0.22em]"
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => {
-                    void handleToggleRevealAccessCode();
-                  }}
-                  disabled={loadingAccessCode}
-                  aria-label={accessCodeStatus.accessCode ? "Hide workspace code" : "Reveal workspace code"}
-                  title={accessCodeStatus.accessCode ? "Hide workspace code" : "Reveal workspace code"}
-                >
-                  {accessCodeStatus.accessCode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleCopyAccessCode}
-                  aria-label="Copy workspace code"
-                  title="Copy workspace code"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowRotateAccessCodeDialog(true)}
-                  disabled={!isOwner || rotatingAccessCode}
-                  title={!isOwner ? "Only owners can rotate workspace code." : undefined}
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Rotate
-                </Button>
+            <CardContent className="space-y-5">
+              <div className="flex max-w-md items-center justify-between">
+                <div>
+                  <Label>Workspace Visibility</Label>
+                  <p className="text-sm text-slate-500">Choose whether this workspace is public or private.</p>
+                </div>
+                <Select value={visibility} onValueChange={setVisibility}>
+                  <SelectTrigger className="w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="public">Public</SelectItem>
+                    <SelectItem value="restricted">Private</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="text-xs text-slate-500">
-                {accessCodeStatus.createdAt
-                  ? `Last rotated ${new Date(accessCodeStatus.createdAt).toLocaleString()}`
-                  : "Code rotation history is unavailable."}
-              </div>
+
+              {visibility === "restricted" ? (
+                <>
+                  <div className="flex max-w-xl items-center gap-2">
+                    <Input
+                      value={accessCodeStatus.accessCode || accessCodeStatus.maskedCode || "••••••••••"}
+                      readOnly
+                      className="font-mono text-center uppercase tracking-[0.22em]"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        void handleToggleRevealAccessCode();
+                      }}
+                      disabled={loadingAccessCode}
+                      aria-label={accessCodeStatus.accessCode ? "Hide workspace code" : "Reveal workspace code"}
+                      title={accessCodeStatus.accessCode ? "Hide workspace code" : "Reveal workspace code"}
+                    >
+                      {loadingAccessCode ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : accessCodeStatus.accessCode ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleCopyAccessCode}
+                      aria-label="Copy workspace code"
+                      title="Copy workspace code"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowRotateAccessCodeDialog(true)}
+                      disabled={!isOwner || rotatingAccessCode}
+                      title={!isOwner ? "Only owners can rotate workspace code." : undefined}
+                    >
+                      {rotatingAccessCode ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      {rotatingAccessCode ? "Rotating..." : "Rotate"}
+                    </Button>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {accessCodeStatus.createdAt ? (
+                      <>
+                        Last rotated <RelativeDate value={accessCodeStatus.createdAt} />
+                      </>
+                    ) : (
+                      "Code rotation history is unavailable."
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  This workspace is public. Anyone with the workspace URL can view it.
+                </p>
+              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Users</CardTitle>
+              <CardTitle>Members</CardTitle>
               <CardDescription>Manage workspace member roles.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -1281,25 +1454,30 @@ export default function WorkspaceSettings() {
                               <TableCell>{getMemberDisplayName(member)}</TableCell>
                               <TableCell>{member.email}</TableCell>
                               <TableCell>
-                                <Select
-                                  value={member.role}
-                                  onValueChange={(value) => handleUpdateMemberRole(member.id, value)}
-                                >
-                                  <SelectTrigger
-                                    className="w-40"
-                                    disabled={!canEditRole || updatingMemberId === member.id}
-                                    title={!canEditRole ? "Only owners can modify owner roles." : undefined}
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    value={member.role}
+                                    onValueChange={(value) => handleUpdateMemberRole(member.id, value)}
                                   >
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="contributor">Contributor</SelectItem>
-                                    <SelectItem value="admin">Admin</SelectItem>
-                                    <SelectItem value="owner" disabled={!isOwner}>
-                                      Owner
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                    <SelectTrigger
+                                      className="w-40"
+                                      disabled={!canEditRole || updatingMemberId === member.id}
+                                      title={!canEditRole ? "Only owners can modify owner roles." : undefined}
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="contributor">Contributor</SelectItem>
+                                      <SelectItem value="admin">Admin</SelectItem>
+                                      <SelectItem value="owner" disabled={!isOwner}>
+                                        Owner
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  {updatingMemberId === member.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                                  ) : null}
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <Button
@@ -1316,7 +1494,11 @@ export default function WorkspaceSettings() {
                                         : undefined
                                   }
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  {updatingMemberId === member.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
                                 </Button>
                               </TableCell>
                             </TableRow>
@@ -1329,6 +1511,13 @@ export default function WorkspaceSettings() {
               )}
             </CardContent>
           </Card>
+
+          <div className="flex justify-end">
+            <Button onClick={handleSaveSettings} disabled={saving} className="bg-slate-900 hover:bg-slate-800">
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
         </TabsContent>
 
         <TabsContent value="status-groups" className="space-y-6">
@@ -1340,21 +1529,30 @@ export default function WorkspaceSettings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {savingStatusMove ? (
+                <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving status order...
+                </div>
+              ) : null}
               <DragDropContext onDragEnd={handleStatusDragEnd}>
                 {[...statusGroups].sort(byDisplayOrder).map((group) => {
                   const groupStatuses = groupedStatuses[group.group_key] || [];
                   const draftColor = statusDrafts[group.id]?.color_hex ?? group.color_hex ?? "#0F172A";
+                  const normalizedDraftColor = String(draftColor || "").trim().toUpperCase();
+                  const normalizedGroupColor = String(group.color_hex || "").trim().toUpperCase();
+                  const hasColorChanged = normalizedDraftColor !== normalizedGroupColor;
+                  const isSavingGroupColor = savingGroupColorId === group.id;
 
                   return (
                     <div key={group.id} className="rounded-xl border border-slate-200 p-4">
-                      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                        <div className="space-y-1">
-                          <p className="text-sm font-semibold text-slate-900">
+                      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div className="min-h-9 flex items-center">
+                          <p className="text-sm font-semibold text-slate-900 leading-none">
                             {ITEM_GROUP_LABELS[group.group_key] || group.display_name}
                           </p>
-                          <p className="text-xs text-slate-500">Fixed status group name</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 self-start md:self-auto">
                           <Input
                             value={draftColor}
                             onChange={(event) =>
@@ -1382,14 +1580,24 @@ export default function WorkspaceSettings() {
                             }
                             className="h-9 w-10 cursor-pointer rounded border border-slate-200 p-0"
                           />
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              void handleGroupColorSave(group, draftColor);
-                            }}
-                          >
-                            Save Color
-                          </Button>
+                          {hasColorChanged ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                void handleGroupColorSave(group, draftColor);
+                              }}
+                              disabled={isSavingGroupColor}
+                            >
+                              {isSavingGroupColor ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Saving...
+                                </>
+                              ) : (
+                                "Save Color"
+                              )}
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1401,7 +1609,7 @@ export default function WorkspaceSettings() {
                             className="space-y-2"
                           >
                             {groupStatuses.map((status, index) => (
-                              <Draggable key={status.id} draggableId={status.id} index={index}>
+                              <Draggable key={status.id} draggableId={status.id} index={index} isDragDisabled={savingStatusMove}>
                                 {(dragProvided, snapshot) => (
                                   <div
                                     ref={dragProvided.innerRef}
@@ -1442,9 +1650,21 @@ export default function WorkspaceSettings() {
                                             void handleStatusSave(status, { label: editingStatusLabel });
                                           }}
                                         >
-                                          Save
+                                          {savingStatusId === status.id ? (
+                                            <>
+                                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                              Saving...
+                                            </>
+                                          ) : (
+                                            "Save"
+                                          )}
                                         </Button>
-                                        <Button size="sm" variant="ghost" onClick={cancelStatusRename}>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={cancelStatusRename}
+                                          disabled={savingStatusId === status.id}
+                                        >
                                           Cancel
                                         </Button>
                                       </div>
@@ -1455,6 +1675,7 @@ export default function WorkspaceSettings() {
                                           size="icon"
                                           onClick={() => beginStatusRename(status)}
                                           aria-label="Edit status"
+                                          disabled={Boolean(savingStatusId) || deletingStatusId === status.id}
                                         >
                                           <Pencil className="h-4 w-4 text-slate-500" />
                                         </Button>
@@ -1462,12 +1683,20 @@ export default function WorkspaceSettings() {
                                           variant="ghost"
                                           size="icon"
                                           className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                                          onClick={() => {
-                                            void handleDeleteStatus(status);
-                                          }}
+                                          onClick={() => setStatusPendingDelete(status)}
                                           aria-label="Delete status"
+                                          disabled={deletingStatusId === status.id || groupStatuses.length <= 1}
+                                          title={
+                                            groupStatuses.length <= 1
+                                              ? "Each status group must keep at least one status."
+                                              : undefined
+                                          }
                                         >
-                                          <Trash2 className="h-4 w-4" />
+                                          {deletingStatusId === status.id ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                          ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                          )}
                                         </Button>
                                       </div>
                                     )}
@@ -1484,11 +1713,18 @@ export default function WorkspaceSettings() {
                         <Button
                           variant="outline"
                           onClick={() => {
-                            void handleAddStatus(group.group_key);
+                            setAddStatusGroupKey(group.group_key);
+                            setNewStatusLabel("");
+                            setShowAddStatusDialog(true);
                           }}
+                          disabled={creatingStatus}
                         >
-                          <Plus className="mr-2 h-4 w-4" />
-                          Add Status
+                          {creatingStatus && addStatusGroupKey === group.group_key ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="mr-2 h-4 w-4" />
+                          )}
+                          {creatingStatus && addStatusGroupKey === group.group_key ? "Adding..." : "Add Status"}
                         </Button>
                       </div>
                     </div>
@@ -1517,9 +1753,9 @@ export default function WorkspaceSettings() {
                       onClick={() => {
                         void moveItemType(itemType.id, "up");
                       }}
-                      disabled={index === 0}
+                      disabled={index === 0 || Boolean(reorderingItemTypeId)}
                     >
-                      ↑
+                      {reorderingItemTypeId === itemType.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "↑"}
                     </Button>
                     <Button
                       variant="ghost"
@@ -1527,9 +1763,9 @@ export default function WorkspaceSettings() {
                       onClick={() => {
                         void moveItemType(itemType.id, "down");
                       }}
-                      disabled={index === itemTypes.length - 1}
+                      disabled={index === itemTypes.length - 1 || Boolean(reorderingItemTypeId)}
                     >
-                      ↓
+                      {reorderingItemTypeId === itemType.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "↓"}
                     </Button>
                   </div>
 
@@ -1555,7 +1791,14 @@ export default function WorkspaceSettings() {
                           void saveItemType(itemType);
                         }}
                       >
-                        Save
+                        {savingItemType ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          "Save"
+                        )}
                       </Button>
                       <Button
                         size="sm"
@@ -1564,6 +1807,7 @@ export default function WorkspaceSettings() {
                           setEditingItemTypeId(null);
                           setEditingItemTypeLabel("");
                         }}
+                        disabled={savingItemType}
                       >
                         Cancel
                       </Button>
@@ -1577,6 +1821,7 @@ export default function WorkspaceSettings() {
                           setEditingItemTypeId(itemType.id);
                           setEditingItemTypeLabel(itemType.label || "");
                         }}
+                        disabled={savingItemType || Boolean(reorderingItemTypeId) || deletingItemTypeId === itemType.id}
                       >
                         <Pencil className="h-4 w-4 text-slate-500" />
                       </Button>
@@ -1587,8 +1832,13 @@ export default function WorkspaceSettings() {
                         onClick={() => {
                           void removeItemType(itemType);
                         }}
+                        disabled={deletingItemTypeId === itemType.id}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {deletingItemTypeId === itemType.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
                   )}
@@ -1612,19 +1862,17 @@ export default function WorkspaceSettings() {
                   }}
                   disabled={savingItemType}
                 >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Type
+                  {savingItemType ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-2 h-4 w-4" />
+                  )}
+                  {savingItemType ? "Saving..." : "Add Type"}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
-
-        {isOwner ? (
-          <TabsContent value="billing">
-            <WorkspaceBillingPanel workspace={workspace} />
-          </TabsContent>
-        ) : null}
 
         <TabsContent value="api">
           <WorkspaceApiPanel workspace={workspace} role={role} />
@@ -1692,7 +1940,14 @@ export default function WorkspaceSettings() {
               }}
               disabled={rotatingAccessCode}
             >
-              {rotatingAccessCode ? "Rotating..." : "Rotate Code"}
+              {rotatingAccessCode ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Rotating...
+                </>
+              ) : (
+                "Rotate Code"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1761,11 +2016,98 @@ export default function WorkspaceSettings() {
               }}
               disabled={savingStatusMove || !statusMoveTargetId}
             >
-              {savingStatusMove ? "Moving..." : "Move Status"}
+              {savingStatusMove ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Moving...
+                </>
+              ) : (
+                "Move Status"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={showAddStatusDialog}
+        onOpenChange={(open) => {
+          setShowAddStatusDialog(open);
+          if (!open) {
+            setNewStatusLabel("");
+            setAddStatusGroupKey("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Status</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="new-status-label">Status name</Label>
+            <Input
+              id="new-status-label"
+              value={newStatusLabel}
+              onChange={(event) => setNewStatusLabel(event.target.value)}
+              placeholder="Enter status name"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAddStatusDialog(false);
+                setNewStatusLabel("");
+                setAddStatusGroupKey("");
+              }}
+              disabled={creatingStatus}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                void handleAddStatus();
+              }}
+              disabled={creatingStatus}
+            >
+              {creatingStatus ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Status"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(statusPendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setStatusPendingDelete(null);
+          }
+        }}
+        title="Delete Status"
+        description={
+          statusPendingDelete
+            ? `Delete "${statusPendingDelete.label}"? Items using this status may need reassignment first.`
+            : ""
+        }
+        confirmLabel={
+          deletingStatusId === statusPendingDelete?.id ? "Deleting..." : "Delete Status"
+        }
+        onConfirm={() => {
+          if (statusPendingDelete) {
+            void handleDeleteStatus(statusPendingDelete);
+          }
+        }}
+        loading={deletingStatusId === statusPendingDelete?.id}
+        confirmClassName="bg-rose-600 hover:bg-rose-700"
+      />
         </>
       ) : null}
     </PageShell>

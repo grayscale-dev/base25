@@ -216,6 +216,7 @@ export default function Workspace({ section = "items", itemId = null }) {
               onChange={(event) => setAccessCode(event.target.value)}
               placeholder="Access code"
               className="text-center uppercase tracking-[0.3em]"
+              disabled={accessSubmitting}
               onKeyDown={(event) => {
                 if (event.key === "Enter") handleAccessCodeSubmit();
               }}
@@ -227,9 +228,16 @@ export default function Workspace({ section = "items", itemId = null }) {
             disabled={accessSubmitting || !accessCode.trim()}
             className="w-full bg-slate-900 hover:bg-slate-800"
           >
-            {accessSubmitting ? "Checking..." : "Join Workspace"}
+            {accessSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Checking...
+              </>
+            ) : (
+              "Join Workspace"
+            )}
           </Button>
-          <Button variant="outline" className="w-full" onClick={() => navigate("/")}>
+          <Button variant="outline" className="w-full" onClick={() => navigate("/")} disabled={accessSubmitting}>
             Go Home
           </Button>
         </div>

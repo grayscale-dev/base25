@@ -7,11 +7,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import Badge from "@/components/common/Badge";
+import RelativeDate from "@/components/common/RelativeDate";
 import AssigneeDisplay from "./AssigneeDisplay";
 import ItemThreadPanel from "./ItemThreadPanel";
-import { ITEM_GROUP_KEYS, getGroupLabel, getPriorityColor, getPriorityLabel } from "@/lib/item-groups";
+import { ITEM_GROUP_KEYS, getGroupColor as getDefaultGroupColor, getGroupLabel, getPriorityColor, getPriorityLabel } from "@/lib/item-groups";
 import { cn } from "@/lib/utils";
 
 const PRIORITY_OPTIONS = ["low", "medium", "high", "critical", "not_set"];
@@ -21,20 +22,17 @@ function draftFromItem(item) {
   return {
     id: item.id,
     group_key: item.group_key,
+    group_color: item.group_color || null,
     status_id: item.status_id,
+    status_label: item.status_label || "",
+    status_key: item.status_key || "",
     item_type_id: item.item_type_id || "",
     assigned_to: item.assigned_to || null,
+    assignee: item.assignee || null,
     title: item.title || "",
     metadata: item.metadata || {},
     visibility: item.visibility || "public",
   };
-}
-
-function formatDate(value) {
-  if (!value) return "Unknown";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return date.toLocaleString();
 }
 
 function getItemTypeValue(targetItem) {
@@ -89,12 +87,18 @@ export default function ItemDetailPanel({
   const getGroupDisplayLabel = (groupKey) =>
     groupLabelByKey.get(groupKey) || getGroupLabel(groupKey, String(groupKey));
 
-  const getGroupColor = (groupKey) => {
-    return (
+  const resolveGroupColor = (groupKey) => {
+    const color = (
       controller.groups.find((group) => group.group_key === groupKey)?.color_hex ||
+      draft?.group_color ||
       item?.group_color ||
-      "#0F172A"
+      getDefaultGroupColor(groupKey)
     );
+    const normalized = String(color || "").trim().toUpperCase();
+    if (normalized === "#FFF" || normalized === "#FFFFFF") {
+      return getDefaultGroupColor(groupKey);
+    }
+    return color;
   };
 
   const statusSections = useMemo(() => {
@@ -157,8 +161,9 @@ export default function ItemDetailPanel({
       return false;
     }
 
-    await controller.loadItemActivities(result.item || item);
-    setDraft(draftFromItem(result.item || item));
+    const hydratedItem = controller.hydrateItem(result.item || item);
+    await controller.loadItemActivities(hydratedItem);
+    setDraft(draftFromItem(hydratedItem));
     return true;
   };
 
@@ -199,7 +204,19 @@ export default function ItemDetailPanel({
     if (!draft) return;
     const normalizedAssignee = nextAssigneeId === "unassigned" ? null : nextAssigneeId;
     if (normalizedAssignee === draft.assigned_to) return;
-    await saveDetails({ assigned_to: normalizedAssignee });
+    const memberRecord = normalizedAssignee
+      ? controller.memberDirectoryById.get(normalizedAssignee) || null
+      : null;
+    await saveDetails({
+      assigned_to: normalizedAssignee,
+      assignee: memberRecord
+        ? {
+            id: memberRecord.user_id,
+            name: memberRecord.display_name || memberRecord.email,
+            profile_photo_url: memberRecord.profile_photo_url || null,
+          }
+        : null,
+    });
   };
 
   if (!item) return null;
@@ -216,9 +233,27 @@ export default function ItemDetailPanel({
     .filter((itemType) => itemType?.is_active !== false)
     .slice()
     .sort((left, right) => (left.display_order || 0) - (right.display_order || 0));
+  const currentAssignee = currentItem.assignee
+    || (currentItem.assigned_to
+      ? (() => {
+          const memberRecord = controller.memberDirectoryById.get(currentItem.assigned_to) || null;
+          if (!memberRecord) return null;
+          return {
+            id: memberRecord.user_id,
+            name: memberRecord.display_name || memberRecord.email,
+            profile_photo_url: memberRecord.profile_photo_url || null,
+          };
+        })()
+      : null);
 
   return (
     <div className="space-y-6">
+      {controller.savingItem ? (
+        <p className="inline-flex items-center gap-2 text-xs text-slate-500">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Saving changes...
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {isAdmin ? (
           <DropdownMenu>
@@ -232,7 +267,7 @@ export default function ItemDetailPanel({
                 <Badge
                   variant="outline"
                   className="border-0 text-white"
-                  style={{ backgroundColor: getGroupColor(currentItem.group_key) }}
+                  style={{ backgroundColor: resolveGroupColor(currentItem.group_key) }}
                 >
                   {combinedStatusLabel}
                 </Badge>
@@ -255,6 +290,7 @@ export default function ItemDetailPanel({
                           "w-full justify-between",
                           isCurrent && "bg-slate-100 text-slate-900"
                         )}
+                        disabled={controller.savingItem}
                         onClick={() => {
                           void handleStatusSelection(status.id);
                         }}
@@ -273,7 +309,7 @@ export default function ItemDetailPanel({
           <Badge
             variant="outline"
             className="border-0 text-white"
-            style={{ backgroundColor: getGroupColor(currentItem.group_key) }}
+            style={{ backgroundColor: resolveGroupColor(currentItem.group_key) }}
           >
             {combinedStatusLabel}
           </Badge>
@@ -298,6 +334,7 @@ export default function ItemDetailPanel({
                   <DropdownMenuItem
                     key={optionValue.id}
                     className={cn("w-full justify-between", isCurrent && "bg-slate-100 text-slate-900")}
+                    disabled={controller.savingItem}
                     onClick={() => {
                       void handleTypeSelection(optionValue.id);
                     }}
@@ -341,6 +378,7 @@ export default function ItemDetailPanel({
                   <DropdownMenuItem
                     key={optionValue}
                     className={cn("w-full justify-between", isCurrent && "bg-slate-100 text-slate-900")}
+                    disabled={controller.savingItem}
                     onClick={() => {
                       void handlePrioritySelection(optionValue);
                     }}
@@ -365,78 +403,66 @@ export default function ItemDetailPanel({
           </Badge>
         )}
 
-        {currentItem.group_key === "feedback" && !controller.isPublicAccess ? (
-          isAdmin ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="rounded-full"
-                  disabled={controller.savingItem}
-                  aria-label="Change assignee"
-                >
-                  <Badge variant="outline">
+        {currentItem.group_key === "feedback" && !controller.isPublicAccess && isAdmin ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="rounded-full"
+                disabled={controller.savingItem}
+                aria-label="Change assignee"
+              >
+                <Badge variant="outline">
+                  <AssigneeDisplay
+                    assignee={currentAssignee}
+                    fallback="Unassigned"
+                    sizeClassName="h-5 w-5"
+                    textClassName="text-xs text-slate-700"
+                  />
+                </Badge>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-64">
+              <DropdownMenuItem
+                className="w-full justify-between"
+                disabled={controller.savingItem}
+                onClick={() => {
+                  void handleAssigneeSelection("unassigned");
+                }}
+              >
+                <span>Unassigned</span>
+                {!currentItem.assigned_to ? <Check className="h-4 w-4 text-slate-600" /> : null}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {controller.memberDirectory.map((member) => {
+                const isCurrent = currentItem.assigned_to === member.user_id;
+                return (
+                  <DropdownMenuItem
+                    key={member.user_id}
+                    className={cn("w-full justify-between", isCurrent && "bg-slate-100 text-slate-900")}
+                    disabled={controller.savingItem}
+                    onClick={() => {
+                      void handleAssigneeSelection(member.user_id);
+                    }}
+                  >
                     <AssigneeDisplay
-                      assignee={currentItem.assignee}
-                      fallback="Unassigned"
-                      sizeClassName="h-5 w-5"
-                      textClassName="text-xs text-slate-700"
-                    />
-                  </Badge>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-64">
-                <DropdownMenuItem
-                  className="w-full justify-between"
-                  onClick={() => {
-                    void handleAssigneeSelection("unassigned");
-                  }}
-                >
-                  <span>Unassigned</span>
-                  {!currentItem.assigned_to ? <Check className="h-4 w-4 text-slate-600" /> : null}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {controller.memberDirectory.map((member) => {
-                  const isCurrent = currentItem.assigned_to === member.user_id;
-                  return (
-                    <DropdownMenuItem
-                      key={member.user_id}
-                      className={cn("w-full justify-between", isCurrent && "bg-slate-100 text-slate-900")}
-                      onClick={() => {
-                        void handleAssigneeSelection(member.user_id);
+                      assignee={{
+                        name: member.display_name || member.email,
+                        profile_photo_url: member.profile_photo_url || null,
                       }}
-                    >
-                      <AssigneeDisplay
-                        assignee={{
-                          name: member.display_name || member.email,
-                          profile_photo_url: member.profile_photo_url || null,
-                        }}
-                        sizeClassName="h-5 w-5"
-                        textClassName="text-sm text-slate-700"
-                      />
-                      {isCurrent ? <Check className="h-4 w-4 text-slate-600" /> : null}
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Badge variant="outline">
-              <AssigneeDisplay
-                assignee={currentItem.assignee}
-                fallback="Unassigned"
-                sizeClassName="h-5 w-5"
-                textClassName="text-xs text-slate-700"
-              />
-            </Badge>
-          )
+                      sizeClassName="h-5 w-5"
+                      textClassName="text-sm text-slate-700"
+                    />
+                    {isCurrent ? <Check className="h-4 w-4 text-slate-600" /> : null}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
 
         <span className="text-xs text-slate-500">
-          Updated{" "}
-          {formatDate(
-            item.updated_date || item.updated_at || item.created_date || item.created_at
-          )}
+          Updated <RelativeDate value={item.updated_date || item.updated_at || item.created_date || item.created_at} />
         </span>
       </div>
 

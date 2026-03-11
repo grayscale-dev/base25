@@ -3,7 +3,9 @@ import { requireAuth, requireOwner, verifyWorkspace } from "../_shared/authHelpe
 import { supabaseAdmin } from "../_shared/supabase.ts";
 
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
-const servicePriceIdsRaw = Deno.env.get("STRIPE_PRICE_SERVICE_IDS") ?? "{}";
+const flatMonthlyPriceId = Deno.env.get("STRIPE_PRICE_FLAT_MONTHLY_ID") ?? "";
+const legacyServicePriceIdsRaw = Deno.env.get("STRIPE_PRICE_SERVICE_IDS") ?? "{}";
+const FLAT_MONTHLY_PRICE_CENTS = 3000;
 
 const stripe = new Stripe(stripeSecretKey, { apiVersion: "2023-10-16" });
 
@@ -13,11 +15,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ALL_SERVICES = ["feedback", "roadmap", "changelog"];
-
-function parseServicePriceIds() {
+function parseLegacyServicePriceIds() {
   try {
-    const parsed = JSON.parse(servicePriceIdsRaw);
+    const parsed = JSON.parse(legacyServicePriceIdsRaw);
     if (parsed && typeof parsed === "object") {
       return parsed as Record<string, string>;
     }
@@ -26,13 +26,22 @@ function parseServicePriceIds() {
   }
 
   const mapping: Record<string, string> = {};
-  servicePriceIdsRaw.split(",").forEach((pair) => {
+  legacyServicePriceIdsRaw.split(",").forEach((pair) => {
     const [service, priceId] = pair.split(":").map((value) => value.trim());
     if (service && priceId) {
       mapping[service] = priceId;
     }
   });
   return mapping;
+}
+
+function resolveFlatPriceId() {
+  if (flatMonthlyPriceId) {
+    return flatMonthlyPriceId;
+  }
+  const legacyMap = parseLegacyServicePriceIds();
+  const firstLegacyPrice = Object.values(legacyMap).find(Boolean);
+  return firstLegacyPrice || "";
 }
 
 Deno.serve(async (req) => {
@@ -61,7 +70,8 @@ Deno.serve(async (req) => {
 
     const payload = await req.json();
     const workspaceId = payload.workspace_id;
-    const enabledServices: string[] = payload.enabled_services || [];
+    // Legacy compatibility: tolerate service-based fields but ignore them for flat pricing.
+    const enabledServices: string[] = Array.isArray(payload.enabled_services) ? payload.enabled_services : [];
     const successUrl = payload.success_url;
     const cancelUrl = payload.cancel_url;
 
@@ -88,22 +98,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const priceMap = parseServicePriceIds();
-    const servicesToEnable = enabledServices.filter((service) =>
-      ALL_SERVICES.includes(service)
-    );
-
-    if (servicesToEnable.length === 0) {
-      return new Response(JSON.stringify({ error: "Select at least one service" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const missingPrice = servicesToEnable.find((service) => !priceMap[service]);
-    if (missingPrice) {
+    const priceId = resolveFlatPriceId();
+    if (!priceId) {
       return new Response(
-        JSON.stringify({ error: `Missing price for ${missingPrice}` }),
+        JSON.stringify({ error: "STRIPE_PRICE_FLAT_MONTHLY_ID is not configured" }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -111,23 +109,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    for (const service of servicesToEnable) {
-      const priceId = priceMap[service];
-      const price = await stripe.prices.retrieve(priceId);
-      const isMonthly = price.recurring?.interval === "month";
-      const isExpectedAmount = price.unit_amount === 2500;
-      if (!isMonthly || !isExpectedAmount) {
-        return new Response(
-          JSON.stringify({
-            error:
-              `Price for ${service} must be a monthly recurring price set to $25.00`,
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
-      }
+    const price = await stripe.prices.retrieve(priceId);
+    const isMonthly = price.recurring?.interval === "month";
+    const isExpectedAmount = price.unit_amount === FLAT_MONTHLY_PRICE_CENTS;
+    if (!isMonthly || !isExpectedAmount) {
+      return new Response(
+        JSON.stringify({
+          error: "Configured flat monthly Stripe price must be a monthly recurring $30.00 price.",
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const { data: billingRow } = await supabaseAdmin
@@ -149,37 +143,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    const lineItems = servicesToEnable.map((service) => ({
-      price: priceMap[service],
-      quantity: 1,
-    }));
-
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
       success_url: successUrl,
       cancel_url: cancelUrl,
-      line_items: lineItems,
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
       subscription_data: {
         trial_period_days: 7,
         metadata: {
           workspace_id: workspaceId,
-          enabled_services: servicesToEnable.join(","),
+          billing_model: "flat_monthly",
         },
       },
       metadata: {
         workspace_id: workspaceId,
-        enabled_services: servicesToEnable.join(","),
+        billing_model: "flat_monthly",
+        // Keep legacy metadata shape populated to simplify transition consumers.
+        enabled_services: enabledServices.join(","),
       },
-    });
-
-    const serviceRows = ALL_SERVICES.map((service) => ({
-      workspace_id: workspaceId,
-      service,
-      enabled: servicesToEnable.includes(service),
-    }));
-    await supabaseAdmin.from("billing_services").upsert(serviceRows, {
-      onConflict: "workspace_id,service",
     });
 
     return new Response(

@@ -4,6 +4,7 @@ const WORKSPACE_SESSION_KEYS = {
   role: 'currentRole',
   isPublicAccess: 'isPublicAccess',
   analyticsSessionId: 'analytics_session_id',
+  settingsTabIntent: 'workspace_settings_tab_intent',
 };
 
 function getSessionStorage() {
@@ -90,4 +91,22 @@ export function getOrCreateAnalyticsSessionId() {
   }
 
   return sessionId;
+}
+
+export function setWorkspaceSettingsTabIntent(tab) {
+  const storage = getSessionStorage();
+  if (!storage) return;
+  if (!tab) {
+    storage.removeItem(WORKSPACE_SESSION_KEYS.settingsTabIntent);
+    return;
+  }
+  storage.setItem(WORKSPACE_SESSION_KEYS.settingsTabIntent, String(tab));
+}
+
+export function consumeWorkspaceSettingsTabIntent() {
+  const storage = getSessionStorage();
+  if (!storage) return null;
+  const intent = storage.getItem(WORKSPACE_SESSION_KEYS.settingsTabIntent);
+  storage.removeItem(WORKSPACE_SESSION_KEYS.settingsTabIntent);
+  return intent || null;
 }

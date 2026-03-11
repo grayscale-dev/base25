@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Filter, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Filter, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,7 @@ import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
+import RelativeDate from "@/components/common/RelativeDate";
 import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
 import AssigneeDisplay from "./AssigneeDisplay";
@@ -45,13 +46,6 @@ function sortableValue(item, key) {
     return item.updated_date || item.updated_at || item.created_date || item.created_at || "";
   }
   return item.title || "";
-}
-
-function formatDate(value) {
-  if (!value) return "Unknown";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return date.toLocaleString();
 }
 
 function uniqueStatuses(statuses) {
@@ -77,6 +71,7 @@ export default function AllItemsPage({ workspace, controller }) {
   const [draftStatusFilter, setDraftStatusFilter] = useState("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
+  const [openingItemId, setOpeningItemId] = useState(null);
 
   useEffect(() => {
     void controller.loadItems({ groupKey: null, statusId: "all" });
@@ -174,8 +169,13 @@ export default function AllItemsPage({ workspace, controller }) {
   };
 
   const openItem = async (item) => {
-    await controller.loadItemActivities(item);
-    setShowItemDrawer(true);
+    setOpeningItemId(item.id);
+    try {
+      await controller.loadItemActivities(item);
+      setShowItemDrawer(true);
+    } finally {
+      setOpeningItemId(null);
+    }
   };
 
   const applyFilters = () => {
@@ -205,9 +205,18 @@ export default function AllItemsPage({ workspace, controller }) {
         title="All Items"
         description={`Advanced item management for ${workspace?.name}.`}
         actions={
-          <Button onClick={() => setShowCreateModal(true)} className="bg-slate-900 hover:bg-slate-800">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Item
+          <Button
+            onClick={() => setShowCreateModal(true)}
+            disabled={controller.savingItem}
+            aria-busy={controller.savingItem}
+            className="bg-slate-900 hover:bg-slate-800"
+          >
+            {controller.savingItem ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="mr-2 h-4 w-4" />
+            )}
+            {controller.savingItem ? "Saving..." : "Create Item"}
           </Button>
         }
       />
@@ -220,7 +229,7 @@ export default function AllItemsPage({ workspace, controller }) {
               id="item-search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search title, initial post, group, status..."
+              placeholder="Search title, description, group, status..."
               className="mt-1.5 bg-white"
             />
           </div>
@@ -268,11 +277,11 @@ export default function AllItemsPage({ workspace, controller }) {
         />
       ) : (
         <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="px-3 sm:px-4">
+          <div>
             <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>
+                    <TableHead className="px-3 sm:px-4">
                       <button
                         type="button"
                         className="inline-flex items-center gap-1"
@@ -288,7 +297,7 @@ export default function AllItemsPage({ workspace, controller }) {
                         ) : null}
                       </button>
                     </TableHead>
-                    <TableHead>
+                    <TableHead className="px-3 sm:px-4">
                       <button
                         type="button"
                         className="inline-flex items-center gap-1"
@@ -304,9 +313,9 @@ export default function AllItemsPage({ workspace, controller }) {
                         ) : null}
                       </button>
                     </TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Assignee</TableHead>
-                    <TableHead>
+                    <TableHead className="px-3 sm:px-4">Type</TableHead>
+                    <TableHead className="px-3 sm:px-4">Assignee</TableHead>
+                    <TableHead className="px-3 sm:px-4">
                       <button
                         type="button"
                         className="inline-flex items-center gap-1"
@@ -333,15 +342,15 @@ export default function AllItemsPage({ workspace, controller }) {
                         void openItem(item);
                       }}
                     >
-                      <TableCell>
+                      <TableCell className="px-3 sm:px-4">
                         <div>
                           <p className="font-medium text-slate-900">{item.title}</p>
                           <p className="line-clamp-1 text-xs text-slate-500">
-                            {item.description || "No initial post."}
+                            {item.description || "No description."}
                           </p>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm text-slate-700">
+                      <TableCell className="px-3 sm:px-4 text-sm text-slate-700">
                         <Badge
                           variant="outline"
                           className="border-0 text-white"
@@ -350,18 +359,19 @@ export default function AllItemsPage({ workspace, controller }) {
                           {getGroupLabel(item.group_key)} • {getStatusLabel(item)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-slate-700">{item.item_type_label || "No Type"}</TableCell>
-                      <TableCell className="text-sm text-slate-700">
+                      <TableCell className="px-3 sm:px-4 text-sm text-slate-700">{item.item_type_label || "No Type"}</TableCell>
+                      <TableCell className="px-3 sm:px-4 text-sm text-slate-700">
                         {item.group_key === "feedback" ? (
                           <AssigneeDisplay assignee={item.assignee} fallback="Unassigned" />
                         ) : (
                           "—"
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-slate-700">
-                        {formatDate(
-                          item.updated_date || item.updated_at || item.created_date || item.created_at
-                        )}
+                      <TableCell className="px-3 sm:px-4 text-sm text-slate-700">
+                        <span className="inline-flex items-center gap-2">
+                          <RelativeDate value={item.updated_date || item.updated_at || item.created_date || item.created_at} />
+                          {openingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" /> : null}
+                        </span>
                       </TableCell>
                     </TableRow>
                   ))}

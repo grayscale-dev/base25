@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { workspaceItemUrl } from "@/components/utils/workspaceUrl";
 import ItemDetailPanel from "./ItemDetailPanel";
-import { ExternalLink, Pencil, Trash2, X } from "lucide-react";
+import { ExternalLink, Loader2, Pencil, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 export default function ItemDetailDrawer({
@@ -133,7 +133,14 @@ export default function ItemDetailDrawer({
                       disabled={controller.savingItem}
                       className="bg-slate-900 hover:bg-slate-800"
                     >
-                      {controller.savingItem ? "Saving..." : "Save"}
+                      {controller.savingItem ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save"
+                      )}
                     </Button>
                     <Button
                       size="sm"
@@ -178,7 +185,11 @@ export default function ItemDetailDrawer({
                     title="Delete item"
                     disabled={controller.deletingItemId === visibleItem.id}
                   >
-                    <Trash2 className="h-4 w-4 text-rose-500" />
+                    {controller.deletingItemId === visibleItem.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-rose-500" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 text-rose-500" />
+                    )}
                   </Button>
                 ) : null}
                 <Button

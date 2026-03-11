@@ -41,6 +41,29 @@ const memberNavItems = [
   { name: 'Changelog', icon: History, page: 'Changelog', section: 'changelog' },
 ];
 
+const DEFAULT_WORKSPACE_BRAND = '#0f172a';
+
+function normalizeHexColor(value, fallback = DEFAULT_WORKSPACE_BRAND) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return fallback;
+  const shortMatch = normalized.match(/^#([0-9a-fA-F]{3})$/);
+  if (shortMatch) {
+    const [r, g, b] = shortMatch[1].split('');
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  const fullMatch = normalized.match(/^#([0-9a-fA-F]{6})$/);
+  if (fullMatch) return `#${fullMatch[1]}`.toLowerCase();
+  return fallback;
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = normalizeHexColor(hex);
+  const r = parseInt(normalized.slice(1, 3), 16);
+  const g = parseInt(normalized.slice(3, 5), 16);
+  const b = parseInt(normalized.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -201,6 +224,23 @@ export default function Layout({ children, currentPageName }) {
       resolveWorkspaceSection(pathSection || currentPageName?.toLowerCase(), role, isPublicViewing) ||
       getDefaultWorkspaceSection(role, isPublicViewing)
     );
+  const workspaceBrandColor = normalizeHexColor(
+    isPublicPage ? DEFAULT_WORKSPACE_BRAND : workspace?.primary_color || DEFAULT_WORKSPACE_BRAND
+  );
+  const workspaceThemeStyle = {
+    '--workspace-brand': workspaceBrandColor,
+    '--workspace-brand-soft': hexToRgba(workspaceBrandColor, 0.12),
+    '--workspace-brand-soft-strong': hexToRgba(workspaceBrandColor, 0.22),
+    '--workspace-brand-fg': workspaceBrandColor,
+  };
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    root.style.setProperty('--workspace-brand', workspaceBrandColor);
+    root.style.setProperty('--workspace-brand-soft', hexToRgba(workspaceBrandColor, 0.12));
+    root.style.setProperty('--workspace-brand-soft-strong', hexToRgba(workspaceBrandColor, 0.22));
+    root.style.setProperty('--workspace-brand-fg', workspaceBrandColor);
+  }, [workspaceBrandColor]);
   const workspaceHomeSection = getDefaultWorkspaceSection(role, isPublicViewing);
   const isActive = (section) => !isSettingsPage && section === activeSection;
 
@@ -231,7 +271,7 @@ export default function Layout({ children, currentPageName }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 base25-workspace-theme" style={workspaceThemeStyle}>
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -308,11 +348,10 @@ export default function Layout({ children, currentPageName }) {
                       <Link
                         key={item.page}
                         to={workspaceUrl(workspace.slug, item.section)}
-                        style={active ? { backgroundColor: `${workspace.primary_color || '#0f172a'}15` } : {}}
                         className={cn(
                           'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
                           active 
-                            ? 'text-slate-900' 
+                            ? 'bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                         )}
                       >
@@ -388,7 +427,7 @@ export default function Layout({ children, currentPageName }) {
                             className={cn(
                               'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all',
                               active 
-                                ? 'bg-slate-100 text-slate-900' 
+                                ? 'bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                             )}
                           >
@@ -412,7 +451,7 @@ export default function Layout({ children, currentPageName }) {
                             className={cn(
                               "flex items-center gap-3 rounded-lg px-4 py-3 text-sm",
                               isSettingsPage
-                                ? "bg-slate-100 font-medium text-slate-900"
+                                ? "bg-[var(--workspace-brand-soft)] font-medium text-[var(--workspace-brand-fg)]"
                                 : "text-slate-600 hover:bg-slate-50"
                             )}
                           >
