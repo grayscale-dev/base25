@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "@/lib/router";
 import { Settings, Users, Key, Trash2, Save, Copy, Check, Plus, User, CreditCard } from "lucide-react";
@@ -47,6 +49,11 @@ const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "bill
 
 function byDisplayOrder(a, b) {
   return (a.display_order || 0) - (b.display_order || 0);
+}
+
+function getErrorStatus(error) {
+  if (!error) return null;
+  return error.status ?? error.context?.status ?? error.response?.status ?? null;
 }
 
 export default function WorkspaceSettings() {
@@ -181,7 +188,11 @@ export default function WorkspaceSettings() {
 
       const [rolesData, accessCodeData] = await Promise.all([
         base44.entities.WorkspaceRole.filter({ workspace_id: workspaceId }),
-        base44.functions.invoke('getWorkspaceAccessCodeStatus', { workspace_id: workspaceId }),
+        base44.functions.invoke(
+          "getWorkspaceAccessCodeStatus",
+          { workspace_id: workspaceId },
+          { authMode: "user" }
+        ),
       ]);
 
       setMembers(rolesData);
@@ -193,7 +204,12 @@ export default function WorkspaceSettings() {
       await ensureStatusConfig(workspaceId);
     } catch (error) {
       console.error("Failed to load workspace settings:", error);
-      setInitialLoadError("Unable to load workspace settings. Please retry.");
+      const status = getErrorStatus(error);
+      if (status === 401) {
+        setInitialLoadError("Your session is invalid for this environment. Sign out and sign in again.");
+      } else {
+        setInitialLoadError("Unable to load workspace settings. Please retry.");
+      }
     } finally {
       setLoading(false);
     }
@@ -370,10 +386,14 @@ export default function WorkspaceSettings() {
     if (!workspace) return;
     setCreatingAccessCode(true);
     try {
-      const { data } = await base44.functions.invoke('setWorkspaceAccessCode', {
-        workspace_id: workspace.id,
-        expires_in: accessCodeExpiry,
-      });
+      const { data } = await base44.functions.invoke(
+        "setWorkspaceAccessCode",
+        {
+          workspace_id: workspace.id,
+          expires_in: accessCodeExpiry,
+        },
+        { authMode: "user" }
+      );
       setGeneratedAccessCode(data?.access_code ?? "");
       setAccessCodeStatus({
         hasCode: true,
@@ -382,7 +402,16 @@ export default function WorkspaceSettings() {
       notifyStatus("success", "Access code generated.");
     } catch (error) {
       console.error("Failed to create access code:", error);
-      notifyStatus("danger", "Failed to create access code.");
+      const status = getErrorStatus(error);
+      if (status === 401) {
+        notifyStatus("danger", "Your session expired. Sign in again and retry.");
+      } else if (status === 403) {
+        notifyStatus("danger", "Only workspace admins can generate access codes.");
+      } else if (status === 404) {
+        notifyStatus("danger", "Workspace not found or no longer active.");
+      } else {
+        notifyStatus("danger", "Failed to create access code.");
+      }
     } finally {
       setCreatingAccessCode(false);
     }

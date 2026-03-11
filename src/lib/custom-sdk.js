@@ -1,8 +1,8 @@
 import { supabase } from "./supabase-client.js";
 import { env } from "./env.js";
 
-const isDevEnv = process.env.NODE_ENV === "development";
 const supabaseUrl = env.supabaseUrl;
+const defaultAppPath = "/workspaces";
 
 const isNetworkFetchFailure = (error) => {
   const message = error?.message || "";
@@ -13,6 +13,19 @@ const buildSupabaseConnectionError = () =>
   new Error(
     `Unable to reach Supabase Auth at ${supabaseUrl}. Start Supabase locally or configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY with a reachable project.`
   );
+
+const buildSignInUrl = (redirectTo) => {
+  const fallback = `${window.location.origin}${defaultAppPath}`;
+  const target = redirectTo || fallback;
+  const currentUrl = new URL(window.location.href);
+  const targetUrl = new URL(target, currentUrl.origin);
+  const signInUrl = new URL("/auth/sign-in", currentUrl.origin);
+  signInUrl.searchParams.set(
+    "returnTo",
+    `${targetUrl.pathname}${targetUrl.search}`
+  );
+  return signInUrl.toString();
+};
 
 
 /**
@@ -420,126 +433,11 @@ export class UserEntity extends CustomEntity {
   }
 
   /**
-   * Sign in with OAuth provider or development mode
-   * @param {string} provider - OAuth provider (google, github, etc.) or 'dev' for development
+   * Start OTP-only authentication by redirecting to /auth/sign-in.
    * @returns {Promise<void>}
    */
-  async login(provider) {
-    // For local development, use a simple email/password flow
-    if (provider === "dev") {
-      // Create a development user if it doesn't exist
-      const devEmail = "dev@localhost.com";
-      const devPassword = "dev123456";
-
-      try {
-        // Try to sign in first using regular supabase client
-        const { data: signInData, error: signInError } =
-          await supabase.auth.signInWithPassword({
-            email: devEmail,
-            password: devPassword,
-          });
-
-        if (signInError) {
-          const message = signInError.message || "";
-
-          if (message.includes("Email not confirmed")) {
-            throw new Error(
-              "Email not confirmed. Disable email confirmations in Supabase Auth or confirm the dev user."
-            );
-          }
-
-          if (!message.includes("Invalid login credentials")) {
-            console.log("Sign in failed:", message);
-            throw signInError;
-          }
-
-          console.log(
-            "Sign in failed, attempting to create user:",
-            signInError.message
-          );
-
-          const { data: signUpData, error: signUpError } =
-            await supabase.auth.signUp({
-              email: devEmail,
-              password: devPassword,
-              options: {
-                data: {
-                  first_name: "Development",
-                  last_name: "User",
-                  full_name: "Development User",
-                  role: "admin",
-                },
-              },
-            });
-
-          if (signUpError) {
-            console.error("Sign up failed:", signUpError);
-            throw new Error(
-              signUpError.message ||
-                "Sign up failed. Please wait a minute and try again."
-            );
-          }
-
-          console.log("User created successfully:", signUpData);
-
-          // For local development, we might need to confirm the user manually
-          // or the user might be auto-confirmed depending on Supabase settings
-          if (signUpData.user && !signUpData.user.email_confirmed_at) {
-            console.log(
-              "User created but not confirmed. In production, check email for confirmation."
-            );
-          }
-
-          // Try to sign in again after signup
-          const { data: signInAfterSignUpData, error: signInAfterSignUpError } =
-            await supabase.auth.signInWithPassword({
-              email: devEmail,
-              password: devPassword,
-            });
-
-          if (signInAfterSignUpError) {
-            console.error(
-              "Sign in after signup failed:",
-              signInAfterSignUpError
-            );
-            throw signInAfterSignUpError;
-          }
-
-          console.log(
-            "Successfully signed in after signup:",
-            signInAfterSignUpData
-          );
-        } else {
-          console.log("Successfully signed in:", signInData);
-        }
-
-        const redirect = localStorage.getItem("post_login_redirect");
-        if (redirect) {
-          localStorage.removeItem("post_login_redirect");
-          window.location.href = redirect;
-        } else {
-          // Refresh the page to ensure authentication state is properly loaded
-          window.location.reload();
-        }
-      } catch (error) {
-        if (isNetworkFetchFailure(error)) {
-          throw buildSupabaseConnectionError();
-        }
-        console.error("Development login failed:", error);
-        throw error;
-      }
-      return;
-    }
-
-    // For production, use OAuth with regular supabase client
-    const redirect = localStorage.getItem("post_login_redirect");
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: redirect || window.location.origin,
-      },
-    });
-    if (error) throw error;
+  async login() {
+    window.location.assign(buildSignInUrl());
   }
 
   /**
@@ -554,22 +452,9 @@ export class UserEntity extends CustomEntity {
     }
   }
 
-  async redirectToLogin(redirectTo = `${window.location.origin}/workspaces`) {
+  async redirectToLogin(redirectTo = `${window.location.origin}${defaultAppPath}`) {
     try {
-      let provider = env.authProvider;
-      if (!provider) {
-        if (isDevEnv) {
-          provider = "dev";
-        } else {
-          throw new Error(
-            "NEXT_PUBLIC_AUTH_PROVIDER is not set. Configure an OAuth provider for production."
-          );
-        }
-      }
-      if (redirectTo) {
-        localStorage.setItem("post_login_redirect", redirectTo);
-      }
-      await this.login(provider);
+      window.location.assign(buildSignInUrl(redirectTo));
       return { ok: true };
     } catch (error) {
       const resolvedError = isNetworkFetchFailure(error)
@@ -811,7 +696,7 @@ export function createCustomClient() {
     auth: new UserEntity(),
     functions: {
       invoke: async (name, payload = {}, options = {}) => {
-        const { authMode = "auto", ...invokeOptions } = options || {};
+        const { authMode = "user", ...invokeOptions } = options || {};
         const shouldUseUserToken = authMode !== "anon";
         let accessToken = shouldUseUserToken
           ? await getValidFunctionAccessToken()

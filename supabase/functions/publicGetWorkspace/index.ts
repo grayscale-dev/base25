@@ -1,31 +1,49 @@
+import { requireAuth } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, addCacheHeaders, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-forwarded-authorization, x-user-access-token, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 
 Deno.serve(async (req) => {
   try {
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
     }
+
     const rateLimitResponse = await applyRateLimit(req, RATE_LIMITS.PUBLIC_API);
-    if (rateLimitResponse) return rateLimitResponse;
-
-    const payload = await req.json();
-    const { slug } = payload;
-
-    if (!slug) {
-      return new Response(JSON.stringify({ error: "Workspace slug is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (rateLimitResponse) {
+      return new Response(rateLimitResponse.body, {
+        status: rateLimitResponse.status,
+        headers: corsHeaders,
       });
     }
 
-    const { data, error } = await supabaseAdmin
+    const authCheck = await requireAuth(req);
+    if (!authCheck.success) {
+      return new Response(authCheck.error.body, {
+        status: authCheck.error.status,
+        headers: corsHeaders,
+      });
+    }
+
+    const payload = await req.json();
+    const slug = String(payload?.slug || "").trim().toLowerCase();
+    if (!slug) {
+      return json({ error: "Workspace slug is required" }, 400);
+    }
+
+    const { data: workspace, error: workspaceError } = await supabaseAdmin
       .from("workspaces")
       .select("*")
       .eq("slug", slug)
@@ -33,105 +51,73 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    if (error) {
-      console.error("Workspace lookup error:", error);
-      return new Response(JSON.stringify({ error: "Internal server error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (workspaceError) {
+      console.error("Workspace lookup error:", workspaceError);
+      return json({ error: "Internal server error" }, 500);
+    }
+    if (!workspace) {
+      return json({ error: "Workspace not found" }, 404);
     }
 
-    if (!data) {
-      return new Response(JSON.stringify({ error: "Workspace not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const userId = authCheck.user.id;
+    const userEmail = authCheck.user.email;
+
+    const { data: existingRole, error: roleLookupError } = await supabaseAdmin
+      .from("workspace_roles")
+      .select("role")
+      .eq("workspace_id", workspace.id)
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (roleLookupError) {
+      console.error("Workspace role lookup error:", roleLookupError);
+      return json({ error: "Internal server error" }, 500);
     }
 
-    if (data.visibility !== "public") {
-      const authHeader = req.headers.get("Authorization") ?? "";
-      const token = authHeader.startsWith("Bearer ")
-        ? authHeader.replace("Bearer ", "")
-        : null;
-
-      if (!token) {
-        return new Response(
-          JSON.stringify({ error: "This workspace is not publicly accessible" }),
-          {
-            status: 403,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+    let resolvedRole = existingRole?.role || null;
+    if (!resolvedRole) {
+      if (workspace.visibility !== "public") {
+        return json({ error: "This workspace is not accessible" }, 403);
       }
 
-      const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(
-        token,
-      );
-      if (authError || !authData?.user) {
-        console.error("publicGetWorkspace auth failure", {
-          hasToken: Boolean(token),
-          errorMessage: authError?.message,
-          errorStatus: authError?.status,
-          errorName: authError?.name,
-        });
-        return new Response(
-          JSON.stringify({
-            error: "Unauthorized",
-            debug: {
-              code: "AUTH_GET_USER_FAILED",
-              message: authError?.message || null,
-              status: authError?.status || null,
-            },
-          }),
-          {
-            status: 401,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
-      }
-
-      const userId = authData.user.id;
-
-      const { data: role } = await supabaseAdmin
+      const { data: insertedRole, error: insertRoleError } = await supabaseAdmin
         .from("workspace_roles")
-        .select("id")
-        .eq("workspace_id", data.id)
-        .eq("user_id", userId)
-        .limit(1)
-        .maybeSingle();
-
-      if (!role) {
-        return new Response(
-          JSON.stringify({ error: "This workspace is not accessible" }),
+        .upsert(
           {
-            status: 403,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            workspace_id: workspace.id,
+            user_id: userId,
+            email: userEmail,
+            role: "viewer",
+            assigned_via: "public",
           },
-        );
+          { onConflict: "workspace_id,user_id" },
+        )
+        .select("role")
+        .single();
+
+      if (insertRoleError) {
+        console.error("Workspace role upsert error:", insertRoleError);
+        return json({ error: "Unable to join workspace" }, 500);
       }
+
+      resolvedRole = insertedRole?.role || "viewer";
     }
 
-    const response = new Response(
-      JSON.stringify({
-        id: data.id,
-        name: data.name,
-        slug: data.slug,
-        description: data.description || "",
-        logo_url: data.logo_url || "",
-        primary_color: data.primary_color || "#0f172a",
-        visibility: data.visibility,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-
-    return addCacheHeaders(response, 300);
-  } catch (error) {
-    console.error("Public workspace fetch error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const response = json({
+      id: workspace.id,
+      name: workspace.name,
+      slug: workspace.slug,
+      description: workspace.description || "",
+      logo_url: workspace.logo_url || "",
+      primary_color: workspace.primary_color || "#0f172a",
+      visibility: workspace.visibility,
+      role: resolvedRole,
     });
+
+    return addCacheHeaders(response, 120);
+  } catch (error) {
+    console.error("Workspace fetch error:", error);
+    return json({ error: "Internal server error" }, 500);
   }
 });

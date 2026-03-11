@@ -1,7 +1,13 @@
-import { createClient } from '@supabase/supabase-js'
-import { env } from '@/lib/env'
+import { createBrowserClient } from "@supabase/ssr";
+import { env } from "@/lib/env";
 
-const supabaseUrl = env.supabaseUrl
-const supabaseAnonKey = env.supabaseAnonKey
+let browserClient = null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export function getSupabaseBrowserClient() {
+  if (!browserClient) {
+    browserClient = createBrowserClient(env.supabaseUrl, env.supabaseAnonKey);
+  }
+  return browserClient;
+}
+
+export const supabase = getSupabaseBrowserClient();

@@ -16,5 +16,4 @@ export const env = {
     ""
   ),
   base44AppBaseUrl: fallback(process.env.NEXT_PUBLIC_BASE44_APP_BASE_URL, ""),
-  authProvider: fallback(process.env.NEXT_PUBLIC_AUTH_PROVIDER, ""),
 };

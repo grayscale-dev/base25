@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "@/lib/router";
 import { Link as LinkIcon, Loader2, LogOut, Plus } from "lucide-react";
@@ -83,7 +85,7 @@ export default function Workspaces() {
         const { data } = await base44.functions.invoke(
           "checkWorkspaceSlug",
           { slug: normalizedSlug },
-          { authMode: "anon" }
+          { authMode: "user" }
         );
 
         if (data?.available) {
@@ -120,7 +122,9 @@ export default function Workspaces() {
       try {
         currentUser = await base44.auth.me();
       } catch {
-        window.location.replace(createPageUrl("Home"));
+        await base44.auth.redirectToLogin(
+          window.location.origin + createPageUrl("Workspaces")
+        );
         return;
       }
 
@@ -628,4 +632,3 @@ export default function Workspaces() {
     </ProtectedRoute>
   );
 }
-

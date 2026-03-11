@@ -1,9 +1,10 @@
+import { requireAuth } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, addNoCacheHeaders, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-forwarded-authorization, x-user-access-token, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -27,6 +28,14 @@ Deno.serve(async (req) => {
       identifier: slug,
     });
     if (rateLimitResponse) return rateLimitResponse;
+
+    const authCheck = await requireAuth(req);
+    if (!authCheck.success) {
+      return new Response(authCheck.error.body, {
+        status: authCheck.error.status,
+        headers: corsHeaders,
+      });
+    }
 
     const { data: workspace, error: workspaceError } = await supabaseAdmin
       .from("workspaces")

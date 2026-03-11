@@ -1,13 +1,27 @@
 import { ErrorResponses, requireAuth } from "../_shared/authHelpers.ts";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-forwarded-authorization, x-user-access-token, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
     const payload = await req.json();
     const { first_name, last_name, full_name, profile_photo_url } = payload;
 
     const authCheck = await requireAuth(req);
     if (!authCheck.success) {
-      return authCheck.error;
+      return new Response(authCheck.error.body, {
+        status: authCheck.error.status,
+        headers: corsHeaders,
+      });
     }
 
     const updates: Record<string, string | null> = {};
@@ -18,13 +32,16 @@ Deno.serve(async (req) => {
 
     if (trimmedFirstName !== undefined || trimmedLastName !== undefined) {
       if (!trimmedFirstName || !trimmedLastName) {
-        return Response.json(
-          {
+        return new Response(
+          JSON.stringify({
             error: "Invalid name",
             code: "INVALID_INPUT",
             message: "First and last name are required",
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
           },
-          { status: 400 },
         );
       }
       updates.first_name = trimmedFirstName;
@@ -32,13 +49,16 @@ Deno.serve(async (req) => {
       updates.full_name = `${trimmedFirstName} ${trimmedLastName}`.trim();
     } else if (full_name !== undefined) {
       if (typeof full_name !== "string" || full_name.trim() === "") {
-        return Response.json(
-          {
+        return new Response(
+          JSON.stringify({
             error: "Invalid name",
             code: "INVALID_INPUT",
             message: "Name cannot be empty",
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
           },
-          { status: 400 },
         );
       }
       updates.full_name = full_name.trim();
@@ -49,9 +69,12 @@ Deno.serve(async (req) => {
     }
 
     if (Object.keys(updates).length === 0) {
-      return Response.json(
-        { error: "No updates provided", code: "INVALID_INPUT" },
-        { status: 400 },
+      return new Response(
+        JSON.stringify({ error: "No updates provided", code: "INVALID_INPUT" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
@@ -61,7 +84,10 @@ Deno.serve(async (req) => {
 
     if (updateError) {
       console.error("Update user profile error:", updateError);
-      return Response.json(ErrorResponses.INVALID_INPUT, { status: 400 });
+      return new Response(JSON.stringify(ErrorResponses.INVALID_INPUT), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const {
@@ -71,22 +97,33 @@ Deno.serve(async (req) => {
 
     if (fetchError || !user) {
       console.error("Fetch updated user error:", fetchError);
-      return Response.json({ error: "Internal server error" }, { status: 500 });
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    return Response.json({
-      success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        first_name: user.user_metadata?.first_name || "",
-        last_name: user.user_metadata?.last_name || "",
-        full_name: user.user_metadata?.full_name || "",
-        profile_photo_url: user.user_metadata?.profile_photo_url || null,
+    return new Response(
+      JSON.stringify({
+        success: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          first_name: user.user_metadata?.first_name || "",
+          last_name: user.user_metadata?.last_name || "",
+          full_name: user.user_metadata?.full_name || "",
+          profile_photo_url: user.user_metadata?.profile_photo_url || null,
+        },
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       },
-    });
+    );
   } catch (error) {
     console.error("Update user profile error:", error);
-    return Response.json({ error: "Internal server error" }, { status: 500 });
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

@@ -51,6 +51,18 @@ supabase start
 npm run dev
 ```
 
+## Authentication Model
+
+- Marketing routes are public: `/`, `/about`, `/features`, `/pricing`, `/auth/sign-in`
+- All app routes require authentication and redirect to `/auth/sign-in?returnTo=...`
+- Sign-in is OTP-only (email + 6-digit code); no Google/password flows
+
+Supabase Auth settings (test + prod):
+- Enable Email auth
+- OTP length: `6`
+- OTP expiry: `600` seconds
+- Disable external OAuth providers (including Google)
+
 ## Quality + Verification
 
 ```bash

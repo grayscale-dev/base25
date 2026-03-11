@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "@/lib/router";
 import { Check, Folder, Loader2, X } from "lucide-react";
@@ -302,4 +304,3 @@ export default function JoinWorkspace() {
     </div>
   );
 }
-

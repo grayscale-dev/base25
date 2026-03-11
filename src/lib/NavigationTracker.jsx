@@ -1,14 +1,14 @@
 import { useEffect } from 'react';
 import { useLocation } from '@/lib/router';
-import { useAuth } from './AuthContext';
 import { base44 } from '@/api/base44Client';
 
 export default function NavigationTracker() {
     const location = useLocation();
-    const { isAuthenticated } = useAuth();
 
     // Log user activity when navigating to a page
     useEffect(() => {
+        let cancelled = false;
+
         // Extract page name from pathname
         const pathname = location.pathname;
         let pageName = null;
@@ -21,12 +21,28 @@ export default function NavigationTracker() {
             pageName = pathname.replace(/^\//, '').split('/')[0] || null;
         }
 
-        if (isAuthenticated && pageName) {
+        if (!pageName) {
+            return () => {
+              cancelled = true;
+            };
+        }
+
+        const track = async () => {
+            const isAuthenticated = await base44.auth.isAuthenticated();
+            if (cancelled || !isAuthenticated) {
+              return;
+            }
             base44.appLogs.logUserInApp(pageName).catch(() => {
                 // Silently fail - logging shouldn't break the app
             });
-        }
-    }, [location.pathname, isAuthenticated]);
+        };
+
+        void track();
+
+        return () => {
+          cancelled = true;
+        };
+    }, [location.pathname]);
 
     return null;
 }

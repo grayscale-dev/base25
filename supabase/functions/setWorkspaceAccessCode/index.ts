@@ -3,7 +3,8 @@ import { supabaseAdmin } from "../_shared/supabase.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-user-access-token, x-forwarded-authorization",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -91,13 +92,18 @@ Deno.serve(async (req) => {
     const hash = await hashCode(code, salt);
     const expiresAt = computeExpiry(expiresIn);
 
-    const { error } = await supabaseAdmin.from("workspace_access_codes").upsert({
-      workspace_id: workspaceId,
-      code_hash: hash,
-      code_salt: salt,
-      expires_at: expiresAt ? expiresAt.toISOString() : null,
-      created_by: authCheck.user.id,
-    });
+    const { error } = await supabaseAdmin.from("workspace_access_codes").upsert(
+      {
+        workspace_id: workspaceId,
+        code_hash: hash,
+        code_salt: salt,
+        expires_at: expiresAt ? expiresAt.toISOString() : null,
+        created_by: authCheck.user.id,
+      },
+      {
+        onConflict: "workspace_id",
+      },
+    );
 
     if (error) {
       console.error("Access code update error:", error);

@@ -1,11 +1,25 @@
 import { requireAuth } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-forwarded-authorization, x-user-access-token, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
     const authCheck = await requireAuth(req);
     if (!authCheck.success) {
-      return authCheck.error;
+      return new Response(authCheck.error.body, {
+        status: authCheck.error.status,
+        headers: corsHeaders,
+      });
     }
 
     const userId = authCheck.user.id;
@@ -46,9 +60,12 @@ Deno.serve(async (req) => {
       const { error } = await task;
       if (error) {
         console.error("deleteMyAccount cleanup failure:", error);
-        return Response.json(
-          { error: "Unable to delete account", code: "DELETE_FAILED" },
-          { status: 500 },
+        return new Response(
+          JSON.stringify({ error: "Unable to delete account", code: "DELETE_FAILED" }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
         );
       }
     }
@@ -58,18 +75,26 @@ Deno.serve(async (req) => {
     );
     if (deleteError) {
       console.error("deleteMyAccount auth deletion failure:", deleteError);
-      return Response.json(
-        { error: "Unable to delete account", code: "DELETE_FAILED" },
-        { status: 500 },
+      return new Response(
+        JSON.stringify({ error: "Unable to delete account", code: "DELETE_FAILED" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
-    return Response.json({ success: true });
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("deleteMyAccount unexpected error:", error);
-    return Response.json(
-      { error: "Unable to delete account", code: "DELETE_FAILED" },
-      { status: 500 },
+    return new Response(
+      JSON.stringify({ error: "Unable to delete account", code: "DELETE_FAILED" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });

@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import PageLoadingState from '@/components/common/PageLoadingState';
-import { createPageUrl } from '@/utils';
+import { publicRoutes } from '@/lib/public-routes';
+
+function buildSignInUrl() {
+  const returnTo = `${window.location.pathname}${window.location.search}`;
+  const signInUrl = new URL(publicRoutes.signIn, window.location.origin);
+  signInUrl.searchParams.set("returnTo", returnTo);
+  return signInUrl.toString();
+}
 
 export default function ProtectedRoute({ children }) {
   const [checking, setChecking] = useState(true);
@@ -15,12 +22,12 @@ export default function ProtectedRoute({ children }) {
     try {
       const isAuth = await base44.auth.isAuthenticated();
       if (!isAuth) {
-        window.location.replace(createPageUrl('Home'));
+        window.location.replace(buildSignInUrl());
         return;
       }
       setAuthenticated(true);
     } catch {
-      window.location.replace(createPageUrl('Home'));
+      window.location.replace(buildSignInUrl());
     } finally {
       setChecking(false);
     }

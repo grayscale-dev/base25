@@ -1,7 +1,7 @@
-"use client";
-
 import Workspaces from '@/screens/Workspaces';
+import { requireServerAuth } from '@/lib/auth/server-guard';
 
-export default function WorkspacesPage() {
+export default async function WorkspacesPage() {
+  await requireServerAuth('/workspaces');
   return <Workspaces />;
 }

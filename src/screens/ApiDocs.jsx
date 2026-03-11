@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect } from "react";
 import { useNavigate } from "@/lib/router";
 import { createPageUrl } from "@/utils";

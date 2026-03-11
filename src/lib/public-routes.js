@@ -3,6 +3,7 @@ export const publicRoutes = {
   about: "/about",
   features: "/features",
   pricing: "/pricing",
+  signIn: "/auth/sign-in",
   workspaceHub: "/workspaces",
 };
 
