@@ -5,6 +5,16 @@ function getErrorStatus(error) {
   return error.status ?? error.context?.status ?? error.response?.status ?? null;
 }
 
+function getErrorMessage(error, fallback) {
+  const message =
+    error?.context?.body?.error ||
+    error?.body?.error ||
+    error?.message ||
+    "";
+  const normalized = String(message || "").trim();
+  return normalized || fallback;
+}
+
 export async function openStripeBilling({ workspaceId, returnUrl }) {
   if (!workspaceId) {
     return { ok: false, error: "Workspace is missing." };
@@ -31,19 +41,31 @@ export async function openStripeBilling({ workspaceId, returnUrl }) {
   } catch (portalError) {
     const portalStatus = getErrorStatus(portalError);
     if (portalStatus !== 404) {
-      throw portalError;
+      return {
+        ok: false,
+        error: getErrorMessage(portalError, "Unable to open Stripe billing portal."),
+      };
     }
   }
 
-  const { data } = await base44.functions.invoke(
-    "createCheckoutSession",
-    {
-      workspace_id: workspaceId,
-      success_url: resolvedReturnUrl,
-      cancel_url: resolvedReturnUrl,
-    },
-    { authMode: "user" }
-  );
+  let data = null;
+  try {
+    const response = await base44.functions.invoke(
+      "createCheckoutSession",
+      {
+        workspace_id: workspaceId,
+        success_url: resolvedReturnUrl,
+        cancel_url: resolvedReturnUrl,
+      },
+      { authMode: "user" }
+    );
+    data = response?.data || null;
+  } catch (checkoutError) {
+    return {
+      ok: false,
+      error: getErrorMessage(checkoutError, "Unable to open Stripe checkout."),
+    };
+  }
 
   if (!data?.url) {
     return { ok: false, error: "Stripe checkout URL was not returned." };
