@@ -112,7 +112,7 @@ CREATE POLICY item_types_write_admin_owner ON public.item_types
 
 CREATE TRIGGER update_item_types_updated_at
   BEFORE UPDATE ON public.item_types
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE OR REPLACE FUNCTION public.seed_default_item_types(target_workspace_id UUID)
 RETURNS VOID
