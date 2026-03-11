@@ -55,13 +55,12 @@ npm run dev
 
 - Marketing routes are public: `/`, `/about`, `/features`, `/pricing`, `/auth/sign-in`
 - All app routes require authentication and redirect to `/auth/sign-in?returnTo=...`
-- Sign-in is OTP-only (email + 6-digit code); no Google/password flows
+- Sign-in is magic-link-only (email link); no Google/password flows
 
 Supabase Auth settings (test + prod):
 - Enable Email auth
-- OTP length: `6`
-- OTP expiry: `600` seconds
 - Disable external OAuth providers (including Google)
+- Ensure `site_url` and redirect allow-list include your app origin and `/auth/callback`
 
 ## Quality + Verification
 

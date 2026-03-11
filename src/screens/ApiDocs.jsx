@@ -6,6 +6,7 @@ import { createPageUrl } from "@/utils";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { getWorkspaceSession } from "@/lib/workspace-session";
 import { workspaceDefaultUrl } from "@/components/utils/workspaceUrl";
+import { isAdminRole } from "@/lib/roles";
 
 export default function ApiDocs() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export default function ApiDocs() {
       return;
     }
 
-    if (storedRole !== "admin") {
+    if (!isAdminRole(storedRole)) {
       navigate(workspaceDefaultUrl(storedWorkspace.slug, storedRole || "viewer", false), {
         replace: true,
       });

@@ -13,6 +13,7 @@ import { useItemsController } from "./useItemsController";
 import ItemDetailPanel from "./ItemDetailPanel";
 import { Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import { isAdminRole } from "@/lib/roles";
 
 export default function WorkspaceItemView({ workspace, role, isPublicAccess, itemId }) {
   const navigate = useNavigate();
@@ -73,7 +74,7 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
   const fallbackSection = getDefaultWorkspaceSection(role, isPublicAccess);
   const backSection = selectedItem?.group_key || fallbackSection;
   const backLabel = selectedItem?.group_key ? getGroupLabel(selectedItem.group_key) : "Workspace";
-  const canEditTitle = role === "admin" && !isPublicAccess;
+  const canEditTitle = isAdminRole(role) && !isPublicAccess;
 
   useEffect(() => {
     setIsEditingTitle(false);
@@ -228,7 +229,7 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
       <ItemDetailPanel
         controller={controller}
         item={selectedItem}
-        isAdmin={role === "admin" && !isPublicAccess}
+        isAdmin={isAdminRole(role) && !isPublicAccess}
         onDeleted={() => navigate(workspaceUrl(workspace.slug, fallbackSection))}
       />
 

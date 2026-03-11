@@ -1,4 +1,4 @@
-import { authorizeWriteAction } from "../_shared/authHelpers.ts";
+import { authorizeWriteAction, isAdminLikeRole } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 import { isValidGroupKey, validateMetadata } from "../_shared/itemValidation.ts";
@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
       content: "Item created",
       metadata: {},
       author_id: auth.user.id,
-      author_role: auth.role === "admin" ? "admin" : "user",
+      author_role: isAdminLikeRole(auth.role) ? "admin" : "user",
     });
 
     return json(item);

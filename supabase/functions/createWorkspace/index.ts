@@ -103,12 +103,12 @@ Deno.serve(async (req) => {
         workspace_id: createdWorkspace.id,
         user_id: authCheck.user.id,
         email: authCheck.user.email,
-        role: "admin",
+        role: "owner",
         assigned_via: "explicit",
       });
 
     if (roleError) {
-      console.error("Assign workspace admin error:", roleError);
+      console.error("Assign workspace owner error:", roleError);
       return new Response(
         JSON.stringify({ error: "Workspace created but role assignment failed" }),
         {

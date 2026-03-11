@@ -1,4 +1,5 @@
 import { ITEM_GROUP_KEYS } from "./item-groups";
+import { isAdminRole } from "@/lib/roles";
 
 export const WORKSPACE_ALIAS_SECTION = "items";
 export const WORKSPACE_DEFAULT_SECTION = "feedback";
@@ -24,7 +25,7 @@ export function getWorkspacePageName(section) {
 }
 
 export function getDefaultWorkspaceSection(role = "viewer", isPublicAccess = false) {
-  return role === "admin" && !isPublicAccess
+  return isAdminRole(role) && !isPublicAccess
     ? WORKSPACE_ALL_SECTION
     : WORKSPACE_DEFAULT_SECTION;
 }
@@ -38,7 +39,7 @@ export function resolveWorkspaceSection(section, role = "viewer", isPublicAccess
   }
 
   if (normalized === WORKSPACE_ALL_SECTION) {
-    return role === "admin" && !isPublicAccess
+    return isAdminRole(role) && !isPublicAccess
       ? WORKSPACE_ALL_SECTION
       : WORKSPACE_DEFAULT_SECTION;
   }

@@ -296,8 +296,8 @@ export default function Workspaces() {
       resetCreateState();
 
       if (createdWorkspace?.slug) {
-        setWorkspaceSession({ workspace: createdWorkspace, role: "admin" });
-        navigate(workspaceDefaultUrl(createdWorkspace.slug, "admin", false));
+        setWorkspaceSession({ workspace: createdWorkspace, role: "owner" });
+        navigate(workspaceDefaultUrl(createdWorkspace.slug, "owner", false));
         return;
       }
       void loadData();

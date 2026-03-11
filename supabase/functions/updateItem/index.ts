@@ -1,4 +1,4 @@
-import { authorizeWriteAction } from "../_shared/authHelpers.ts";
+import { authorizeWriteAction, isAdminLikeRole } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 import { isValidGroupKey, validateMetadata } from "../_shared/itemValidation.ts";
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
       return json({ error: "group_key is invalid" }, 400);
     }
 
-    if (nextGroup !== existing.group_key && auth.role !== "admin") {
+    if (nextGroup !== existing.group_key && !isAdminLikeRole(auth.role)) {
       return json({ error: "Only admins can move items across groups" }, 403);
     }
 
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
           to_group: updated.group_key,
         },
         author_id: auth.user.id,
-        author_role: auth.role === "admin" ? "admin" : "user",
+        author_role: isAdminLikeRole(auth.role) ? "admin" : "user",
       });
     }
 
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
           to_status: updated.status_key,
         },
         author_id: auth.user.id,
-        author_role: auth.role === "admin" ? "admin" : "user",
+        author_role: isAdminLikeRole(auth.role) ? "admin" : "user",
       });
     }
 

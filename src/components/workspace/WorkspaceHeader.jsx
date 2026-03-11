@@ -11,6 +11,7 @@ import Badge from '@/components/common/Badge';
 import { createPageUrl } from '@/utils';
 import Link from '@/components/common/AppLink';
 import WorkspaceAvatar from '@/components/workspace/WorkspaceAvatar';
+import { getRoleLabel, isAdminRole } from '@/lib/roles';
 
 export default function WorkspaceHeader({ workspace, workspaces, role, onSwitch }) {
   return (
@@ -54,8 +55,8 @@ export default function WorkspaceHeader({ workspace, workspaces, role, onSwitch 
           </DropdownMenuContent>
         </DropdownMenu>
         
-        <Badge variant={role === 'admin' ? 'primary' : 'default'}>
-          {role.charAt(0).toUpperCase() + role.slice(1)}
+        <Badge variant={isAdminRole(role) ? 'primary' : 'default'}>
+          {getRoleLabel(role)}
         </Badge>
       </div>
       

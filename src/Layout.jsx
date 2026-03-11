@@ -22,6 +22,7 @@ import { WorkspaceProvider } from '@/components/context/WorkspaceContext';
 import { getWorkspaceSession, setWorkspaceSession } from '@/lib/workspace-session';
 import WorkspaceAvatar from '@/components/workspace/WorkspaceAvatar';
 import { startWorkspaceLogin } from '@/lib/start-workspace-login';
+import { isAdminRole } from '@/lib/roles';
 import {
   getDefaultWorkspaceSection,
   resolveWorkspaceSection,
@@ -190,14 +191,18 @@ export default function Layout({ children, currentPageName }) {
     await startWorkspaceLogin({ redirectTo: window.location.href });
   };
 
-  const isAdmin = role === 'admin' && !isPublicViewing;
+  const isAdmin = isAdminRole(role) && !isPublicViewing;
   const canOpenSettings = Boolean(user && workspace && !isPublicViewing);
+  const isSettingsPage = currentPageName === 'WorkspaceSettings' || location.pathname.startsWith('/workspace-settings');
   const visibleNavItems = isAdmin ? adminNavItems : memberNavItems;
-  const activeSection =
-    resolveWorkspaceSection(pathSection || currentPageName?.toLowerCase(), role, isPublicViewing) ||
-    getDefaultWorkspaceSection(role, isPublicViewing);
-  const workspaceHomeSection = activeSection;
-  const isActive = (section) => section === activeSection;
+  const activeSection = isSettingsPage
+    ? null
+    : (
+      resolveWorkspaceSection(pathSection || currentPageName?.toLowerCase(), role, isPublicViewing) ||
+      getDefaultWorkspaceSection(role, isPublicViewing)
+    );
+  const workspaceHomeSection = getDefaultWorkspaceSection(role, isPublicViewing);
+  const isActive = (section) => !isSettingsPage && section === activeSection;
 
   // No layout for public pages, workspaces hub, or join page
   if (['Home', 'About', 'Pricing', 'Features', 'Workspaces', 'JoinWorkspace'].includes(currentPageName)) {
@@ -344,7 +349,12 @@ export default function Layout({ children, currentPageName }) {
                     <Link to={createPageUrl('WorkspaceSettings')}>
                       <Button
                         variant="ghost"
-                        className="h-auto gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        className={cn(
+                          "h-auto gap-2 rounded-lg px-4 py-2 text-sm font-medium hover:text-slate-900",
+                          isSettingsPage
+                            ? "bg-slate-100 text-slate-900"
+                            : "text-slate-600 hover:bg-slate-50"
+                        )}
                       >
                         <Settings className="h-4 w-4" />
                         Settings
@@ -399,7 +409,12 @@ export default function Layout({ children, currentPageName }) {
                               setMobileMenuOpen(false);
                               navigate(createPageUrl('WorkspaceSettings'));
                             }}
-                            className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg px-4 py-3 text-sm",
+                              isSettingsPage
+                                ? "bg-slate-100 font-medium text-slate-900"
+                                : "text-slate-600 hover:bg-slate-50"
+                            )}
                           >
                             <Settings className="h-5 w-5" />
                             Settings

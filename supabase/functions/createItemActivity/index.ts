@@ -1,4 +1,4 @@
-import { authorizeWriteAction } from "../_shared/authHelpers.ts";
+import { authorizeWriteAction, isAdminLikeRole } from "../_shared/authHelpers.ts";
 import { supabaseAdmin } from "../_shared/supabase.ts";
 import { applyRateLimit, RATE_LIMITS } from "../_shared/rateLimiter.ts";
 
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       return auth.error;
     }
 
-    if (isInternalNote && auth.role !== "admin") {
+    if (isInternalNote && !isAdminLikeRole(auth.role)) {
       return json({ error: "Only admins can add internal notes" }, 403);
     }
 
@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
         content: String(content).trim(),
         metadata,
         author_id: auth.user.id,
-        author_role: auth.role === "admin" ? "admin" : "user",
+        author_role: isAdminLikeRole(auth.role) ? "admin" : "user",
         is_internal_note: isInternalNote,
       })
       .select("*")

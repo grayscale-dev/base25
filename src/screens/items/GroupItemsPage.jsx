@@ -16,6 +16,7 @@ import { StatePanel } from "@/components/common/StateDisplay";
 import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
 import { getGroupLabel } from "@/lib/item-groups";
+import { isAdminRole } from "@/lib/roles";
 
 function formatDate(value) {
   if (!value) return "Unknown";
@@ -36,7 +37,7 @@ export default function GroupItemsPage({
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
 
-  const isAdmin = role === "admin" && !isPublicAccess;
+  const isAdmin = isAdminRole(role) && !isPublicAccess;
 
   useEffect(() => {
     void controller.loadItems({ groupKey, statusKey: activeStatusFilter });

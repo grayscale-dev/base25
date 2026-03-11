@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card';
 import Badge from '@/components/common/Badge';
 import { cn } from '@/lib/utils';
 import WorkspaceAvatar from '@/components/workspace/WorkspaceAvatar';
+import { getRoleLabel, isAdminRole } from '@/lib/roles';
 
 export default function WorkspaceCard({ workspace, role, onClick }) {
   return (
@@ -30,8 +31,8 @@ export default function WorkspaceCard({ workspace, role, onClick }) {
       )}
       
       <div className="flex items-center gap-2 flex-wrap">
-        <Badge variant={role === 'admin' ? 'primary' : 'default'}>
-          {role.charAt(0).toUpperCase() + role.slice(1)}
+        <Badge variant={isAdminRole(role) ? 'primary' : 'default'}>
+          {getRoleLabel(role)}
         </Badge>
         
         {workspace.visibility === 'public' && (

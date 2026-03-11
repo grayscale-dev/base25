@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { canContributeRole, isAdminRole } from "@/lib/roles";
 import {
   DEFAULT_GROUP_STATUSES,
   ITEM_GROUP_KEYS,
@@ -77,8 +78,8 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
   const [error, setError] = useState("");
 
   const currentUserId = currentUser?.id || null;
-  const isAdmin = role === "admin" && !isPublicAccess;
-  const canComment = !isPublicAccess && (role === "admin" || role === "contributor");
+  const isAdmin = isAdminRole(role) && !isPublicAccess;
+  const canComment = !isPublicAccess && canContributeRole(role);
 
   useEffect(() => {
     let cancelled = false;
@@ -351,7 +352,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
             to_group: payload.group_key,
           },
           author_id: currentUserId,
-          author_role: role === "admin" ? "admin" : "user",
+          author_role: isAdminRole(role) ? "admin" : "user",
         });
       }
 
@@ -377,7 +378,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
             to_status: payload.status_key,
           },
           author_id: currentUserId,
-          author_role: role === "admin" ? "admin" : "user",
+          author_role: isAdminRole(role) ? "admin" : "user",
         });
       }
 
@@ -419,7 +420,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
           content: "Initial post updated",
           metadata: {},
           author_id: currentUserId,
-          author_role: role === "admin" ? "admin" : "user",
+          author_role: isAdminRole(role) ? "admin" : "user",
         });
       }
 
@@ -486,7 +487,7 @@ export function useItemsController({ workspace, role, isPublicAccess }) {
         content: comment.trim(),
         metadata: {},
         author_id: authorId,
-        author_role: role === "admin" ? "admin" : "user",
+        author_role: isAdminRole(role) ? "admin" : "user",
       });
 
       if (selectedItem?.id === itemId) {

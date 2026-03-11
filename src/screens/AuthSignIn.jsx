@@ -10,14 +10,15 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase-client";
 import { publicRoutes } from "@/lib/public-routes";
 
-const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
 
 function sanitizeReturnTo(rawValue) {
   if (!rawValue) return null;
   const value = String(rawValue).trim();
   if (!value.startsWith("/") || value.startsWith("//")) return null;
-  if (value.startsWith("/auth/sign-in")) return null;
+  if (value.startsWith("/auth/sign-in") || value.startsWith("/auth/callback")) {
+    return null;
+  }
   return value;
 }
 
@@ -28,12 +29,16 @@ function maskEmail(email) {
   return `${local.slice(0, 2)}***@${domain}`;
 }
 
+function buildMagicLinkRedirect(returnTo) {
+  const url = new URL("/auth/callback", window.location.origin);
+  url.searchParams.set("returnTo", returnTo);
+  return url.toString();
+}
+
 export default function AuthSignIn() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -59,25 +64,24 @@ export default function AuthSignIn() {
   }, [cooldown]);
 
   useEffect(() => {
-    let isMounted = true;
-
+    let active = true;
     const checkSession = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!isMounted || !session) return;
+      if (!active || !session) return;
       router.replace(returnTo);
       router.refresh();
     };
 
     void checkSession();
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, [returnTo, router]);
 
-  const sendCode = async () => {
+  const sendMagicLink = async () => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
       setErrorMessage("Enter your email to continue.");
@@ -93,49 +97,17 @@ export default function AuthSignIn() {
         email: normalizedEmail,
         options: {
           shouldCreateUser: true,
+          emailRedirectTo: buildMagicLinkRedirect(returnTo),
         },
       });
-
       if (error) throw error;
 
       setEmail(normalizedEmail);
-      setStep("code");
-      setToken("");
       setCooldown(RESEND_COOLDOWN_SECONDS);
-      setMessage(`A 6-digit code was sent to ${maskEmail(normalizedEmail)}.`);
+      setMessage(`Magic link sent to ${maskEmail(normalizedEmail)}.`);
     } catch (error) {
-      console.error("Failed to send sign-in code:", error);
-      setErrorMessage(error?.message || "Unable to send a code right now.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const verifyCode = async () => {
-    const normalizedToken = token.trim();
-    if (normalizedToken.length !== OTP_LENGTH) {
-      setErrorMessage("Enter the 6-digit code from your email.");
-      return;
-    }
-
-    setSubmitting(true);
-    setErrorMessage("");
-    setMessage("");
-
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: normalizedToken,
-        type: "email",
-      });
-
-      if (error) throw error;
-
-      router.replace(returnTo);
-      router.refresh();
-    } catch (error) {
-      console.error("Failed to verify sign-in code:", error);
-      setErrorMessage(error?.message || "Invalid or expired code. Request a new code.");
+      console.error("Failed to send magic link:", error);
+      setErrorMessage(error?.message || "Unable to send a magic link right now.");
     } finally {
       setSubmitting(false);
     }
@@ -157,58 +129,31 @@ export default function AuthSignIn() {
         <div className="mb-6 space-y-2">
           <h1 className="text-2xl font-semibold text-slate-900">Sign In</h1>
           <p className="text-sm text-slate-600">
-            {step === "email"
-              ? "Enter your email and we’ll send a 6-digit code."
-              : `Enter the code sent to ${maskEmail(email)}.`}
+            Enter your email and we’ll send you a magic link to sign in.
           </p>
         </div>
 
         <div className="space-y-4">
-          {step === "email" ? (
-            <div>
-              <Label htmlFor="auth-email">Email</Label>
-              <Input
-                id="auth-email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  setErrorMessage("");
-                }}
-                className="mt-1.5"
-                placeholder="you@company.com"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void sendCode();
-                  }
-                }}
-              />
-            </div>
-          ) : (
-            <div>
-              <Label htmlFor="auth-token">6-digit code</Label>
-              <Input
-                id="auth-token"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoComplete="one-time-code"
-                value={token}
-                onChange={(event) => {
-                  const numeric = event.target.value.replace(/\D/g, "").slice(0, OTP_LENGTH);
-                  setToken(numeric);
-                  setErrorMessage("");
-                }}
-                className="mt-1.5 text-center font-mono tracking-[0.35em]"
-                placeholder="123456"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void verifyCode();
-                  }
-                }}
-              />
-            </div>
-          )}
+          <div>
+            <Label htmlFor="auth-email">Email</Label>
+            <Input
+              id="auth-email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setErrorMessage("");
+              }}
+              className="mt-1.5"
+              placeholder="you@company.com"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void sendMagicLink();
+                }
+              }}
+            />
+          </div>
 
           {message ? (
             <p className="flex items-center gap-2 text-sm text-emerald-700">
@@ -218,73 +163,27 @@ export default function AuthSignIn() {
           ) : null}
           {errorMessage ? <p className="text-sm text-rose-600">{errorMessage}</p> : null}
 
-          {step === "email" ? (
-            <Button
-              className="w-full bg-slate-900 text-white hover:bg-slate-800"
-              onClick={() => {
-                void sendCode();
-              }}
-              disabled={submitting}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending code...
-                </>
-              ) : (
-                <>
-                  <Mail className="mr-2 h-4 w-4" />
-                  Send Code
-                </>
-              )}
-            </Button>
-          ) : (
-            <div className="space-y-2">
-              <Button
-                className="w-full bg-slate-900 text-white hover:bg-slate-800"
-                onClick={() => {
-                  void verifyCode();
-                }}
-                disabled={submitting || token.trim().length !== OTP_LENGTH}
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Verifying...
-                  </>
-                ) : (
-                  "Verify & Sign In"
-                )}
-              </Button>
-              <div className="flex items-center justify-between gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="px-0 text-slate-600"
-                  onClick={() => {
-                    setStep("email");
-                    setToken("");
-                    setMessage("");
-                    setErrorMessage("");
-                  }}
-                  disabled={submitting}
-                >
-                  Use a different email
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="px-0 text-slate-600"
-                  onClick={() => {
-                    void sendCode();
-                  }}
-                  disabled={submitting || cooldown > 0}
-                >
-                  {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
-                </Button>
-              </div>
-            </div>
-          )}
+          <Button
+            className="w-full bg-slate-900 text-white hover:bg-slate-800"
+            onClick={() => {
+              void sendMagicLink();
+            }}
+            disabled={submitting || cooldown > 0}
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending magic link...
+              </>
+            ) : cooldown > 0 ? (
+              `Resend in ${cooldown}s`
+            ) : (
+              <>
+                <Mail className="mr-2 h-4 w-4" />
+                Send Magic Link
+              </>
+            )}
+          </Button>
         </div>
       </div>
     </div>

@@ -5,7 +5,11 @@ let browserClient = null;
 
 export function getSupabaseBrowserClient() {
   if (!browserClient) {
-    browserClient = createBrowserClient(env.supabaseUrl, env.supabaseAnonKey);
+    browserClient = createBrowserClient(env.supabaseUrl, env.supabaseAnonKey, {
+      auth: {
+        flowType: "implicit",
+      },
+    });
   }
   return browserClient;
 }

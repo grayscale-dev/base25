@@ -39,11 +39,19 @@ import WorkspaceApiPanel from "@/components/workspace/WorkspaceApiPanel";
 import WorkspaceBillingPanel from "@/components/workspace/WorkspaceBillingPanel";
 import { useToast } from "@/components/ui/use-toast";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DEFAULT_GROUP_STATUSES,
   ITEM_GROUP_KEYS,
   ITEM_GROUP_LABELS,
   sanitizeStatusKey,
 } from "@/lib/item-groups";
+import { getRoleLabel, isAdminRole, isOwnerRole } from "@/lib/roles";
 
 const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "billing", "api"];
 
@@ -77,8 +85,11 @@ export default function WorkspaceSettings() {
   const [slugError, setSlugError] = useState("");
 
   const [members, setMembers] = useState([]);
+  const [memberSearchQuery, setMemberSearchQuery] = useState("");
   const [updatingMemberId, setUpdatingMemberId] = useState(null);
   const [memberPendingRemoval, setMemberPendingRemoval] = useState(null);
+  const [ownerTransferTargetMemberId, setOwnerTransferTargetMemberId] = useState("");
+  const [showOwnerTransferDialog, setShowOwnerTransferDialog] = useState(false);
   const [accessCodeStatus, setAccessCodeStatus] = useState({ hasCode: false, expiresAt: null });
   const [accessCodeExpiry, setAccessCodeExpiry] = useState("7d");
   const [generatedAccessCode, setGeneratedAccessCode] = useState("");
@@ -111,7 +122,7 @@ export default function WorkspaceSettings() {
     }
 
     const resolvedRole = storedRole || "viewer";
-    const adminRole = resolvedRole === "admin";
+    const adminRole = isAdminRole(resolvedRole);
 
     setRole(resolvedRole);
     setActiveTab(adminRole ? "general" : "my-account");
@@ -136,7 +147,7 @@ export default function WorkspaceSettings() {
     if (!requestedTab || !SETTINGS_TABS.includes(requestedTab)) {
       return;
     }
-    if (requestedTab !== "my-account" && role !== "admin") {
+    if (requestedTab !== "my-account" && !isAdminRole(role)) {
       setActiveTab("my-account");
       params.delete("tab");
       const search = params.toString();
@@ -149,13 +160,13 @@ export default function WorkspaceSettings() {
   }, [location.search, role, navigate]);
 
   const handleTabChange = (nextTab) => {
-    if (role !== "admin" && nextTab !== "my-account") {
+    if (!isAdminRole(role) && nextTab !== "my-account") {
       return;
     }
     setActiveTab(nextTab);
 
     const params = new URLSearchParams(location.search || "");
-    const defaultTab = role === "admin" ? "general" : "my-account";
+    const defaultTab = isAdminRole(role) ? "general" : "my-account";
     if (nextTab === defaultTab) {
       params.delete("tab");
     } else {
@@ -181,13 +192,26 @@ export default function WorkspaceSettings() {
     return next;
   }, [statuses]);
 
+  const filteredMembers = useMemo(() => {
+    const query = memberSearchQuery.trim().toLowerCase();
+    if (!query) return members;
+    return members.filter((member) =>
+      String(member.email || "").toLowerCase().includes(query)
+    );
+  }, [memberSearchQuery, members]);
+
+  const ownerTransferCandidates = useMemo(() => {
+    if (!memberPendingRemoval) return [];
+    return members.filter((member) => member.id !== memberPendingRemoval.id);
+  }, [memberPendingRemoval, members]);
+
   const loadAll = async (workspaceId) => {
     try {
       setInitialLoadError("");
       setLoading(true);
 
       const [rolesData, accessCodeData] = await Promise.all([
-        base44.entities.WorkspaceRole.filter({ workspace_id: workspaceId }),
+        loadMembers(workspaceId),
         base44.functions.invoke(
           "getWorkspaceAccessCodeStatus",
           { workspace_id: workspaceId },
@@ -213,6 +237,15 @@ export default function WorkspaceSettings() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMembers = async (workspaceId) => {
+    const rolesData = await base44.entities.WorkspaceRole.filter({ workspace_id: workspaceId });
+    return rolesData.sort((left, right) => {
+      if (left.role === "owner" && right.role !== "owner") return -1;
+      if (left.role !== "owner" && right.role === "owner") return 1;
+      return String(left.email || "").localeCompare(String(right.email || ""));
+    });
   };
 
   const ensureStatusConfig = async (workspaceId) => {
@@ -291,17 +324,22 @@ export default function WorkspaceSettings() {
 
     setSaving(true);
     try {
-      await base44.entities.Workspace.update(workspace.id, {
-        name,
-        slug,
-        description,
-        visibility,
-        settings,
-        logo_url: logoUrl,
-        primary_color: primaryColor,
-      });
+      const { data: updatedWorkspaceRecord } = await base44.functions.invoke(
+        "updateWorkspaceSettings",
+        {
+          workspace_id: workspace.id,
+          name,
+          slug,
+          description,
+          visibility,
+          settings,
+          logo_url: logoUrl,
+          primary_color: primaryColor,
+        },
+        { authMode: "user" }
+      );
 
-      const updatedWorkspace = {
+      const updatedWorkspace = updatedWorkspaceRecord || {
         ...workspace,
         name,
         slug,
@@ -312,15 +350,20 @@ export default function WorkspaceSettings() {
         primary_color: primaryColor,
       };
       setWorkspace(updatedWorkspace);
-      setWorkspaceSession({ workspace: updatedWorkspace, role: "admin", isPublicAccess: false });
+      setWorkspaceSession({ workspace: updatedWorkspace, role, isPublicAccess: false });
       notifyStatus("success", "Workspace settings saved.");
 
       if (slug !== workspace.slug) {
-        navigate(workspaceDefaultUrl(slug, "admin", false));
+        navigate(workspaceDefaultUrl(slug, role, false));
       }
     } catch (error) {
       console.error("Failed to save workspace settings:", error);
-      notifyStatus("danger", "Failed to save settings. Please try again.");
+      const status = getErrorStatus(error);
+      if (status === 403) {
+        notifyStatus("danger", "Only the workspace owner can change the workspace name.");
+      } else {
+        notifyStatus("danger", "Failed to save settings. Please try again.");
+      }
     } finally {
       setSaving(false);
     }
@@ -354,13 +397,22 @@ export default function WorkspaceSettings() {
   const handleUpdateMemberRole = async (memberId, nextRole) => {
     setUpdatingMemberId(memberId);
     try {
-      await base44.entities.WorkspaceRole.update(memberId, { role: nextRole });
-      setMembers((prev) =>
-        prev.map((member) => (member.id === memberId ? { ...member, role: nextRole } : member))
+      await base44.functions.invoke(
+        "updateWorkspaceMemberRole",
+        { workspace_id: workspace.id, member_id: memberId, role: nextRole },
+        { authMode: "user" }
       );
+      const refreshed = await loadMembers(workspace.id);
+      setMembers(refreshed);
+      notifyStatus("success", nextRole === "owner" ? "Ownership transferred." : "Member role updated.");
     } catch (error) {
       console.error("Failed to update member role:", error);
-      notifyStatus("danger", "Failed to update member role.");
+      const status = getErrorStatus(error);
+      if (status === 409) {
+        notifyStatus("danger", "Transfer ownership to another member before changing the current owner role.");
+      } else {
+        notifyStatus("danger", "Failed to update member role.");
+      }
     } finally {
       setUpdatingMemberId(null);
     }
@@ -368,17 +420,71 @@ export default function WorkspaceSettings() {
 
   const handleRemoveMember = async () => {
     if (!memberPendingRemoval) return;
+    if (memberPendingRemoval.role === "owner") {
+      if (!ownerTransferTargetMemberId) {
+        const fallbackTarget = ownerTransferCandidates[0];
+        setOwnerTransferTargetMemberId(fallbackTarget?.id || "");
+      }
+      setShowOwnerTransferDialog(true);
+      return;
+    }
+
     setUpdatingMemberId(memberPendingRemoval.id);
+    let keepPendingRemoval = false;
     try {
-      await base44.entities.WorkspaceRole.delete(memberPendingRemoval.id);
-      setMembers((prev) => prev.filter((member) => member.id !== memberPendingRemoval.id));
+      await base44.functions.invoke(
+        "removeWorkspaceMember",
+        { workspace_id: workspace.id, member_id: memberPendingRemoval.id },
+        { authMode: "user" }
+      );
+      const refreshed = await loadMembers(workspace.id);
+      setMembers(refreshed);
       notifyStatus("success", "Member removed.");
     } catch (error) {
       console.error("Failed to remove member:", error);
-      notifyStatus("danger", "Failed to remove member.");
+      const status = getErrorStatus(error);
+      if (status === 409) {
+        keepPendingRemoval = true;
+        if (!ownerTransferTargetMemberId) {
+          const fallbackTarget = ownerTransferCandidates[0];
+          setOwnerTransferTargetMemberId(fallbackTarget?.id || "");
+        }
+        setShowOwnerTransferDialog(true);
+      } else {
+        notifyStatus("danger", "Failed to remove member.");
+      }
     } finally {
       setUpdatingMemberId(null);
+      if (!keepPendingRemoval) {
+        setMemberPendingRemoval(null);
+      }
+    }
+  };
+
+  const handleTransferOwnershipAndRemoveMember = async () => {
+    if (!workspace?.id || !memberPendingRemoval?.id || !ownerTransferTargetMemberId) return;
+    setUpdatingMemberId(memberPendingRemoval.id);
+    try {
+      await base44.functions.invoke(
+        "removeWorkspaceMember",
+        {
+          workspace_id: workspace.id,
+          member_id: memberPendingRemoval.id,
+          transfer_to_member_id: ownerTransferTargetMemberId,
+        },
+        { authMode: "user" }
+      );
+      const refreshed = await loadMembers(workspace.id);
+      setMembers(refreshed);
+      notifyStatus("success", "Ownership transferred and previous owner removed.");
+      setShowOwnerTransferDialog(false);
       setMemberPendingRemoval(null);
+      setOwnerTransferTargetMemberId("");
+    } catch (error) {
+      console.error("Failed to transfer ownership and remove member:", error);
+      notifyStatus("danger", "Failed to transfer ownership.");
+    } finally {
+      setUpdatingMemberId(null);
     }
   };
 
@@ -522,19 +628,29 @@ export default function WorkspaceSettings() {
     if (!workspace) return;
     setDeletingWorkspace(true);
     try {
-      await base44.entities.Workspace.update(workspace.id, { status: "archived" });
+      await base44.functions.invoke(
+        "archiveWorkspace",
+        { workspace_id: workspace.id },
+        { authMode: "user" }
+      );
       sessionStorage.clear();
       navigate(createPageUrl("Workspaces"));
     } catch (error) {
       console.error("Failed to archive workspace:", error);
-      notifyStatus("danger", "Failed to delete workspace.");
+      const status = getErrorStatus(error);
+      if (status === 403) {
+        notifyStatus("danger", "Only the workspace owner can delete this workspace.");
+      } else {
+        notifyStatus("danger", "Failed to delete workspace.");
+      }
     } finally {
       setDeletingWorkspace(false);
       setShowDeleteWorkspaceDialog(false);
     }
   };
 
-  const isAdmin = role === "admin";
+  const isAdmin = isAdminRole(role);
+  const isOwner = isOwnerRole(role);
 
   if (loading) {
     return <PageLoadingState text="Loading settings..." />;
@@ -621,7 +737,15 @@ export default function WorkspaceSettings() {
             <CardContent className="space-y-4">
               <div>
                 <Label>Workspace Name</Label>
-                <Input value={name} onChange={(event) => setName(event.target.value)} className="mt-1.5 max-w-md" />
+                <Input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className="mt-1.5 max-w-md"
+                  disabled={!isOwner}
+                />
+                {!isOwner ? (
+                  <p className="mt-1 text-xs text-slate-500">Only the workspace owner can rename the workspace.</p>
+                ) : null}
               </div>
 
               <div>
@@ -741,7 +865,12 @@ export default function WorkspaceSettings() {
           </Card>
 
           <div className="flex justify-between">
-            <Button variant="destructive" onClick={() => setShowDeleteWorkspaceDialog(true)}>
+            <Button
+              variant="destructive"
+              onClick={() => setShowDeleteWorkspaceDialog(true)}
+              disabled={!isOwner}
+              title={!isOwner ? "Only the workspace owner can delete this workspace." : undefined}
+            >
               <Trash2 className="mr-2 h-4 w-4" />
               Delete Workspace
             </Button>
@@ -796,7 +925,7 @@ export default function WorkspaceSettings() {
                 </div>
               </div>
 
-              {generatedAccessCode ? (
+                {generatedAccessCode ? (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                   <p className="text-sm font-semibold text-emerald-900">Share this access code</p>
                   <p className="mt-1 text-xs text-emerald-700">This code is shown once. Copy it now.</p>
@@ -824,52 +953,73 @@ export default function WorkspaceSettings() {
               {members.length === 0 ? (
                 <p className="py-4 text-sm text-slate-500">No users yet.</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Assigned via</TableHead>
-                      <TableHead className="w-12" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {members.map((member) => (
-                      <TableRow key={member.id}>
-                        <TableCell>{member.email}</TableCell>
-                        <TableCell>
-                          <Select
-                            value={member.role}
-                            onValueChange={(value) => handleUpdateMemberRole(member.id, value)}
-                          >
-                            <SelectTrigger className="w-40" disabled={updatingMemberId === member.id}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="viewer">Viewer</SelectItem>
-                              <SelectItem value="contributor">Contributor</SelectItem>
-                              <SelectItem value="admin">Admin</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{member.assigned_via}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                            onClick={() => setMemberPendingRemoval(member)}
-                            disabled={updatingMemberId === member.id}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Assigned via</TableHead>
+                        <TableHead className="w-12" />
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredMembers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="py-6 text-center text-sm text-slate-500">
+                            No users match this search.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredMembers.map((member) => (
+                          <TableRow key={member.id}>
+                            <TableCell>{member.email}</TableCell>
+                            <TableCell>
+                              <Select
+                                value={member.role}
+                                onValueChange={(value) => handleUpdateMemberRole(member.id, value)}
+                              >
+                                <SelectTrigger className="w-40" disabled={updatingMemberId === member.id}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="viewer">Viewer</SelectItem>
+                                  <SelectItem value="contributor">Contributor</SelectItem>
+                                  <SelectItem value="admin">Admin</SelectItem>
+                                  <SelectItem value="owner">Owner</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{member.assigned_via}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                onClick={() => setMemberPendingRemoval(member)}
+                                disabled={updatingMemberId === member.id}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                  <div className="mt-4 max-w-sm">
+                    <Label htmlFor="member-search">Search users</Label>
+                    <Input
+                      id="member-search"
+                      value={memberSearchQuery}
+                      onChange={(event) => setMemberSearchQuery(event.target.value)}
+                      className="mt-1.5"
+                      placeholder="Search by email"
+                    />
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -1018,7 +1168,7 @@ export default function WorkspaceSettings() {
       />
 
       <ConfirmDialog
-        open={Boolean(memberPendingRemoval)}
+        open={Boolean(memberPendingRemoval) && !showOwnerTransferDialog}
         onOpenChange={(open) => {
           if (!open) {
             setMemberPendingRemoval(null);
@@ -1027,7 +1177,9 @@ export default function WorkspaceSettings() {
         title="Remove Member Access"
         description={
           memberPendingRemoval
-            ? `Remove access for ${memberPendingRemoval.email}? They can be invited again later.`
+            ? memberPendingRemoval.role === "owner"
+              ? "This member is the current owner. Transfer ownership first, then remove owner access."
+              : `Remove access for ${memberPendingRemoval.email}? They can be invited again later.`
             : ""
         }
         confirmLabel={updatingMemberId === memberPendingRemoval?.id ? "Removing..." : "Remove Member"}
@@ -1035,6 +1187,72 @@ export default function WorkspaceSettings() {
         loading={updatingMemberId === memberPendingRemoval?.id}
         confirmClassName="bg-rose-600 hover:bg-rose-700"
       />
+
+      <Dialog
+        open={showOwnerTransferDialog}
+        onOpenChange={(open) => {
+          setShowOwnerTransferDialog(open);
+          if (!open) {
+            setOwnerTransferTargetMemberId("");
+            setMemberPendingRemoval(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer Ownership</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">
+            Transfer ownership to another member before removing the current owner.
+          </p>
+          <div>
+            <Label>New Owner</Label>
+            <Select
+              value={ownerTransferTargetMemberId}
+              onValueChange={setOwnerTransferTargetMemberId}
+              disabled={ownerTransferCandidates.length === 0}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Select a member" />
+              </SelectTrigger>
+              <SelectContent>
+                {ownerTransferCandidates.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.email} ({getRoleLabel(member.role)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {ownerTransferCandidates.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Add another workspace member before transferring ownership.
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowOwnerTransferDialog(false);
+                setOwnerTransferTargetMemberId("");
+                setMemberPendingRemoval(null);
+              }}
+              disabled={updatingMemberId === memberPendingRemoval?.id}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-slate-900 hover:bg-slate-800"
+              onClick={handleTransferOwnershipAndRemoveMember}
+              disabled={!ownerTransferTargetMemberId || updatingMemberId === memberPendingRemoval?.id}
+            >
+              {updatingMemberId === memberPendingRemoval?.id
+                ? "Transferring..."
+                : "Transfer and Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
         </>
       ) : null}
     </PageShell>

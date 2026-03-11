@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
+import { canContributeRole, isAdminRole } from '@/lib/roles';
 import {
   getWorkspaceSession,
   getOrCreateAnalyticsSessionId,
@@ -216,9 +217,9 @@ function computePermissions(role, isPublicAccess) {
   }
 
   // Authenticated with role
-  const isAdmin = role === 'admin';
-  const isStaff = role === 'admin';
-  const isContributor = role === 'contributor' || isStaff;
+  const isAdmin = isAdminRole(role);
+  const isStaff = isAdmin;
+  const isContributor = canContributeRole(role);
 
   return {
     canView: true,

@@ -16,6 +16,7 @@ const canonicalStaticPaths = {
   "/apidocs": "/api-docs",
   "/workspacesettings": "/workspace-settings",
   "/auth/signin": "/auth/sign-in",
+  "/auth/callback": "/auth/callback",
 };
 
 const PUBLIC_PATHS = new Set([
@@ -24,6 +25,7 @@ const PUBLIC_PATHS = new Set([
   "/features",
   "/pricing",
   "/auth/sign-in",
+  "/auth/callback",
 ]);
 
 function isStaticAsset(pathname) {
@@ -76,7 +78,7 @@ function sanitizeReturnTo(rawValue) {
   if (!value.startsWith("/") || value.startsWith("//")) {
     return null;
   }
-  if (value.startsWith("/auth/sign-in")) {
+  if (value.startsWith("/auth/sign-in") || value.startsWith("/auth/callback")) {
     return null;
   }
   return value;

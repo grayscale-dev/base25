@@ -177,10 +177,15 @@ export async function getUserWorkspaceRole(
 }
 
 const ROLE_HIERARCHY: Record<string, number> = {
+  owner: 4,
   admin: 3,
   contributor: 2,
   viewer: 1,
 };
+
+export function isAdminLikeRole(role: string | null | undefined) {
+  return role === "owner" || role === "admin";
+}
 
 export async function requireMinimumRole(
   workspaceId: string,
