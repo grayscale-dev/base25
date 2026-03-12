@@ -28,16 +28,23 @@ import {
   getDefaultWorkspaceSection,
   resolveWorkspaceSection,
 } from '@/lib/workspace-sections';
+import {
+  fetchListMyWorkspacesCached,
+  fetchUnreadAlertCountCached,
+  invalidateWorkspaceAlertQueries,
+} from '@/lib/workspace-queries';
 
 const adminNavItems = [
   { name: 'All', icon: LayoutDashboard, page: 'All', section: 'all' },
   { name: 'Feedback', icon: MessageSquare, page: 'Feedback', section: 'feedback' },
   { name: 'Roadmap', icon: Map, page: 'Roadmap', section: 'roadmap' },
+  { name: 'Changelog', icon: History, page: 'Changelog', section: 'changelog' },
 ];
 
 const memberNavItems = [
   { name: 'Feedback', icon: MessageSquare, page: 'Feedback', section: 'feedback' },
   { name: 'Roadmap', icon: Map, page: 'Roadmap', section: 'roadmap' },
+  { name: 'Changelog', icon: History, page: 'Changelog', section: 'changelog' },
 ];
 
 const DEFAULT_WORKSPACE_BRAND = '#0f172a';
@@ -76,13 +83,18 @@ function getErrorStatus(error) {
 export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const initialSession = getWorkspaceSession();
+  const initialWorkspace = initialSession.workspace || null;
+  const initialRole = initialSession.role || 'contributor';
+  const initialPublicAccess = Boolean(initialSession.isPublicAccess);
+  const initialBillingBlocked = Boolean(initialSession.billingBlocked);
   const [user, setUser] = useState(null);
-  const [workspace, setWorkspace] = useState(null);
+  const [workspace, setWorkspace] = useState(initialWorkspace);
   const [workspaces, setWorkspaces] = useState([]);
-  const [role, setRole] = useState('contributor');
+  const [role, setRole] = useState(initialRole);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isPublicViewing, setIsPublicViewing] = useState(false);
-  const [billingBlocked, setBillingBlocked] = useState(false);
+  const [isPublicViewing, setIsPublicViewing] = useState(initialPublicAccess);
+  const [billingBlocked, setBillingBlocked] = useState(initialBillingBlocked);
   const [noAccessMessage, setNoAccessMessage] = useState(null);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
@@ -177,17 +189,8 @@ export default function Layout({ children, currentPageName }) {
       // Load user workspaces for switcher (if authenticated with role)
       if (isAuthenticated && !storedIsPublicAccess) {
         try {
-          const allRoles = await base44.entities.WorkspaceRole.filter({ user_id: currentUser.id });
-          if (allRoles.length > 0) {
-            const workspaceIds = [...new Set(allRoles.map(r => r.workspace_id))];
-            const wsData = await Promise.all(
-              workspaceIds.map(async (id) => {
-                const results = await base44.entities.Workspace.filter({ id });
-                return results[0];
-              })
-            );
-            setWorkspaces(wsData.filter(w => w && w.status === 'active'));
-          }
+          const listedWorkspaces = await fetchListMyWorkspacesCached();
+          setWorkspaces(Array.isArray(listedWorkspaces) ? listedWorkspaces : []);
         } catch (error) {
           console.error('Failed to load user workspaces:', error);
         }
@@ -196,18 +199,7 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const handleWorkspaceSwitch = async (ws) => {
-    let nextRole = 'contributor';
-    if (user?.id) {
-      try {
-        const roles = await base44.entities.WorkspaceRole.filter({
-          workspace_id: ws.id,
-          user_id: user.id,
-        });
-        nextRole = roles[0]?.role || 'contributor';
-      } catch {
-        nextRole = 'contributor';
-      }
-    }
+    const nextRole = ws?.role || 'contributor';
 
     setWorkspaceSession({ workspace: ws, role: nextRole, isPublicAccess: false });
     setWorkspace(ws);
@@ -263,7 +255,6 @@ export default function Layout({ children, currentPageName }) {
   }, [workspaceBrandColor]);
   const workspaceHomeSection = getDefaultWorkspaceSection(role, isPublicViewing);
   const isActive = (section) => !isSettingsPage && section === activeSection;
-  const isChangelogPage = activeSection === 'changelog';
 
   useEffect(() => {
     if (!isSearchPage) return;
@@ -277,15 +268,14 @@ export default function Layout({ children, currentPageName }) {
     }
 
     let cancelled = false;
-    const loadUnreadAlerts = async () => {
+    const loadUnreadAlerts = async ({ force = false } = {}) => {
       try {
-        const { data } = await base44.functions.invoke(
-          'getUnreadAlertCount',
-          { workspace_id: workspace.id },
-          { authMode: 'user' },
-        );
+        if (force) {
+          await invalidateWorkspaceAlertQueries(workspace.id);
+        }
+        const data = await fetchUnreadAlertCountCached({ workspaceId: workspace.id });
         if (!cancelled) {
-          setUnreadAlerts(Number(data?.unread_count || 0));
+          setUnreadAlerts(Number(data || 0));
         }
       } catch (error) {
         const status = getErrorStatus(error);
@@ -301,7 +291,7 @@ export default function Layout({ children, currentPageName }) {
     const onAlertsUpdated = (event) => {
       const eventWorkspaceId = event?.detail?.workspaceId || null;
       if (eventWorkspaceId && eventWorkspaceId !== workspace.id) return;
-      void loadUnreadAlerts();
+      void loadUnreadAlerts({ force: true });
     };
     const onAlertsRead = (event) => {
       const eventWorkspaceId = event?.detail?.workspaceId || null;
@@ -512,20 +502,6 @@ export default function Layout({ children, currentPageName }) {
                         aria-label="Search workspace items"
                       />
                     </form>
-                    <Link to={workspaceUrl(workspace.slug, 'changelog')}>
-                      <Button
-                        variant="ghost"
-                        className={cn(
-                          "h-auto gap-2 rounded-lg px-4 py-2 text-sm font-medium hover:text-slate-900",
-                          isChangelogPage
-                            ? "bg-slate-100 text-slate-900"
-                            : "text-slate-600 hover:bg-slate-50"
-                        )}
-                      >
-                        <History className="h-4 w-4" />
-                        Changelog
-                      </Button>
-                    </Link>
                     <Link to={createPageUrl('WorkspaceSettings')}>
                       <Button
                         variant="ghost"
@@ -619,22 +595,6 @@ export default function Layout({ children, currentPageName }) {
                           >
                             <SearchIcon className="h-5 w-5" />
                             Search
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMobileMenuOpen(false);
-                              navigate(workspaceUrl(workspace.slug, 'changelog'));
-                            }}
-                            className={cn(
-                              "flex items-center gap-3 rounded-lg px-4 py-3 text-sm",
-                              isChangelogPage
-                                ? "bg-[var(--workspace-brand-soft)] font-medium text-[var(--workspace-brand-fg)]"
-                                : "text-slate-600 hover:bg-slate-50"
-                            )}
-                          >
-                            <History className="h-5 w-5" />
-                            Changelog
                           </button>
                           <button
                             type="button"

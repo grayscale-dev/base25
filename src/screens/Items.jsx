@@ -9,8 +9,8 @@ import {
 } from "@/lib/workspace-sections";
 import { isAdminRole } from "@/lib/roles";
 
-export default function Items({ section, workspace, role, isPublicAccess }) {
-  const controller = useItemsController({ workspace, role, isPublicAccess });
+export default function Items({ section, workspace, role, isPublicAccess, bootstrapData = null }) {
+  const controller = useItemsController({ workspace, role, isPublicAccess, bootstrapData });
   const isAdmin = isAdminRole(role) && !isPublicAccess;
 
   if (!workspace?.id) {
@@ -38,7 +38,14 @@ export default function Items({ section, workspace, role, isPublicAccess }) {
       );
     }
 
-    return <AllItemsPage workspace={workspace} role={role} isPublicAccess={isPublicAccess} controller={controller} />;
+    return (
+      <AllItemsPage
+        workspace={workspace}
+        role={role}
+        isPublicAccess={isPublicAccess}
+        controller={controller}
+      />
+    );
   }
 
   if (!WORKSPACE_GROUP_SECTIONS.includes(section)) {

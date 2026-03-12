@@ -80,6 +80,8 @@ const DropdownMenuContent = React.forwardRef(
           className
         )}
         showCloseIcon={false}
+        dismissable
+        closeOnEscape
         {...props}
       >
         {children}

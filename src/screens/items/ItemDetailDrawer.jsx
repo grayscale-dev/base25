@@ -7,6 +7,7 @@ import { workspaceItemUrl } from "@/components/utils/workspaceUrl";
 import ItemDetailPanel from "./ItemDetailPanel";
 import { Bell, ExternalLink, Loader2, Pencil, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import { markPerformance, measurePerformance } from "@/lib/performance-marks";
 
 export default function ItemDetailDrawer({
   open,
@@ -28,6 +29,19 @@ export default function ItemDetailDrawer({
       setVisibleItem(item);
     }
   }, [item]);
+
+  useEffect(() => {
+    if (!open || !item?.id) return;
+    markPerformance(`item-drawer-open-start:${item.id}`);
+  }, [open, item?.id]);
+
+  useEffect(() => {
+    if (!open || !visibleItem?.id) return;
+    const startMark = `item-drawer-open-start:${visibleItem.id}`;
+    const endMark = `item-drawer-open-end:${visibleItem.id}`;
+    markPerformance(endMark);
+    measurePerformance(`item-drawer-first-content:${visibleItem.id}`, startMark, endMark);
+  }, [open, visibleItem?.id]);
 
   useEffect(() => {
     setIsEditingTitle(false);
@@ -116,7 +130,7 @@ export default function ItemDetailDrawer({
       >
         {visibleItem ? (
           <div className="min-h-[100dvh] bg-white">
-            <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
+            <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
               <div className="min-w-0 flex-1">
                 {isEditingTitle ? (
                   <div className="flex items-center gap-2">
@@ -187,7 +201,11 @@ export default function ItemDetailDrawer({
                 >
                   <Bell
                     className="h-4 w-4"
-                    style={controller.itemEngagement.watched ? { color: "var(--workspace-brand)" } : undefined}
+                    style={
+                      controller.itemEngagement.watched
+                        ? { color: "var(--workspace-brand)", fill: "var(--workspace-brand)" }
+                        : undefined
+                    }
                   />
                 </Button>
                 {canDeleteItem ? (

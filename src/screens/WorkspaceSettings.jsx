@@ -46,7 +46,6 @@ import {
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
-import PageLoadingState from "@/components/common/PageLoadingState";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import { StatePanel } from "@/components/common/StateDisplay";
 import { cn } from "@/lib/utils";
@@ -100,21 +99,25 @@ function canAccessSettingsTab(tab, role) {
 
 export default function WorkspaceSettings() {
   const navigate = useNavigate();
+  const initialSession = getWorkspaceSession();
+  const initialWorkspace = initialSession.workspace || null;
+  const initialRole = initialSession.role || "contributor";
+  const initialIsAdmin = isAdminRole(initialRole);
 
-  const [workspace, setWorkspace] = useState(null);
-  const [role, setRole] = useState("contributor");
-  const [roleInitialized, setRoleInitialized] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [workspace, setWorkspace] = useState(initialWorkspace);
+  const [role, setRole] = useState(initialRole);
+  const [roleInitialized, setRoleInitialized] = useState(Boolean(initialWorkspace));
+  const [loading, setLoading] = useState(Boolean(initialWorkspace) ? initialIsAdmin : true);
   const [saving, setSaving] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState("");
 
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [description, setDescription] = useState("");
-  const [visibility, setVisibility] = useState("restricted");
-  const [settings, setSettings] = useState({});
-  const [logoUrl, setLogoUrl] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("#0f172a");
+  const [name, setName] = useState(initialWorkspace?.name || "");
+  const [slug, setSlug] = useState(initialWorkspace?.slug || "");
+  const [description, setDescription] = useState(initialWorkspace?.description || "");
+  const [visibility, setVisibility] = useState(initialWorkspace?.visibility || "restricted");
+  const [settings, setSettings] = useState(initialWorkspace?.settings || {});
+  const [logoUrl, setLogoUrl] = useState(initialWorkspace?.logo_url || "");
+  const [primaryColor, setPrimaryColor] = useState(initialWorkspace?.primary_color || "#0f172a");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [slugError, setSlugError] = useState("");
 
@@ -157,7 +160,7 @@ export default function WorkspaceSettings() {
   const [savingItemType, setSavingItemType] = useState(false);
   const [showDeleteWorkspaceDialog, setShowDeleteWorkspaceDialog] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
-  const [activeTab, setActiveTab] = useState("my-account");
+  const [activeTab, setActiveTab] = useState(getDefaultSettingsTab(initialRole));
   const [openingBilling, setOpeningBilling] = useState(false);
   const { toast } = useToast();
 
@@ -1068,7 +1071,19 @@ export default function WorkspaceSettings() {
   const isOwner = isOwnerRole(role);
 
   if (loading) {
-    return <PageLoadingState text="Loading settings..." />;
+    return (
+      <PageShell className="mx-auto max-w-5xl space-y-6">
+        <PageHeader title={isAdmin ? "Workspace Settings" : "Settings"} description="Loading workspace settings..." />
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="animate-pulse space-y-3">
+            <div className="h-4 w-40 rounded bg-slate-200" />
+            <div className="h-4 w-3/4 rounded bg-slate-100" />
+            <div className="h-4 w-5/6 rounded bg-slate-100" />
+            <div className="h-10 w-32 rounded bg-slate-200" />
+          </div>
+        </div>
+      </PageShell>
+    );
   }
 
   if (initialLoadError) {

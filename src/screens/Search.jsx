@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Search as SearchIcon } from "lucide-react";
-import { base44 } from "@/api/base44Client";
 import { useLocation, useNavigate } from "@/lib/router";
 import { getWorkspaceSession } from "@/lib/workspace-session";
 import { createPageUrl } from "@/utils";
@@ -14,6 +13,8 @@ import PageLoadingState from "@/components/common/PageLoadingState";
 import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import RelativeDate from "@/components/common/RelativeDate";
+import { WORKSPACE_LOADING_COPY } from "@/lib/workspace-loading";
+import { fetchWorkspaceSearchCached } from "@/lib/workspace-queries";
 
 function getSearchQueryFromUrl(search) {
   const params = new URLSearchParams(String(search || ""));
@@ -31,7 +32,7 @@ function formatMatchedIn(value) {
 export default function Search() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [workspace, setWorkspace] = useState(null);
+  const [workspace, setWorkspace] = useState(() => getWorkspaceSession().workspace || null);
   const [queryInput, setQueryInput] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -45,8 +46,8 @@ export default function Search() {
       navigate(createPageUrl("Workspaces"), { replace: true });
       return;
     }
-    setWorkspace(storedWorkspace);
-  }, [navigate]);
+    setWorkspace((prev) => (prev?.id === storedWorkspace.id ? prev : storedWorkspace));
+  }, []);
 
   useEffect(() => {
     setQueryInput(query);
@@ -65,13 +66,13 @@ export default function Search() {
       setLoading(true);
       setError("");
       try {
-        const { data } = await base44.functions.invoke(
-          "searchWorkspaceItems",
-          { workspace_id: workspace.id, query, limit: 100 },
-          { authMode: "user" },
-        );
+        const data = await fetchWorkspaceSearchCached({
+          workspaceId: workspace.id,
+          query,
+          limit: 100,
+        });
         if (!cancelled) {
-          setResults(data?.results || []);
+          setResults(Array.isArray(data) ? data : []);
         }
       } catch (searchError) {
         console.error("Workspace search failed:", searchError);
@@ -108,7 +109,7 @@ export default function Search() {
   };
 
   if (!workspace?.id) {
-    return <PageLoadingState text="Loading workspace..." />;
+    return <PageLoadingState text={WORKSPACE_LOADING_COPY} />;
   }
 
   return (

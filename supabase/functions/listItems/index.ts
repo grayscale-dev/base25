@@ -15,6 +15,27 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+function buildReactionSummary(
+  rows: Array<{ emoji: string; user_id: string }>,
+  currentUserId: string | null,
+) {
+  const aggregate = new Map<string, { count: number; reacted: boolean }>();
+  rows.forEach((row) => {
+    const emoji = String(row.emoji || "");
+    if (!emoji) return;
+    const prev = aggregate.get(emoji) || { count: 0, reacted: false };
+    prev.count += 1;
+    if (currentUserId && String(row.user_id || "") === currentUserId) {
+      prev.reacted = true;
+    }
+    aggregate.set(emoji, prev);
+  });
+
+  return [...aggregate.entries()]
+    .map(([emoji, value]) => ({ emoji, count: value.count, reacted: value.reacted }))
+    .sort((a, b) => b.count - a.count);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -86,11 +107,11 @@ Deno.serve(async (req) => {
     });
 
     const itemIds = items.map((item) => String(item.id || "")).filter(Boolean);
-    const reactionCountByItemId = new Map<string, number>();
+    const reactionRowsByItemId = new Map<string, Array<{ emoji: string; user_id: string }>>();
     if (itemIds.length > 0) {
       const { data: reactionRows, error: reactionError } = await supabaseAdmin
         .from("item_reactions")
-        .select("item_id")
+        .select("item_id, emoji, user_id")
         .eq("workspace_id", access.workspace.id)
         .in("item_id", itemIds);
       if (reactionError) {
@@ -99,14 +120,23 @@ Deno.serve(async (req) => {
       }
       (reactionRows || []).forEach((row) => {
         const key = String(row.item_id || "");
-        reactionCountByItemId.set(key, (reactionCountByItemId.get(key) || 0) + 1);
+        const existing = reactionRowsByItemId.get(key) || [];
+        existing.push({
+          emoji: String(row.emoji || ""),
+          user_id: String(row.user_id || ""),
+        });
+        reactionRowsByItemId.set(key, existing);
       });
     }
 
     return json({
       items: items.map((item) => ({
         ...item,
-        reaction_count: reactionCountByItemId.get(String(item.id || "")) || 0,
+        reaction_count: (reactionRowsByItemId.get(String(item.id || "")) || []).length,
+        reaction_summary: buildReactionSummary(
+          reactionRowsByItemId.get(String(item.id || "")) || [],
+          access.user?.id || null,
+        ),
       })),
       workspace: {
         id: access.workspace.id,

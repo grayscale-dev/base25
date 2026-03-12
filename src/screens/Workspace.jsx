@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter as useNextRouter } from "next/navigation";
 import { useNavigate, useParams } from "@/lib/router";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { StatePanel } from "@/components/common/StateDisplay";
-import { setWorkspaceSession } from "@/lib/workspace-session";
+import { getWorkspaceSession, setWorkspaceSession } from "@/lib/workspace-session";
 import { workspaceUrl } from "@/components/utils/workspaceUrl";
 import {
   getDefaultWorkspaceSection,
@@ -16,6 +17,12 @@ import {
 import { startWorkspaceLogin } from "@/lib/start-workspace-login";
 import { openStripeBilling } from "@/lib/openStripeBilling";
 import { isAdminRole, isOwnerRole } from "@/lib/roles";
+import {
+  fetchWorkspaceBootstrapCached,
+  invalidateWorkspaceBootstrapQueries,
+} from "@/lib/workspace-queries";
+import { markPerformance, measurePerformance } from "@/lib/performance-marks";
+import { WORKSPACE_LOADING_COPY } from "@/lib/workspace-loading";
 import { CreditCard, Loader2 } from "lucide-react";
 import Items from "./Items";
 import WorkspaceItemView from "./items/WorkspaceItemView";
@@ -24,56 +31,132 @@ function toSingleRouteParam(value) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function normalizeBootstrapWorkspace(data) {
+  if (!data?.id) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    slug: data.slug,
+    description: data.description || "",
+    logo_url: data.logo_url || "",
+    primary_color: data.primary_color || "#0f172a",
+    visibility: data.visibility || "restricted",
+    billing_status: data.billing_status || "inactive",
+    billing_access_allowed: data.billing_access_allowed !== false,
+  };
+}
+
+function getErrorStatus(error) {
+  if (!error) return null;
+  return error.status ?? error.context?.status ?? error.response?.status ?? null;
+}
+
 export default function Workspace({ section = "items", itemId = null }) {
   const navigate = useNavigate();
+  const nextRouter = useNextRouter();
   const params = useParams();
   const routeSlug = toSingleRouteParam(params?.slug);
   const routeSection = String(section || "items").toLowerCase();
-  const [loading, setLoading] = useState(true);
+  const storedSession = getWorkspaceSession();
+  const storedWorkspace = storedSession.workspace;
+  const hasMatchingSession =
+    Boolean(storedWorkspace?.id) &&
+    Boolean(routeSlug) &&
+    String(storedWorkspace?.slug || "") === String(routeSlug);
+
+  const [loading, setLoading] = useState(!hasMatchingSession);
   const [error, setError] = useState(null);
   const [accessRequired, setAccessRequired] = useState(false);
   const [accessSubmitting, setAccessSubmitting] = useState(false);
   const [accessCode, setAccessCode] = useState("");
-  const [slug, setSlug] = useState(null);
-  const [workspace, setWorkspace] = useState(null);
-  const [role, setRole] = useState("contributor");
-  const [isPublicAccess, setIsPublicAccess] = useState(false);
-  const [activeSection, setActiveSection] = useState(null);
-  const [billingGate, setBillingGate] = useState(null);
+  const [slug, setSlug] = useState(hasMatchingSession ? storedWorkspace.slug : null);
+  const [workspace, setWorkspace] = useState(hasMatchingSession ? storedWorkspace : null);
+  const [role, setRole] = useState(hasMatchingSession ? (storedSession.role || "contributor") : "contributor");
+  const [isPublicAccess, setIsPublicAccess] = useState(hasMatchingSession ? Boolean(storedSession.isPublicAccess) : false);
+  const [activeSection, setActiveSection] = useState(
+    hasMatchingSession
+      ? (routeSection === "item"
+          ? "item"
+          : resolveWorkspaceSection(routeSection, storedSession.role || "contributor", Boolean(storedSession.isPublicAccess)))
+      : null
+  );
+  const [bootstrapData, setBootstrapData] = useState(null);
+  const [billingGate, setBillingGate] = useState(
+    hasMatchingSession && storedSession.billingBlocked
+      ? { status: String(storedWorkspace?.billing_status || "inactive") }
+      : null
+  );
   const [openingBilling, setOpeningBilling] = useState(false);
   const [syncingBillingStatus, setSyncingBillingStatus] = useState(false);
   const [billingError, setBillingError] = useState("");
+
+  const sectionPrefetchTargets = useMemo(
+    () => (isAdminRole(role) && !isPublicAccess
+      ? ["feedback", "roadmap", "changelog", "all"]
+      : ["feedback", "roadmap", "changelog"]),
+    [role, isPublicAccess]
+  );
 
   useEffect(() => {
     void initializeWorkspace(routeSlug, routeSection, itemId);
   }, [routeSlug, routeSection, itemId]);
 
+  useEffect(() => {
+    if (!workspace?.slug || billingGate) return;
+    sectionPrefetchTargets.forEach((target) => {
+      const resolvedTarget = resolveWorkspaceSection(target, role, isPublicAccess);
+      if (!resolvedTarget) return;
+      nextRouter.prefetch(workspaceUrl(workspace.slug, resolvedTarget));
+    });
+  }, [workspace?.slug, billingGate, role, isPublicAccess, nextRouter, sectionPrefetchTargets]);
+
+  useEffect(() => {
+    if (!workspace?.id || loading || billingGate || !activeSection) return;
+    const endMark = `workspace-section-content-end:${workspace.id}:${activeSection}`;
+    const startMark = `workspace-bootstrap-start:${workspace.id}:${activeSection}`;
+    markPerformance(endMark);
+    measurePerformance(`workspace-section-first-content:${workspace.id}:${activeSection}`, startMark, endMark);
+  }, [workspace?.id, activeSection, loading, billingGate]);
+
   const initializeWorkspace = async (routeSlugParam, sectionParam, itemIdParam) => {
     try {
-      setLoading(true);
       setError(null);
       setAccessRequired(false);
-      setActiveSection(null);
-      setBillingGate(null);
       setBillingError("");
+      setActiveSection((previous) => (workspace?.slug === routeSlugParam ? previous : null));
+      setBootstrapData(null);
+      setBillingGate(null);
 
       if (!routeSlugParam) {
-        setError("Invalid workspace URL");
         setLoading(false);
+        setError("Invalid workspace URL");
         return;
       }
 
-      const workspaceSlug = routeSlugParam;
+      const workspaceSlug = String(routeSlugParam).trim().toLowerCase();
       setSlug(workspaceSlug);
 
-      let resolvedWorkspace = null;
+      const shouldShowGlobalLoader = !workspace?.id || workspace?.slug !== workspaceSlug;
+      if (shouldShowGlobalLoader) {
+        setLoading(true);
+      }
+
+      const includeItems = sectionParam !== "item";
+      const sectionStartMark = workspace?.id
+        ? `workspace-bootstrap-start:${workspace.id}:${sectionParam}`
+        : `workspace-bootstrap-start:${workspaceSlug}:${sectionParam}`;
+      markPerformance(sectionStartMark);
+
+      let bootstrapPayload = null;
       try {
-        const { data } = await base44.functions.invoke('publicGetWorkspace', {
+        bootstrapPayload = await fetchWorkspaceBootstrapCached({
           slug: workspaceSlug,
+          section: sectionParam,
+          includeItems,
+          limit: sectionParam === "all" ? 200 : 120,
         });
-        resolvedWorkspace = data;
-      } catch (publicError) {
-        const status = publicError?.status || publicError?.response?.status;
+      } catch (bootstrapError) {
+        const status = getErrorStatus(bootstrapError);
         if (status === 401) {
           try {
             await base44.auth.logout();
@@ -85,65 +168,44 @@ export default function Workspace({ section = "items", itemId = null }) {
           return;
         }
         if (status === 403) {
-          try {
-            await base44.auth.me();
-          } catch {
-            const returnUrl = window.location.pathname;
-            base44.auth.redirectToLogin(window.location.origin + returnUrl);
-            return;
-          }
           setAccessRequired(true);
           setLoading(false);
           return;
         }
-        throw publicError;
+        throw bootstrapError;
       }
 
+      const resolvedWorkspace = normalizeBootstrapWorkspace(bootstrapPayload);
       if (!resolvedWorkspace) {
-        setError("Workspace not found");
         setLoading(false);
+        setError("Workspace not found");
         return;
       }
 
-      let role = "contributor";
-      let isPublicAccess = false;
+      const resolvedRole = String(bootstrapPayload?.role || "contributor");
+      const resolvedPublicAccess = Boolean(bootstrapPayload?.is_public_access);
+      const billingBlocked = bootstrapPayload?.billing_access_allowed === false;
 
-      try {
-        const user = await base44.auth.me();
-        const roles = await base44.entities.WorkspaceRole.filter({
-          workspace_id: resolvedWorkspace.id,
-          user_id: user.id,
-        });
-
-        if (roles.length > 0) {
-          role = roles[0].role;
-          isPublicAccess = false;
-        } else if (resolvedWorkspace.visibility === "restricted") {
-          setAccessRequired(true);
-          setLoading(false);
-          return;
-        } else {
-          role = "contributor";
-          isPublicAccess = true;
-        }
-      } catch {
-        if (resolvedWorkspace.visibility !== "public") {
-          setError("This workspace is private. Please log in to access it.");
-          setLoading(false);
-          return;
-        }
-        isPublicAccess = true;
-      }
-
-      const billingBlocked = resolvedWorkspace.billing_access_allowed === false;
-      setWorkspaceSession({ workspace: resolvedWorkspace, role, isPublicAccess, billingBlocked });
+      setWorkspaceSession({
+        workspace: resolvedWorkspace,
+        role: resolvedRole,
+        isPublicAccess: resolvedPublicAccess,
+        billingBlocked,
+      });
       setWorkspace(resolvedWorkspace);
-      setRole(role);
-      setIsPublicAccess(isPublicAccess);
+      setRole(resolvedRole);
+      setIsPublicAccess(resolvedPublicAccess);
+      setBootstrapData({
+        groups: Array.isArray(bootstrapPayload?.groups) ? bootstrapPayload.groups : [],
+        statuses: Array.isArray(bootstrapPayload?.statuses) ? bootstrapPayload.statuses : [],
+        itemTypes: Array.isArray(bootstrapPayload?.item_types) ? bootstrapPayload.item_types : [],
+        items: Array.isArray(bootstrapPayload?.items) ? bootstrapPayload.items : [],
+        section: sectionParam,
+      });
 
       if (billingBlocked) {
         setBillingGate({
-          status: resolvedWorkspace.billing_status || "inactive",
+          status: String(bootstrapPayload?.billing_status || "inactive"),
         });
         setLoading(false);
         return;
@@ -151,20 +213,22 @@ export default function Workspace({ section = "items", itemId = null }) {
 
       if (sectionParam === "item") {
         if (!itemIdParam) {
-          setError("Invalid item URL.");
           setLoading(false);
+          setError("Invalid item URL.");
           return;
         }
-
         setActiveSection("item");
         setLoading(false);
+        const sectionEndMark = `workspace-bootstrap-end:${resolvedWorkspace.id}:${sectionParam}`;
+        markPerformance(sectionEndMark);
+        measurePerformance(`workspace-bootstrap:${resolvedWorkspace.id}:${sectionParam}`, sectionStartMark, sectionEndMark);
         return;
       }
 
-      const targetSection = resolveWorkspaceSection(sectionParam, role, isPublicAccess);
+      const targetSection = resolveWorkspaceSection(sectionParam, resolvedRole, resolvedPublicAccess);
       if (!targetSection) {
-        setError("Invalid workspace section.");
         setLoading(false);
+        setError("Invalid workspace section.");
         return;
       }
 
@@ -175,6 +239,9 @@ export default function Workspace({ section = "items", itemId = null }) {
 
       setActiveSection(targetSection);
       setLoading(false);
+      const sectionEndMark = `workspace-bootstrap-end:${resolvedWorkspace.id}:${sectionParam}`;
+      markPerformance(sectionEndMark);
+      measurePerformance(`workspace-bootstrap:${resolvedWorkspace.id}:${sectionParam}`, sectionStartMark, sectionEndMark);
     } catch (initializationError) {
       console.error("Workspace initialization error:", initializationError);
       setError("Unable to open workspace");
@@ -191,18 +258,34 @@ export default function Workspace({ section = "items", itemId = null }) {
 
   const syncBillingStatus = async ({ silent = false, clearFlag = false } = {}) => {
     if (!workspace?.id) return false;
-    const workspaceSlug = String(routeSlug || workspace?.slug || "").trim();
-    if (!workspaceSlug) return false;
     if (!silent) {
       setBillingError("");
       setSyncingBillingStatus(true);
     }
     try {
-      const { data } = await base44.functions.invoke(
-        "publicGetWorkspace",
-        { slug: workspaceSlug },
-        { authMode: "user" }
-      );
+      let data = null;
+      try {
+        const refreshResult = await base44.functions.invoke(
+          "refreshWorkspaceBillingStatus",
+          { workspace_id: workspace.id },
+          { authMode: "user" }
+        );
+        data = refreshResult?.data || null;
+      } catch (refreshError) {
+        const status = getErrorStatus(refreshError);
+        if (status !== 404) {
+          throw refreshError;
+        }
+        const fallback = await base44.functions.invoke(
+          "publicGetWorkspace",
+          { slug: workspace.slug },
+          { authMode: "user" }
+        );
+        data = {
+          billing_status: fallback?.data?.billing_status || "inactive",
+          billing_access_allowed: Boolean(fallback?.data?.billing_access_allowed),
+        };
+      }
 
       if (clearFlag) {
         clearBillingQueryFlag();
@@ -210,6 +293,7 @@ export default function Workspace({ section = "items", itemId = null }) {
 
       const accessAllowed = Boolean(data?.billing_access_allowed);
       if (accessAllowed) {
+        await invalidateWorkspaceBootstrapQueries(workspace.slug);
         await initializeWorkspace(routeSlug, routeSection, itemId);
         return true;
       }
@@ -222,7 +306,7 @@ export default function Workspace({ section = "items", itemId = null }) {
       }
       return false;
     } catch (syncError) {
-      console.error("Failed to verify workspace billing status:", syncError);
+      console.error("Failed to refresh workspace billing status:", syncError);
       if (clearFlag) {
         clearBillingQueryFlag();
       }
@@ -300,7 +384,7 @@ export default function Workspace({ section = "items", itemId = null }) {
     setAccessSubmitting(true);
     setError(null);
     try {
-      const { data } = await base44.functions.invoke('joinWorkspaceWithAccessCode', {
+      const { data } = await base44.functions.invoke("joinWorkspaceWithAccessCode", {
         slug,
         access_code: accessCode.trim(),
       });
@@ -325,7 +409,7 @@ export default function Workspace({ section = "items", itemId = null }) {
   };
 
   if (loading) {
-    return <PageLoadingState fullHeight text="Loading workspace..." className="bg-slate-50" />;
+    return <PageLoadingState fullHeight text={WORKSPACE_LOADING_COPY} className="bg-slate-50" />;
   }
 
   if (accessRequired) {
@@ -374,7 +458,7 @@ export default function Workspace({ section = "items", itemId = null }) {
   }
 
   if (error) {
-    const isPrivateWorkspaceError = error.toLowerCase().includes("private");
+    const isPrivateWorkspaceError = String(error || "").toLowerCase().includes("private");
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
         <StatePanel
@@ -466,7 +550,7 @@ export default function Workspace({ section = "items", itemId = null }) {
   }
 
   if (!workspace || !activeSection) {
-    return <PageLoadingState fullHeight text="Loading workspace..." className="bg-slate-50" />;
+    return <PageLoadingState fullHeight text={WORKSPACE_LOADING_COPY} className="bg-slate-50" />;
   }
 
   if (activeSection === "item") {
@@ -476,6 +560,7 @@ export default function Workspace({ section = "items", itemId = null }) {
         role={role}
         isPublicAccess={isPublicAccess}
         itemId={itemId}
+        bootstrapData={bootstrapData}
       />
     );
   }
@@ -486,6 +571,7 @@ export default function Workspace({ section = "items", itemId = null }) {
       role={role}
       isPublicAccess={isPublicAccess}
       section={activeSection}
+      bootstrapData={bootstrapData}
     />
   );
 }

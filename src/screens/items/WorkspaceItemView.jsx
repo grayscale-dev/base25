@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { workspaceUrl } from "@/components/utils/workspaceUrl";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
-import PageLoadingState from "@/components/common/PageLoadingState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import { useNavigate } from "@/lib/router";
 import { getGroupLabel } from "@/lib/item-groups";
@@ -15,9 +14,15 @@ import { Bell, Loader2, Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { isAdminRole } from "@/lib/roles";
 
-export default function WorkspaceItemView({ workspace, role, isPublicAccess, itemId }) {
+export default function WorkspaceItemView({
+  workspace,
+  role,
+  isPublicAccess,
+  itemId,
+  bootstrapData = null,
+}) {
   const navigate = useNavigate();
-  const controller = useItemsController({ workspace, role, isPublicAccess });
+  const controller = useItemsController({ workspace, role, isPublicAccess, bootstrapData });
   const [loadingItem, setLoadingItem] = useState(true);
   const [itemError, setItemError] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -49,7 +54,9 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
           return;
         }
         if (!cancelled) {
-          await controller.loadItemActivities(item);
+          const hydratedItem = controller.hydrateItem(item);
+          controller.setSelectedItem(hydratedItem);
+          void controller.loadItemActivities(hydratedItem);
         }
       } catch (loadError) {
         console.error("Failed to load item:", loadError);
@@ -131,8 +138,25 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
     }
   };
 
-  if (controller.loadingConfig || loadingItem) {
-    return <PageLoadingState text="Loading item..." />;
+  if ((controller.loadingConfig || loadingItem) && !selectedItem) {
+    return (
+      <PageShell className="space-y-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="animate-pulse space-y-3">
+            <div className="h-7 w-2/3 rounded bg-slate-200" />
+            <div className="h-4 w-1/3 rounded bg-slate-100" />
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="animate-pulse space-y-3">
+            <div className="h-4 w-28 rounded bg-slate-200" />
+            <div className="h-4 w-full rounded bg-slate-100" />
+            <div className="h-4 w-5/6 rounded bg-slate-100" />
+            <div className="h-4 w-3/4 rounded bg-slate-100" />
+          </div>
+        </div>
+      </PageShell>
+    );
   }
 
   if (controller.error || itemError) {
@@ -224,7 +248,11 @@ export default function WorkspaceItemView({ workspace, role, isPublicAccess, ite
               >
                 <Bell
                   className="h-3.5 w-3.5"
-                  style={controller.itemEngagement.watched ? { color: "var(--workspace-brand)" } : undefined}
+                  style={
+                    controller.itemEngagement.watched
+                      ? { color: "var(--workspace-brand)", fill: "var(--workspace-brand)" }
+                      : undefined
+                  }
                 />
               </Button>
               {canEditTitle ? (

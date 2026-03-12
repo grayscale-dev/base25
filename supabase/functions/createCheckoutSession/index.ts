@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
         headers: corsHeaders,
       });
     }
+    const workspaceName = String(workspaceCheck.workspace?.name || "Workspace").trim();
 
     const ownerCheck = await requireOwner(workspaceId, authCheck.user.id);
     if (!ownerCheck.success) {
@@ -149,13 +150,29 @@ Deno.serve(async (req) => {
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: authCheck.user.email ?? undefined,
-        metadata: { workspace_id: workspaceId },
+        name: workspaceName,
+        metadata: {
+          workspace_id: workspaceId,
+          workspace_name: workspaceName,
+        },
       });
       customerId = customer.id;
       await supabaseAdmin.from("billing_customers").upsert({
         workspace_id: workspaceId,
         stripe_customer_id: customerId,
       });
+    } else {
+      try {
+        await stripe.customers.update(customerId, {
+          name: workspaceName,
+          metadata: {
+            workspace_id: workspaceId,
+            workspace_name: workspaceName,
+          },
+        });
+      } catch (customerUpdateError) {
+        console.warn("createCheckoutSession customer update warning:", customerUpdateError);
+      }
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -178,9 +195,15 @@ Deno.serve(async (req) => {
       },
       metadata: {
         workspace_id: workspaceId,
+        workspace_name: workspaceName,
         billing_model: "flat_monthly",
         // Keep legacy metadata shape populated to simplify transition consumers.
         enabled_services: enabledServices.join(","),
+      },
+      custom_text: {
+        submit: {
+          message: `Workspace: ${workspaceName}`,
+        },
       },
     });
 

@@ -1,39 +1,58 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
-import { canContributeRole, isAdminRole } from '@/lib/roles';
+import { createContext, useContext, useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { canContributeRole, isAdminRole } from "@/lib/roles";
 import {
   getWorkspaceSession,
   getOrCreateAnalyticsSessionId,
   setWorkspaceSession,
-} from '@/lib/workspace-session';
-
-/**
- * WorkspaceContext Model
- * 
- * Provides centralized workspace state and permissions for all workspace pages.
- * Single source of truth that replaces scattered auth checks.
- */
+} from "@/lib/workspace-session";
+import { fetchWorkspaceBootstrapCached } from "@/lib/workspace-queries";
 
 const WorkspaceContext = createContext(null);
 
 export function useWorkspaceContext() {
   const context = useContext(WorkspaceContext);
   if (!context) {
-    throw new Error('useWorkspaceContext must be used within WorkspaceProvider');
+    throw new Error("useWorkspaceContext must be used within WorkspaceProvider");
   }
   return context;
 }
 
+function getSlugFromPath(pathname) {
+  const pathParts = String(pathname || "")
+    .split("/")
+    .filter(Boolean);
+  return pathParts[0] === "workspace" ? pathParts[1] || null : null;
+}
+
+function normalizeWorkspace(bootstrap) {
+  if (!bootstrap?.id) return null;
+  return {
+    id: bootstrap.id,
+    name: bootstrap.name,
+    slug: bootstrap.slug,
+    description: bootstrap.description || "",
+    logo_url: bootstrap.logo_url || "",
+    primary_color: bootstrap.primary_color || "#0f172a",
+    visibility: bootstrap.visibility || "restricted",
+    billing_status: bootstrap.billing_status || "inactive",
+    billing_access_allowed: bootstrap.billing_access_allowed !== false,
+  };
+}
+
+function getErrorStatus(error) {
+  if (!error) return null;
+  return error.status ?? error.context?.status ?? error.response?.status ?? null;
+}
+
 export function WorkspaceProvider({ children }) {
+  const cachedSession = getWorkspaceSession();
   const [state, setState] = useState({
-    // Core state
-    workspace: null,
+    workspace: cachedSession.workspace || null,
     user: null,
-    role: 'contributor',
-    isPublicAccess: false,
+    role: cachedSession.role || "contributor",
+    isPublicAccess: Boolean(cachedSession.isPublicAccess),
     loading: true,
-    
-    // Computed permissions
     permissions: {
       canView: false,
       canCreateItems: false,
@@ -41,113 +60,68 @@ export function WorkspaceProvider({ children }) {
       canManageSettings: false,
       canModerateContent: false,
       isStaff: false,
-      isAdmin: false
+      isAdmin: false,
     },
-    
-    // Messages for UI
     messages: {
       loginPrompt: null,
-      accessDenied: null
-    }
+      accessDenied: null,
+    },
   });
 
   useEffect(() => {
-    loadWorkspaceContext();
+    void loadWorkspaceContext();
   }, []);
 
   const loadWorkspaceContext = async () => {
     try {
-      // Resolve from URL path params (/workspace/:slug/:section).
-      const pathParts = window.location.pathname.split('/').filter(Boolean);
-      const rootSegment = pathParts[0];
-      const slug =
-        rootSegment === 'workspace' ? pathParts[1] : null;
-
+      const slug = getSlugFromPath(window.location.pathname);
       if (!slug) {
-        // No slug in URL path - cannot resolve workspace
-        setState(prev => ({ ...prev, loading: false }));
+        setState((prev) => ({ ...prev, loading: false }));
         return;
       }
 
-      // Check sessionStorage cache first (optimization)
-      const cachedSession = getWorkspaceSession();
-      const cachedWorkspace = cachedSession.workspace;
-      const cachedSlug = cachedWorkspace?.slug || null;
+      const session = getWorkspaceSession();
+      let workspace =
+        session.workspace?.slug === slug
+          ? session.workspace
+          : null;
+      let role = workspace ? session.role || "contributor" : "contributor";
+      let isPublicAccess = workspace ? Boolean(session.isPublicAccess) : false;
 
-      let workspace;
-      let role = 'contributor';
-      let isPublicAccess = false;
-
-      if (cachedSlug === slug) {
-        // Cache hit - use sessionStorage
-        workspace = cachedWorkspace;
-        role = cachedSession.role || 'contributor';
-        isPublicAccess = cachedSession.isPublicAccess;
-      } else {
-        // Cache miss or different slug - resolve from API
-        let workspaceResponse = null;
-        try {
-          workspaceResponse = await base44.functions.invoke('publicGetWorkspace', { slug });
-        } catch (publicError) {
-          const status = publicError?.status || publicError?.response?.status;
-          if (status === 401) {
-            await base44.auth.logout();
-            setState(prev => ({ ...prev, loading: false }));
-            return;
-          }
-          if (status === 403) {
-            setState(prev => ({ ...prev, loading: false }));
-            return;
-          }
-          throw publicError;
-        }
-
-        if (!workspaceResponse?.data) {
-          setState(prev => ({ ...prev, loading: false }));
-          return;
-        }
-
-        workspace = workspaceResponse.data;
-
-        // Determine access level
-        let user = null;
-        try {
-          user = await base44.auth.me();
-          
-          // Check if user has a role
-          const roles = await base44.entities.WorkspaceRole.filter({
-            workspace_id: workspace.id,
-            user_id: user.id
-          });
-
-          if (roles.length > 0) {
-            role = roles[0].role;
-            isPublicAccess = false;
-          } else {
-            // Authenticated but no role
-            role = 'contributor';
-            isPublicAccess = true;
-          }
-        } catch {
-          // Not authenticated
-          if (workspace.visibility === 'public') {
-            isPublicAccess = true;
-          }
-        }
-
-        // Cache in sessionStorage for optimization
-        setWorkspaceSession({ workspace, role, isPublicAccess });
-      }
-
-      // Get current user
       let user = null;
       try {
         user = await base44.auth.me();
       } catch {
-        // Not authenticated
+        user = null;
       }
 
-      // Compute permissions
+      if (!workspace && user) {
+        try {
+          const bootstrap = await fetchWorkspaceBootstrapCached({
+            slug,
+            includeItems: false,
+          });
+          workspace = normalizeWorkspace(bootstrap);
+          role = String(bootstrap?.role || "contributor");
+          isPublicAccess = Boolean(bootstrap?.is_public_access);
+          if (workspace) {
+            setWorkspaceSession({
+              workspace,
+              role,
+              isPublicAccess,
+              billingBlocked: workspace.billing_access_allowed === false,
+            });
+          }
+        } catch (error) {
+          const status = getErrorStatus(error);
+          if (status === 401 || status === 403) {
+            setState((prev) => ({ ...prev, loading: false, user }));
+            return;
+          }
+          throw error;
+        }
+      }
+
       const permissions = computePermissions(role, isPublicAccess);
       const messages = computeMessages(isPublicAccess, user);
 
@@ -158,38 +132,37 @@ export function WorkspaceProvider({ children }) {
         isPublicAccess,
         loading: false,
         permissions,
-        messages
+        messages,
       });
 
-      // Track view (fire and forget, don't block UI)
-      trackWorkspaceView(slug).catch(() => {
-        // Silently fail if tracking fails
-      });
-
+      if (workspace?.slug) {
+        trackWorkspaceView(workspace.slug).catch(() => {
+          // Analytics should never break rendering.
+        });
+      }
     } catch (error) {
-      console.error('Failed to load workspace context:', error);
-      setState(prev => ({ ...prev, loading: false }));
+      console.error("Failed to load workspace context:", error);
+      setState((prev) => ({ ...prev, loading: false }));
     }
   };
 
   const trackWorkspaceView = async (slug) => {
     try {
-      // Generate or retrieve session ID (persists across page loads)
       const sessionId = getOrCreateAnalyticsSessionId();
       if (!sessionId) return;
 
-      await base44.functions.invoke('publicTrackWorkspaceView', {
+      await base44.functions.invoke("publicTrackWorkspaceView", {
         slug,
         session_id: sessionId,
-        referrer: document.referrer || undefined
+        referrer: document.referrer || undefined,
       });
     } catch {
-      // Silent fail - analytics should never break the app
+      // Ignore analytics failures.
     }
   };
 
   const refresh = () => {
-    loadWorkspaceContext();
+    void loadWorkspaceContext();
   };
 
   return (
@@ -199,11 +172,7 @@ export function WorkspaceProvider({ children }) {
   );
 }
 
-/**
- * Compute permissions based on role and access type
- */
 function computePermissions(role, isPublicAccess) {
-  // Public access (unauthenticated or no role) - read-only
   if (isPublicAccess) {
     return {
       canView: true,
@@ -212,11 +181,10 @@ function computePermissions(role, isPublicAccess) {
       canManageSettings: false,
       canModerateContent: false,
       isStaff: false,
-      isAdmin: false
+      isAdmin: false,
     };
   }
 
-  // Authenticated with role
   const isAdmin = isAdminRole(role);
   const isStaff = isAdmin;
   const isContributor = canContributeRole(role);
@@ -228,33 +196,27 @@ function computePermissions(role, isPublicAccess) {
     canManageSettings: isAdmin,
     canModerateContent: isStaff,
     isStaff,
-    isAdmin
+    isAdmin,
   };
 }
 
-/**
- * Compute UI messages for various states
- */
 function computeMessages(isPublicAccess, user) {
-  // Unauthenticated public viewer
   if (isPublicAccess && !user) {
     return {
-      loginPrompt: 'Login to contribute feedback and interact with this workspace',
-      accessDenied: null
+      loginPrompt: "Login to contribute feedback and interact with this workspace",
+      accessDenied: null,
     };
   }
 
-      // Authenticated but public access (no role)
   if (isPublicAccess && user) {
     return {
       loginPrompt: null,
-      accessDenied: "You don't have permission to contribute to this workspace. Contact the admin to request access."
+      accessDenied: "You don't have permission to contribute to this workspace. Contact the admin to request access.",
     };
   }
 
-  // Full access
   return {
     loginPrompt: null,
-    accessDenied: null
+    accessDenied: null,
   };
 }

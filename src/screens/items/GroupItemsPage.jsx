@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/select";
 import Badge from "@/components/common/Badge";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
-import PageLoadingState from "@/components/common/PageLoadingState";
 import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import RelativeDate from "@/components/common/RelativeDate";
@@ -21,6 +20,24 @@ import AssigneeDisplay from "./AssigneeDisplay";
 import { getGroupLabel } from "@/lib/item-groups";
 import { isAdminRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
+
+function getItemReactionSummary(item) {
+  if (Array.isArray(item?.reaction_summary) && item.reaction_summary.length > 0) {
+    return item.reaction_summary
+      .map((reaction) => ({
+        emoji: String(reaction?.emoji || ""),
+        count: Number(reaction?.count || 0),
+        reacted: Boolean(reaction?.reacted),
+      }))
+      .filter((reaction) => reaction.emoji && reaction.count > 0);
+  }
+
+  const total = Number(item?.reaction_count || 0);
+  if (total > 0) {
+    return [{ emoji: "👍", count: total, reacted: false }];
+  }
+  return [];
+}
 
 export default function GroupItemsPage({
   groupKey,
@@ -40,10 +57,12 @@ export default function GroupItemsPage({
   const isContributorFeedback =
     !isPublicAccess && role === "contributor" && groupKey === "feedback";
   const canCreateItems = isAdmin || isContributorFeedback;
+  const canEditFromCard = isAdmin && groupKey !== "feedback";
+  const showListSkeleton = (controller.loadingConfig || controller.loadingItems) && controller.items.length === 0;
 
   useEffect(() => {
     const statusId = groupKey === "roadmap" ? "all" : activeStatusFilter;
-    void controller.loadItems({ groupKey, statusId });
+    void controller.loadItems({ groupKey, statusId, background: true });
   }, [groupKey, activeStatusFilter, workspace?.id]);
 
   const groupStatuses = useMemo(
@@ -58,16 +77,17 @@ export default function GroupItemsPage({
   };
 
   const openEdit = (item) => {
-    if (!isAdmin) return;
+    if (!canEditFromCard) return;
     setEditingItem(item);
     setShowEditor(true);
   };
 
   const openItemThread = async (item) => {
     setOpeningItemId(item.id);
+    controller.setSelectedItem(controller.hydrateItem(item));
+    setShowItemDrawer(true);
     try {
       await controller.loadItemActivities(item);
-      setShowItemDrawer(true);
     } finally {
       setOpeningItemId(null);
     }
@@ -84,7 +104,12 @@ export default function GroupItemsPage({
     }
     setShowEditor(false);
     setEditingItem(null);
-    await controller.loadItems({ groupKey, statusId: groupKey === "roadmap" ? "all" : activeStatusFilter });
+    await controller.loadItems({
+      groupKey,
+      statusId: groupKey === "roadmap" ? "all" : activeStatusFilter,
+      background: true,
+      force: true,
+    });
   };
 
   const handleRoadmapDragEnd = async (result) => {
@@ -115,16 +140,12 @@ export default function GroupItemsPage({
       if (!saveResult.ok) {
         controller.setError(saveResult.error);
       } else {
-        await controller.loadItems({ groupKey, statusId: "all" });
+        await controller.loadItems({ groupKey, statusId: "all", background: true, force: true });
       }
     } finally {
       setMovingRoadmapItemId(null);
     }
   };
-
-  if (controller.loadingConfig) {
-    return <PageLoadingState text="Loading workspace items..." />;
-  }
 
   return (
     <PageShell className="space-y-6">
@@ -184,13 +205,53 @@ export default function GroupItemsPage({
           tone="danger"
           title="Unable to load items"
           description={controller.error}
-          action={() => controller.loadItems({ groupKey, statusId: groupKey === "roadmap" ? "all" : activeStatusFilter })}
+          action={() =>
+            controller.loadItems({
+              groupKey,
+              statusId: groupKey === "roadmap" ? "all" : activeStatusFilter,
+              background: true,
+              force: true,
+            })
+          }
           actionLabel="Retry"
         />
       ) : null}
 
-      {controller.loadingItems ? (
-        <PageLoadingState text="Loading items..." />
+      {showListSkeleton ? (
+        groupKey === "roadmap" ? (
+          <div className="overflow-x-auto">
+            <div className="flex min-w-max gap-4">
+              {[0, 1, 2].map((columnIndex) => (
+                <div key={`roadmap-skeleton-col-${columnIndex}`} className="w-80 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="animate-pulse space-y-3">
+                    <div className="h-4 w-24 rounded bg-slate-200" />
+                    <div className="space-y-2">
+                      {[0, 1, 2].map((cardIndex) => (
+                        <div key={`roadmap-skeleton-card-${columnIndex}-${cardIndex}`} className="rounded-lg border border-slate-100 p-3">
+                          <div className="h-3 w-5/6 rounded bg-slate-200" />
+                          <div className="mt-2 h-3 w-full rounded bg-slate-100" />
+                          <div className="mt-2 h-3 w-3/4 rounded bg-slate-100" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {[0, 1, 2, 3].map((index) => (
+              <div key={`group-list-skeleton-${index}`} className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="animate-pulse space-y-2">
+                  <div className="h-4 w-2/3 rounded bg-slate-200" />
+                  <div className="h-3 w-full rounded bg-slate-100" />
+                  <div className="h-3 w-5/6 rounded bg-slate-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       ) : controller.items.length === 0 ? (
         <PageEmptyState
           title={`No ${getGroupLabel(groupKey).toLowerCase()} items yet`}
@@ -260,14 +321,31 @@ export default function GroupItemsPage({
                                   <p className="line-clamp-3 text-xs text-slate-600">
                                     {item.description || "No description provided."}
                                   </p>
-                                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                                    <span>{Number(item.reaction_count || 0)} reactions</span>
+                                  <div className="mt-3 flex items-end justify-between gap-2 text-xs text-slate-500">
                                     <span>
                                       Updated{" "}
                                       <RelativeDate
                                         value={item.updated_date || item.updated_at || item.created_date || item.created_at}
                                       />
                                     </span>
+                                    {getItemReactionSummary(item).length > 0 ? (
+                                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                        {getItemReactionSummary(item).map((reaction) => (
+                                          <span
+                                            key={`${item.id}-${reaction.emoji}`}
+                                            className={cn(
+                                              "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px]",
+                                              reaction.reacted
+                                                ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
+                                                : "border-slate-200 bg-white text-slate-600"
+                                            )}
+                                          >
+                                            <span>{reaction.emoji}</span>
+                                            <span>{reaction.count}</span>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : null}
                                   </div>
                                   {movingRoadmapItemId === item.id ? (
                                     <div className="mt-2 inline-flex items-center gap-1 text-xs text-slate-500">
@@ -308,11 +386,6 @@ export default function GroupItemsPage({
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-semibold text-slate-900">{item.title}</h3>
-                      {Number(item.reaction_count || 0) > 0 ? (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
-                          {item.reaction_count}
-                        </span>
-                      ) : null}
                     </div>
                     <p className="text-sm leading-relaxed text-slate-600">
                       {item.description || "No description provided."}
@@ -334,7 +407,7 @@ export default function GroupItemsPage({
                         textClassName="text-xs text-slate-500"
                       />
                     ) : null}
-                    {isAdmin ? (
+                    {canEditFromCard ? (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -352,9 +425,29 @@ export default function GroupItemsPage({
                     ) : null}
                   </div>
                 </div>
-                <div className="mt-3 text-xs text-slate-500">
-                  Updated{" "}
-                  <RelativeDate value={item.updated_date || item.updated_at || item.created_date || item.created_at} />
+                <div className="mt-3 flex items-end justify-between gap-2 text-xs text-slate-500">
+                  <span>
+                    Updated{" "}
+                    <RelativeDate value={item.updated_date || item.updated_at || item.created_date || item.created_at} />
+                  </span>
+                  {getItemReactionSummary(item).length > 0 ? (
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      {getItemReactionSummary(item).map((reaction) => (
+                        <span
+                          key={`${item.id}-${reaction.emoji}`}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs",
+                            reaction.reacted
+                              ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
+                              : "border-slate-200 bg-white text-slate-700"
+                          )}
+                        >
+                          <span>{reaction.emoji}</span>
+                          <span>{reaction.count}</span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </article>
             );
@@ -387,7 +480,12 @@ export default function GroupItemsPage({
         isAdmin={isAdmin}
         showGroupContext={false}
         onDeleted={async () => {
-          await controller.loadItems({ groupKey, statusId: groupKey === "roadmap" ? "all" : activeStatusFilter });
+          await controller.loadItems({
+            groupKey,
+            statusId: groupKey === "roadmap" ? "all" : activeStatusFilter,
+            background: true,
+            force: true,
+          });
         }}
       />
     </PageShell>

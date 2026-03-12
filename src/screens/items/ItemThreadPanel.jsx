@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
-import { Loader2, Pencil, SendHorizontal, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Pencil, SendHorizontal, Smile, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import RelativeDate from "@/components/common/RelativeDate";
 import { StateBanner } from "@/components/common/StateDisplay";
 import { getGroupColor, getGroupLabel } from "@/lib/item-groups";
 
-const REACTION_EMOJIS = ["👍", "❤️", "🎉", "👀"];
+const REACTION_EMOJIS = ["👍", "👎", "❤️", "🎉", "👀"];
 
 function resolveStatusLabel(controller, statusId, fallbackStatusKey = null) {
   if (statusId) {
@@ -228,6 +234,7 @@ export default function ItemThreadPanel({ controller, item }) {
   const [savingCommentId, setSavingCommentId] = useState(null);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
   const [postingComment, setPostingComment] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   const thread = controller.thread;
 
@@ -235,6 +242,10 @@ export default function ItemThreadPanel({ controller, item }) {
     setInitialPostDraft(thread.initialPost?.content || "");
     setEditingInitialPost(false);
   }, [thread.initialPost?.id, thread.initialPost?.content]);
+
+  useEffect(() => {
+    setActivityOpen(false);
+  }, [item?.id]);
 
   const saveInitialPost = async () => {
     if (!item?.id) return;
@@ -316,45 +327,22 @@ export default function ItemThreadPanel({ controller, item }) {
     await controller.toggleCommentReaction(commentId, emoji);
   };
 
+  const openActivity = () => {
+    const nextOpen = !activityOpen;
+    setActivityOpen(nextOpen);
+    if (
+      nextOpen &&
+      item?.id &&
+      controller.systemActivityLoadedItemId !== item.id &&
+      !controller.loadingSystemActivity
+    ) {
+      void controller.loadSystemActivity(item.id);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <StateBanner tone="danger" message={threadError} />
-
-      <section className="space-y-3 border-t border-slate-200 pt-3">
-        <p className="text-sm font-medium text-slate-900">Reactions</p>
-        <div className="flex flex-wrap items-center gap-2">
-          {(controller.itemEngagement.item_reactions || []).map((reaction) => (
-            <button
-              key={reaction.emoji}
-              type="button"
-              onClick={() => {
-                void toggleItemReaction(reaction.emoji);
-              }}
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${
-                reaction.reacted
-                  ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <span>{reaction.emoji}</span>
-              <span>{reaction.count}</span>
-            </button>
-          ))}
-          {REACTION_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              onClick={() => {
-                void toggleItemReaction(emoji);
-              }}
-              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-              aria-label={`React with ${emoji}`}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      </section>
 
       <section className="space-y-3 border-t border-slate-200 pt-3">
         <p className="text-sm font-medium text-slate-900">Description</p>
@@ -368,6 +356,36 @@ export default function ItemThreadPanel({ controller, item }) {
                 <p className="text-xs text-slate-500">
                   <RelativeDate value={thread.initialPost.created_at} />
                 </p>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-slate-400 hover:text-slate-600"
+                      aria-label="Add reaction"
+                      title="Add reaction"
+                    >
+                      <Smile className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-auto p-1">
+                    <div className="flex items-center gap-1">
+                      {REACTION_EMOJIS.map((emoji) => (
+                        <DropdownMenuItem
+                          key={`description-emoji-${emoji}`}
+                          type="button"
+                          onClick={() => {
+                            void toggleItemReaction(emoji);
+                          }}
+                          className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md p-0 text-base"
+                          aria-label={`React with ${emoji}`}
+                        >
+                          {emoji}
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 {thread.initialPost.can_edit && !editingInitialPost ? (
                   <Button
                     variant="ghost"
@@ -418,9 +436,32 @@ export default function ItemThreadPanel({ controller, item }) {
                 </div>
               </div>
             ) : (
-              <p className="whitespace-pre-wrap text-sm text-slate-700">
-                {thread.initialPost.content || "No description provided."}
-              </p>
+              <>
+                <p className="whitespace-pre-wrap text-sm text-slate-700">
+                  {thread.initialPost.content || "No description provided."}
+                </p>
+                {(controller.itemEngagement.item_reactions || []).length > 0 ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {(controller.itemEngagement.item_reactions || []).map((reaction) => (
+                      <button
+                        key={reaction.emoji}
+                        type="button"
+                        onClick={() => {
+                          void toggleItemReaction(reaction.emoji);
+                        }}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${
+                          reaction.reacted
+                            ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span>{reaction.emoji}</span>
+                        <span>{reaction.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             )}
           </article>
         ) : (
@@ -430,7 +471,19 @@ export default function ItemThreadPanel({ controller, item }) {
 
       <section className="space-y-3 border-t border-slate-200 pt-3">
         <p className="text-sm font-medium text-slate-900">Comments</p>
-        {thread.comments.length === 0 ? (
+        {controller.loadingActivities && thread.comments.length === 0 ? (
+          <div className="space-y-3">
+            {[0, 1].map((index) => (
+              <div key={`comment-skeleton-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="animate-pulse space-y-2">
+                  <div className="h-3 w-40 rounded bg-slate-200" />
+                  <div className="h-3 w-full rounded bg-slate-100" />
+                  <div className="h-3 w-5/6 rounded bg-slate-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : thread.comments.length === 0 ? (
           <p className="text-sm text-slate-500">No replies yet.</p>
         ) : (
           thread.comments.map((comment) => (
@@ -443,6 +496,36 @@ export default function ItemThreadPanel({ controller, item }) {
                   <p className="text-xs text-slate-500">
                     <RelativeDate value={comment.created_at_resolved} />
                   </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-slate-400 hover:text-slate-600"
+                        aria-label="Add reaction"
+                        title="Add reaction"
+                      >
+                        <Smile className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-auto p-1">
+                      <div className="flex items-center gap-1">
+                        {REACTION_EMOJIS.map((emoji) => (
+                          <DropdownMenuItem
+                            key={`${comment.id}-emoji-${emoji}`}
+                            type="button"
+                            onClick={() => {
+                              void toggleCommentReaction(comment.id, emoji);
+                            }}
+                            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md p-0 text-base"
+                            aria-label={`React with ${emoji}`}
+                          >
+                            {emoji}
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   {comment.can_edit && editingCommentId !== comment.id ? (
                     <Button
                       variant="ghost"
@@ -511,38 +594,27 @@ export default function ItemThreadPanel({ controller, item }) {
               ) : (
                 <>
                   <p className="whitespace-pre-wrap text-sm text-slate-700">{comment.content}</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {(comment.reactions || []).map((reaction) => (
-                      <button
-                        key={reaction.emoji}
-                        type="button"
-                        onClick={() => {
-                          void toggleCommentReaction(comment.id, reaction.emoji);
-                        }}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${
-                          reaction.reacted
-                            ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
-                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                        }`}
-                      >
-                        <span>{reaction.emoji}</span>
-                        <span>{reaction.count}</span>
-                      </button>
-                    ))}
-                    {REACTION_EMOJIS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => {
-                          void toggleCommentReaction(comment.id, emoji);
-                        }}
-                        className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                        aria-label={`React with ${emoji}`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
+                  {(comment.reactions || []).length > 0 ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {(comment.reactions || []).map((reaction) => (
+                        <button
+                          key={reaction.emoji}
+                          type="button"
+                          onClick={() => {
+                            void toggleCommentReaction(comment.id, reaction.emoji);
+                          }}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${
+                            reaction.reacted
+                              ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
+                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span>{reaction.emoji}</span>
+                          <span>{reaction.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </>
               )}
             </article>
@@ -580,21 +652,45 @@ export default function ItemThreadPanel({ controller, item }) {
       </section>
 
       <div className="space-y-2 border-t border-slate-200 pt-3">
-        <p className="text-sm font-medium text-slate-900">Activity</p>
-        {thread.systemActivity.length === 0 ? (
-          <p className="text-sm text-slate-500">No system activity yet.</p>
-        ) : (
-          thread.systemActivity.map((activity) => (
-            <div key={activity.id} className="py-1">
-              <p className="flex flex-wrap items-center gap-1 text-sm text-slate-700">
-                {renderActivityContent(activity, controller)}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {activity.author_label} • <RelativeDate value={activity.created_at_resolved} />
-              </p>
+        <button
+          type="button"
+          onClick={openActivity}
+          className="flex w-full items-center justify-between rounded-md px-1 py-1 text-left text-sm font-medium text-slate-900 hover:bg-slate-50"
+          aria-expanded={activityOpen}
+          aria-label="Toggle system activity"
+        >
+          <span>Activity</span>
+          {activityOpen ? (
+            <ChevronDown className="h-4 w-4 text-slate-500" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-slate-500" />
+          )}
+        </button>
+        {activityOpen ? (
+          controller.loadingSystemActivity ? (
+            <div className="space-y-2 py-1">
+              {[0, 1, 2].map((index) => (
+                <div key={`activity-skeleton-${index}`} className="animate-pulse space-y-2 py-1">
+                  <div className="h-3 w-3/4 rounded bg-slate-100" />
+                  <div className="h-3 w-1/3 rounded bg-slate-100" />
+                </div>
+              ))}
             </div>
-          ))
-        )}
+          ) : thread.systemActivity.length === 0 ? (
+            <p className="text-sm text-slate-500">No system activity yet.</p>
+          ) : (
+            thread.systemActivity.map((activity) => (
+              <div key={activity.id} className="py-1">
+                <p className="flex flex-wrap items-center gap-1 text-sm text-slate-700">
+                  {renderActivityContent(activity, controller)}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {activity.author_label} • <RelativeDate value={activity.created_at_resolved} />
+                </p>
+              </div>
+            ))
+          )
+        ) : null}
       </div>
     </div>
   );

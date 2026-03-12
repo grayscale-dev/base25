@@ -29,6 +29,7 @@ import {
   parseWorkspaceSlug,
   resolveWorkspaceJoinCandidate,
 } from "@/lib/workspace-join";
+import { fetchListMyWorkspacesCached } from "@/lib/workspace-queries";
 
 const EMPTY_SLUG_STATUS = { checking: false, available: null, message: "" };
 
@@ -41,7 +42,6 @@ export default function Workspaces() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
-  const [workspaceRoles, setWorkspaceRoles] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -131,27 +131,8 @@ export default function Workspaces() {
 
       setUser(currentUser);
 
-      const roles = await base44.entities.WorkspaceRole.filter({
-        user_id: currentUser.id,
-      });
-      setWorkspaceRoles(roles);
-
-      if (roles.length === 0) {
-        setWorkspaces([]);
-        return;
-      }
-
-      const workspaceIds = [...new Set(roles.map((entry) => entry.workspace_id).filter(Boolean))];
-      const workspacesData = await Promise.all(
-        workspaceIds.map(async (id) => {
-          const results = await base44.entities.Workspace.filter({ id });
-          return results[0];
-        })
-      );
-      const activeWorkspaces = workspacesData.filter(
-        (workspace) => workspace && workspace.status === "active"
-      );
-      setWorkspaces(activeWorkspaces);
+      const listedWorkspaces = await fetchListMyWorkspacesCached();
+      setWorkspaces(Array.isArray(listedWorkspaces) ? listedWorkspaces : []);
     } catch (error) {
       console.error("Failed to load workspaces:", error);
       setLoadError("Unable to load your workspaces right now. Please try again.");
@@ -326,11 +307,6 @@ export default function Workspaces() {
     }
   };
 
-  const getRoleForWorkspace = (workspaceId) => {
-    const role = workspaceRoles.find((entry) => entry.workspace_id === workspaceId);
-    return role?.role || "contributor";
-  };
-
   const canCreateWorkspace =
     Boolean(newWorkspace.name.trim() && newWorkspace.slug.trim()) &&
     slugStatus.available === true &&
@@ -422,8 +398,8 @@ export default function Workspaces() {
                       <WorkspaceCard
                         key={workspace.id}
                         workspace={workspace}
-                        role={getRoleForWorkspace(workspace.id)}
-                        onClick={() => openWorkspace(workspace, getRoleForWorkspace(workspace.id))}
+                        role={workspace.role || "contributor"}
+                        onClick={() => openWorkspace(workspace, workspace.role || "contributor")}
                       />
                     ))}
                   </div>

@@ -23,8 +23,14 @@ Deno.serve(async (req) => {
   try {
     const payload = await req.json();
     const itemId = payload?.item_id;
+    const scope = typeof payload?.activity_scope === "string"
+      ? String(payload.activity_scope).toLowerCase()
+      : "all";
     if (!itemId) {
       return json({ error: "item_id is required" }, 400);
+    }
+    if (!["all", "comments", "system"].includes(scope)) {
+      return json({ error: "activity_scope is invalid" }, 400);
     }
 
     const access = await requireWorkspaceReadAccess(req, payload);
@@ -43,8 +49,20 @@ Deno.serve(async (req) => {
       query = query.eq("is_internal_note", false);
     }
 
+    if (scope === "comments") {
+      query = query.eq("activity_type", "comment");
+    } else if (scope === "system") {
+      query = query.neq("activity_type", "comment");
+    }
+
     if (access.role === "contributor") {
-      query = query.in("activity_type", ["comment", "status_change", "type_change"]);
+      if (scope === "comments") {
+        query = query.eq("activity_type", "comment");
+      } else if (scope === "system") {
+        query = query.in("activity_type", ["status_change", "type_change"]);
+      } else {
+        query = query.in("activity_type", ["comment", "status_change", "type_change"]);
+      }
     }
 
     const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);

@@ -13,6 +13,10 @@ import PageLoadingState from "@/components/common/PageLoadingState";
 import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import RelativeDate from "@/components/common/RelativeDate";
+import {
+  fetchWorkspaceAlertsCached,
+  invalidateWorkspaceAlertQueries,
+} from "@/lib/workspace-queries";
 
 function getAlertTypeLabel(alertType) {
   const normalized = String(alertType || "").trim().toLowerCase();
@@ -33,20 +37,21 @@ function dispatchAlertsRead(workspaceId) {
 
 export default function Alerts() {
   const navigate = useNavigate();
-  const [workspace, setWorkspace] = useState(null);
+  const [workspace, setWorkspace] = useState(() => getWorkspaceSession().workspace || null);
   const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !getWorkspaceSession().workspace?.id);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadAlerts = async ({ markRead = true } = {}) => {
-    const { workspace: storedWorkspace } = getWorkspaceSession();
-    if (!storedWorkspace?.id) {
+  const loadAlerts = async ({ markRead = true, force = false } = {}) => {
+    const sessionWorkspace = getWorkspaceSession().workspace;
+    const targetWorkspace = workspace?.id ? workspace : sessionWorkspace;
+    if (!targetWorkspace?.id) {
       navigate(createPageUrl("Workspaces"), { replace: true });
       return;
     }
 
-    setWorkspace(storedWorkspace);
+    setWorkspace(targetWorkspace);
     setError("");
 
     try {
@@ -56,24 +61,27 @@ export default function Alerts() {
         setRefreshing(true);
       }
 
-      const listPromise = base44.functions.invoke(
-        "listAlerts",
-        { workspace_id: storedWorkspace.id, limit: 200 },
-        { authMode: "user" },
-      );
+      if (force) {
+        await invalidateWorkspaceAlertQueries(targetWorkspace.id);
+      }
+
+      const listPromise = fetchWorkspaceAlertsCached({
+        workspaceId: targetWorkspace.id,
+        limit: 200,
+      });
       const markPromise = markRead
         ? base44.functions.invoke(
             "markAlertsRead",
-            { workspace_id: storedWorkspace.id },
+            { workspace_id: targetWorkspace.id },
             { authMode: "user" },
           )
         : Promise.resolve(null);
 
       const [listResult] = await Promise.all([listPromise, markPromise]);
-      setAlerts(listResult?.data?.alerts || []);
+      setAlerts(Array.isArray(listResult) ? listResult : []);
 
       if (markRead) {
-        dispatchAlertsRead(storedWorkspace.id);
+        dispatchAlertsRead(targetWorkspace.id);
       }
     } catch (loadError) {
       console.error("Failed to load alerts:", loadError);
@@ -107,7 +115,7 @@ export default function Alerts() {
           title="Unable to load alerts"
           description={error}
           action={() => {
-            void loadAlerts({ markRead: false });
+            void loadAlerts({ markRead: false, force: true });
           }}
           actionLabel="Retry"
         />
@@ -124,7 +132,7 @@ export default function Alerts() {
           <Button
             variant="outline"
             onClick={() => {
-              void loadAlerts({ markRead: false });
+              void loadAlerts({ markRead: false, force: true });
             }}
             disabled={refreshing}
           >

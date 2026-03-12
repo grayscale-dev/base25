@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/table";
 import Badge from "@/components/common/Badge";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
-import PageLoadingState from "@/components/common/PageLoadingState";
 import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import RelativeDate from "@/components/common/RelativeDate";
@@ -75,9 +74,10 @@ export default function AllItemsPage({ workspace, controller }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showItemDrawer, setShowItemDrawer] = useState(false);
   const [openingItemId, setOpeningItemId] = useState(null);
+  const showTableSkeleton = (controller.loadingConfig || controller.loadingItems) && controller.items.length === 0;
 
   useEffect(() => {
-    void controller.loadItems({ groupKey: null, statusId: "all" });
+    void controller.loadItems({ groupKey: null, statusId: "all", background: true });
   }, [workspace?.id]);
 
   useEffect(() => {
@@ -193,14 +193,15 @@ export default function AllItemsPage({ workspace, controller }) {
       return;
     }
     setShowCreateModal(false);
-    await controller.loadItems({ groupKey: null, statusId: "all" });
+    await controller.loadItems({ groupKey: null, statusId: "all", background: true, force: true });
   };
 
   const openItem = async (item) => {
     setOpeningItemId(item.id);
+    controller.setSelectedItem(controller.hydrateItem(item));
+    setShowItemDrawer(true);
     try {
       await controller.loadItemActivities(item);
-      setShowItemDrawer(true);
     } finally {
       setOpeningItemId(null);
     }
@@ -225,10 +226,6 @@ export default function AllItemsPage({ workspace, controller }) {
   };
 
   const getStatusLabel = (item) => item.status_label || statusLabelById.get(item.status_id) || item.status_key;
-
-  if (controller.loadingConfig) {
-    return <PageLoadingState text="Loading workspace items..." />;
-  }
 
   return (
     <PageShell className="space-y-6">
@@ -290,15 +287,21 @@ export default function AllItemsPage({ workspace, controller }) {
           tone="danger"
           title="Unable to load all items"
           description={controller.error}
-          action={() => controller.loadItems({ groupKey: null, statusId: "all" })}
+          action={() => controller.loadItems({ groupKey: null, statusId: "all", background: true, force: true })}
           actionLabel="Retry"
         />
       ) : null}
 
-      {controller.loadingItems ? (
+      {showTableSkeleton ? (
         <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="p-6">
-            <PageLoadingState text="Loading all items..." />
+          <div className="space-y-3 p-4">
+            {[0, 1, 2, 3, 4].map((index) => (
+              <div key={`all-items-skeleton-${index}`} className="animate-pulse rounded-lg border border-slate-100 p-3">
+                <div className="h-3 w-1/3 rounded bg-slate-200" />
+                <div className="mt-2 h-3 w-11/12 rounded bg-slate-100" />
+                <div className="mt-2 h-3 w-2/3 rounded bg-slate-100" />
+              </div>
+            ))}
           </div>
         </div>
       ) : filteredItems.length === 0 ? (
@@ -374,15 +377,8 @@ export default function AllItemsPage({ workspace, controller }) {
                       }}
                     >
                       <TableCell className="px-3 sm:px-4">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-slate-900">{item.title}</p>
-                            {Number(item.reaction_count || 0) > 0 ? (
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
-                                {item.reaction_count}
-                              </span>
-                            ) : null}
-                          </div>
+                        <div className="space-y-1">
+                          <p className="font-medium text-slate-900">{item.title}</p>
                           <p className="line-clamp-1 text-xs text-slate-500">{item.description || "No description."}</p>
                         </div>
                       </TableCell>
@@ -552,7 +548,7 @@ export default function AllItemsPage({ workspace, controller }) {
         isAdmin={controller.isAdmin}
         showGroupContext
         onDeleted={async () => {
-          await controller.loadItems({ groupKey: null, statusId: "all" });
+          await controller.loadItems({ groupKey: null, statusId: "all", background: true, force: true });
         }}
       />
 
