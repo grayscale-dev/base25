@@ -2,9 +2,9 @@ import About from '@/screens/About';
 import { buildMarketingMetadata } from '@/lib/marketing-metadata';
 
 export const metadata = buildMarketingMetadata({
-  title: 'About | base25',
+  title: 'About | Base25',
   description:
-    'Learn how base25 helps modern teams stay connected to customer feedback, roadmap priorities, and release communication.',
+    'Learn why Base25 is built for startup software teams that want a simpler way to manage feedback, roadmap communication, and changelog updates.',
   path: '/about',
 });
 

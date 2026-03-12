@@ -11,7 +11,7 @@ export default function PublicPageLayout({
 }) {
   return (
     <div
-      className="relative min-h-screen overflow-x-hidden bg-slate-50 text-slate-900"
+      className="relative min-h-screen overflow-x-hidden bg-[#f8fafc] text-slate-900"
       style={{
         "--workspace-brand": PUBLIC_BRAND,
         "--workspace-brand-soft": "rgba(15, 23, 42, 0.12)",
@@ -19,18 +19,15 @@ export default function PublicPageLayout({
         "--workspace-brand-fg": PUBLIC_BRAND,
       }}
     >
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-amber-200/40 blur-3xl" />
-        <div className="absolute -left-40 top-40 h-[28rem] w-[28rem] rounded-full bg-cyan-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-[38rem] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.20),rgba(248,250,252,0.12)_42%,transparent_72%)]" />
+        <div className="absolute -left-32 top-24 h-[34rem] w-[34rem] rounded-full bg-amber-200/30 blur-3xl" />
+        <div className="absolute -right-28 top-8 h-[28rem] w-[28rem] rounded-full bg-sky-200/30 blur-3xl" />
       </div>
 
       <PublicHeader currentPage={currentPage} />
 
-      <main className={cn("relative z-0 bg-[#F8FAFC]", mainClassName)}>
-        <div className="pointer-events-none absolute inset-0 z-0">
-          <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-amber-200/40 blur-3xl" />
-          <div className="absolute -left-40 top-40 h-[28rem] w-[28rem] rounded-full bg-cyan-200/40 blur-3xl" />
-        </div>
+      <main className={cn("relative z-0", mainClassName)}>
         <div className="relative z-10">{children}</div>
       </main>
 

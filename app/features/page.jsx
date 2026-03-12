@@ -2,9 +2,9 @@ import Features from '@/screens/Features';
 import { buildMarketingMetadata } from '@/lib/marketing-metadata';
 
 export const metadata = buildMarketingMetadata({
-  title: 'Features | base25',
+  title: 'Features | Base25',
   description:
-    'Explore feedback management, roadmap planning, changelog publishing, and connected workflows in base25.',
+    'Explore how Base25 helps software teams run feedback, roadmap, and changelog workflows in one focused product.',
   path: '/features',
 });
 

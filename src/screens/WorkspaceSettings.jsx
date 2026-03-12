@@ -1292,7 +1292,7 @@ export default function WorkspaceSettings() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div>
-                <Label>Public Workspace URL</Label>
+                <Label>Workspace URL</Label>
                 <div className="mt-1.5 flex max-w-xl gap-2">
                   <Input
                     value={`${siteOrigin}${workspace?.slug ? workspaceUrl(workspace.slug, "feedback") : ""}`}

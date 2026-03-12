@@ -1,45 +1,89 @@
 "use client";
 
 import { useState } from 'react';
-import { Menu } from 'lucide-react';
+import { ChevronRight, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import Link from '@/components/common/AppLink';
 import { publicRoutes } from '@/lib/public-routes';
 import { startWorkspaceLogin } from '@/lib/start-workspace-login';
 
-const navLinks = [
+const primaryLinks = [
   { label: 'Home', page: 'home', to: publicRoutes.home },
   { label: 'Features', page: 'features', to: publicRoutes.features },
-  { label: 'About', page: 'about', to: publicRoutes.about },
   { label: 'Pricing', page: 'pricing', to: publicRoutes.pricing },
 ];
 
+const capabilityLinks = [
+  { label: 'Feedback', page: 'feedback', to: publicRoutes.feedback },
+  { label: 'Roadmap', page: 'roadmap', to: publicRoutes.roadmap },
+  { label: 'Changelog', page: 'changelog', to: publicRoutes.changelog },
+];
+
+const secondaryLinks = [{ label: 'About', page: 'about', to: publicRoutes.about }];
+
 export default function PublicHeader({ currentPage = 'home' }) {
   const [menuOpen, setMenuOpen] = useState(false);
+
   const handleWorkspaceAuthClick = async (event) => {
     event?.preventDefault?.();
     await startWorkspaceLogin();
   };
+
   const handleMobileAuthClick = async (event) => {
     setMenuOpen(false);
     await handleWorkspaceAuthClick(event);
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/70 backdrop-blur">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <Link to={publicRoutes.home} className="flex items-center gap-2">
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/85 backdrop-blur">
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-5 lg:px-8">
+        <Link to={publicRoutes.home} className="flex items-center gap-2.5">
           <img
             src="/base25-logo.png"
             alt="base25"
-            className="h-8 w-8 object-contain"
+            className="h-8 w-8 rounded-lg object-contain"
           />
-          <span className="text-lg font-bold text-slate-900">base25</span>
+          <div className="leading-none">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.26em] text-slate-500">
+              Base25
+            </p>
+            <p className="text-sm font-semibold text-slate-900">
+              Feedback hub
+            </p>
+          </div>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-8">
-          {navLinks.map((link) => (
+        <nav className="hidden items-center gap-7 lg:flex">
+          {primaryLinks.map((link) => (
+            <Link
+              key={link.page}
+              to={link.to}
+              className={`text-sm font-medium ${
+                currentPage === link.page
+                  ? 'text-slate-900'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+          <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 xl:flex">
+            {capabilityLinks.map((link) => (
+              <Link
+                key={link.page}
+                to={link.to}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  currentPage === link.page
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+          {secondaryLinks.map((link) => (
             <Link
               key={link.page}
               to={link.to}
@@ -54,13 +98,14 @@ export default function PublicHeader({ currentPage = 'home' }) {
           ))}
         </nav>
 
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden items-center gap-3 md:flex">
           <Button
             size="sm"
-            className="bg-slate-900 hover:bg-slate-800 text-white"
+            className="bg-slate-900 text-white shadow-sm hover:bg-slate-800"
             onClick={handleWorkspaceAuthClick}
           >
             Get Started
+            <ChevronRight className="ml-1.5 h-4 w-4" />
           </Button>
         </div>
 
@@ -70,10 +115,10 @@ export default function PublicHeader({ currentPage = 'home' }) {
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="right" className="w-72">
-            <div className="flex flex-col gap-6 pt-6">
+          <SheetContent side="right" className="w-80 border-l border-slate-200 bg-white px-6">
+            <div className="flex flex-col gap-8 pt-8">
               <nav className="flex flex-col gap-3 text-sm">
-                {navLinks.map((link) => (
+                {[...primaryLinks, ...capabilityLinks, ...secondaryLinks].map((link) => (
                   <Link
                     key={link.page}
                     to={link.to}
@@ -90,14 +135,16 @@ export default function PublicHeader({ currentPage = 'home' }) {
                   </Link>
                 ))}
               </nav>
-              <div className="flex flex-col gap-3">
-                <Button className="bg-slate-900 hover:bg-slate-800 text-white w-full" asChild>
-                  <Link
-                    to={publicRoutes.workspaceHub}
-                    onClick={handleMobileAuthClick}
-                  >
-                    Get Started
-                  </Link>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">
+                  Feedback, roadmap, and changelog in one place.
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  One flat plan at $30/month.
+                </p>
+                <Button className="mt-4 w-full bg-slate-900 text-white hover:bg-slate-800" onClick={handleMobileAuthClick}>
+                  Get Started
+                  <ChevronRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
             </div>

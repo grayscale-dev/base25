@@ -2,9 +2,9 @@ import Home from '@/screens/Home';
 import { buildMarketingMetadata } from '@/lib/marketing-metadata';
 
 export const metadata = buildMarketingMetadata({
-  title: 'base25 | Customer Feedback Hub',
+  title: 'Base25 | Feedback, Roadmap, and Changelog for Software Teams',
   description:
-    'Collect feedback, publish your roadmap, and ship updates with a single workflow built for product teams.',
+    'Base25 is the simplest all-in-one feedback hub for startups and software teams. Collect feedback, share a roadmap, and publish a changelog for one flat $30/month.',
   path: '/',
 });
 

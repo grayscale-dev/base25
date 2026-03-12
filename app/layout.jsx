@@ -7,8 +7,8 @@ const siteBaseUrl = getSiteBaseUrl();
 
 export const metadata = {
   metadataBase: new URL(siteBaseUrl),
-  title: "base25",
-  description: "Customer feedback hub for product teams.",
+  title: "Base25",
+  description: "The simplest feedback hub for software teams.",
   icons: {
     icon: "/base25-favicon.png",
   },

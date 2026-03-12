@@ -1,115 +1,123 @@
-import { Users, Target, Zap, Heart } from 'lucide-react';
-import PublicPageLayout from '@/components/common/PublicPageLayout';
-import { MarketingCtaBanner, MarketingHeroActions } from '@/components/common/PublicMarketingBlocks';
-import { publicRoutes } from '@/lib/public-routes';
+import { Compass, Handshake, Lightbulb, Rocket } from "lucide-react";
+import PublicPageLayout from "@/components/common/PublicPageLayout";
+import { MarketingCtaBanner, MarketingHeroActions } from "@/components/common/PublicMarketingBlocks";
+import {
+  SectionHeading,
+  SectionShell,
+} from "@/components/common/PublicMarketingPrimitives";
+import { publicRoutes } from "@/lib/public-routes";
+
+const principles = [
+  {
+    icon: Compass,
+    title: "Clarity over complexity",
+    description:
+      "Product teams should not need enterprise process to run a healthy feedback loop.",
+  },
+  {
+    icon: Lightbulb,
+    title: "Build from real demand",
+    description:
+      "Feedback should shape priorities, not disappear into disconnected tools.",
+  },
+  {
+    icon: Handshake,
+    title: "Keep customers in the loop",
+    description:
+      "Roadmap and changelog communication should be transparent and consistent.",
+  },
+  {
+    icon: Rocket,
+    title: "Ship with momentum",
+    description:
+      "Simple systems let small teams move faster and communicate better.",
+  },
+];
 
 export default function About() {
-  const values = [
-    {
-      icon: Users,
-      title: 'Community First',
-      description: 'We believe in building products with our users, not just for them. Every feature starts with your feedback.',
-      iconBg: 'bg-amber-100',
-      iconColor: 'text-amber-600',
-    },
-    {
-      icon: Target,
-      title: 'Focused Development',
-      description: 'We prioritize what matters most. Our roadmap is transparent and driven by real user needs.',
-      iconBg: 'bg-cyan-100',
-      iconColor: 'text-cyan-600',
-    },
-    {
-      icon: Zap,
-      title: 'Move Fast',
-      description: 'Ship quickly, iterate constantly. We deliver updates and improvements at lightning speed.',
-      iconBg: 'bg-emerald-100',
-      iconColor: 'text-emerald-600',
-    },
-    {
-      icon: Heart,
-      title: 'Customer Partnership',
-      description: 'Real collaboration with product teams focused on building what users need most.',
-      iconBg: 'bg-rose-100',
-      iconColor: 'text-rose-600',
-    }
-  ];
-
   return (
     <PublicPageLayout currentPage="about">
-        {/* Hero Section */}
-        <section className="px-6 py-16">
-          <div className="max-w-4xl mx-auto text-center space-y-6 relative">
-            <p className="text-sm font-semibold text-slate-500 uppercase tracking-[0.2em]">
-              About
-            </p>
-            <h1 className="text-5xl md:text-6xl font-bold text-slate-900">
-              Built for teams who{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-cyan-500">
-                listen
-              </span>
-            </h1>
-            <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-              base25 is a customer feedback and collaboration platform designed to help teams build better products by staying connected with their users.
-            </p>
-            <MarketingHeroActions />
-          </div>
-        </section>
-
-        {/* Values Grid */}
-        <section className="py-20 px-6">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-3xl font-bold text-slate-900 text-center mb-12">
-              What we stand for
-            </h2>
-            <div className="grid md:grid-cols-2 gap-8">
-              {values.map((value, index) => {
-                const Icon = value.icon;
-                return (
-                  <div key={index} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                    <div className={`h-12 w-12 rounded-2xl flex items-center justify-center mb-4 ${value.iconBg}`}>
-                      <Icon className={`h-6 w-6 ${value.iconColor}`} />
-                    </div>
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">
-                      {value.title}
-                    </h3>
-                    <p className="text-slate-600">
-                      {value.description}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* Story Section */}
-        <section className="py-20 px-6">
-          <div className="max-w-3xl mx-auto">
-            <h2 className="text-3xl font-bold text-slate-900 mb-6">Our Story</h2>
-            <div className="prose prose-lg text-slate-600">
-              <p className="mb-4">
-                At Grayscale Development, we needed a tool to collect customer feedback, share our roadmap transparently, and publish clear release updates. We looked at existing solutions but found them either too complicated, too expensive, or missing key features.
-              </p>
-              <p className="mb-4">
-                So we built base25—a platform that brings together everything teams need to stay connected with their customers. We use it ourselves every day, and we're proud to maintain and continuously improve it.
-              </p>
-              <p>
-                What started as an internal tool has grown into a product we're excited to share with other teams who value customer collaboration and transparent communication.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* CTA Section */}
-        <section className="px-6 pb-20">
-          <MarketingCtaBanner
-            title="Ready to get started?"
-            description="Join teams who are building better products with base25."
-            primaryTo={publicRoutes.workspaceHub}
-            secondaryTo={publicRoutes.workspaceHub}
+      <SectionShell className="pt-16 pb-14">
+        <div className="mx-auto max-w-4xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+            About Base25
+          </p>
+          <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-900 md:text-6xl">
+            Built for teams that ship software and stay close to customers.
+          </h1>
+          <p className="mt-6 text-lg text-slate-600">
+            Base25 was created for startup product teams that wanted one clean place to collect feedback, share roadmap direction, and publish updates.
+          </p>
+          <MarketingHeroActions
+            primaryLabel="Get Started"
+            secondaryLabel="See pricing"
+            secondaryTo={publicRoutes.pricing}
           />
-        </section>
+        </div>
+      </SectionShell>
+
+      <SectionShell className="pb-14">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+          <SectionHeading
+            eyebrow="Our Point of View"
+            title="Most feedback tools are too heavy for startup execution"
+            description="We built Base25 around a direct belief: software teams should have one simple system for feedback, roadmap, and changelog."
+          />
+          <div className="mt-6 space-y-4 text-sm leading-relaxed text-slate-600">
+            <p>
+              Too many teams run product communication through a patchwork of docs, chat, boards, and release notes. That creates ambiguity for both internal teams and customers.
+            </p>
+            <p>
+              Base25 keeps the loop connected. Teams can capture input, prioritize clearly, and show what shipped without managing extra complexity.
+            </p>
+            <p>
+              The product is intentionally focused and priced to stay accessible at a flat $30/month.
+            </p>
+          </div>
+        </div>
+      </SectionShell>
+
+      <SectionShell className="pb-14">
+        <SectionHeading
+          eyebrow="Principles"
+          title="What drives product decisions at Base25"
+          description="The product stays opinionated so teams can move fast."
+          align="center"
+        />
+        <div className="mt-7 grid gap-4 md:grid-cols-2">
+          {principles.map((principle) => {
+            const Icon = principle.icon;
+            return (
+              <article
+                key={principle.title}
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+              >
+                <span className="inline-flex rounded-xl bg-slate-100 p-2">
+                  <Icon className="h-4 w-4 text-slate-800" />
+                </span>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">
+                  {principle.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                  {principle.description}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      </SectionShell>
+
+      <SectionShell className="pb-20">
+        <MarketingCtaBanner
+          title="Use the same workflow your customers can actually follow"
+          description="Move from scattered requests to clear communication with one Base25 workspace."
+          primaryLabel="Start for $30/month"
+          primaryTo={publicRoutes.workspaceHub}
+          secondaryLabel="Explore features"
+          secondaryTo={publicRoutes.features}
+        />
+      </SectionShell>
     </PublicPageLayout>
   );
 }
+

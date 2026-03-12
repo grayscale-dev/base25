@@ -2,9 +2,9 @@ import Pricing from '@/screens/Pricing';
 import { buildMarketingMetadata } from '@/lib/marketing-metadata';
 
 export const metadata = buildMarketingMetadata({
-  title: 'Pricing | base25',
+  title: 'Pricing | Base25',
   description:
-    'Flat $25/month pricing per enabled service. Choose Feedback, Roadmap, and Changelog based on your team needs.',
+    'Base25 pricing is one flat $30/month plan. No tiers, no add-ons, and no modular pricing confusion.',
   path: '/pricing',
 });
 

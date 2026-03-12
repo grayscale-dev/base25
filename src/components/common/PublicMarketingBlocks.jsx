@@ -2,25 +2,66 @@
 
 import Link from "@/components/common/AppLink";
 import { Button } from "@/components/ui/button";
-import { publicRoutes } from "@/lib/public-routes";
 import { ArrowRight } from "lucide-react";
+import { publicRoutes } from "@/lib/public-routes";
 import { startWorkspaceLogin } from "@/lib/start-workspace-login";
+import { cn } from "@/lib/utils";
 
-export function MarketingHeroActions({ className }) {
-  const handleAuthClick = async (event) => {
-    event?.preventDefault?.();
-    await startWorkspaceLogin();
-  };
+function isWorkspaceHubRoute(route) {
+  return String(route || "") === publicRoutes.workspaceHub;
+}
+
+async function handleRouteAction(event, route) {
+  if (!isWorkspaceHubRoute(route)) return;
+  event?.preventDefault?.();
+  await startWorkspaceLogin();
+}
+
+export function MarketingHeroActions({
+  className,
+  primaryLabel = "Start for $30/month",
+  primaryTo = publicRoutes.workspaceHub,
+  secondaryLabel = "See how it works",
+  secondaryTo = publicRoutes.features,
+}) {
+  const primaryIsAuth = isWorkspaceHubRoute(primaryTo);
+  const secondaryIsAuth = isWorkspaceHubRoute(secondaryTo);
 
   return (
-    <div className={className || "flex flex-wrap items-center justify-center gap-4 pt-2"}>
-      <Button
-        size="lg"
-        className="bg-slate-900 hover:bg-slate-800 text-white"
-        onClick={handleAuthClick}
-      >
-        Get Started
-      </Button>
+    <div className={cn("flex flex-wrap items-center justify-center gap-3 pt-4", className)}>
+      {primaryIsAuth ? (
+        <Button
+          size="lg"
+          className="bg-slate-900 text-white hover:bg-slate-800"
+          onClick={(event) => {
+            void handleRouteAction(event, primaryTo);
+          }}
+        >
+          {primaryLabel}
+        </Button>
+      ) : (
+        <Button size="lg" className="bg-slate-900 text-white hover:bg-slate-800" asChild>
+          <Link to={primaryTo}>{primaryLabel}</Link>
+        </Button>
+      )}
+      {secondaryLabel ? (
+        secondaryIsAuth ? (
+          <Button
+            size="lg"
+            variant="outline"
+            className="border-slate-300 text-slate-800 hover:bg-slate-100"
+            onClick={(event) => {
+              void handleRouteAction(event, secondaryTo);
+            }}
+          >
+            {secondaryLabel}
+          </Button>
+        ) : (
+          <Button size="lg" variant="outline" className="border-slate-300 text-slate-800 hover:bg-slate-100" asChild>
+            <Link to={secondaryTo}>{secondaryLabel}</Link>
+          </Button>
+        )
+      ) : null}
     </div>
   );
 }
@@ -28,68 +69,62 @@ export function MarketingHeroActions({ className }) {
 export function MarketingCtaBanner({
   title,
   description,
-  primaryLabel = "Get Started",
+  primaryLabel = "Start for $30/month",
   primaryTo = publicRoutes.workspaceHub,
-  secondaryLabel = null,
-  secondaryTo = publicRoutes.workspaceHub,
-  primaryVariant = "light",
+  secondaryLabel = "See pricing",
+  secondaryTo = publicRoutes.pricing,
 }) {
-  const primaryClassName =
-    primaryVariant === "light"
-      ? "bg-white text-slate-900 hover:bg-slate-100"
-      : "bg-slate-900 text-white hover:bg-slate-800";
-
-  const primaryIsAuth = primaryTo === publicRoutes.workspaceHub;
-  const secondaryIsAuth = secondaryTo === publicRoutes.workspaceHub;
-  const handleAuthClick = async (event) => {
-    event?.preventDefault?.();
-    await startWorkspaceLogin();
-  };
+  const primaryIsAuth = isWorkspaceHubRoute(primaryTo);
+  const secondaryIsAuth = isWorkspaceHubRoute(secondaryTo);
 
   return (
-    <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-900/80 p-10 text-white shadow-xl">
-      <div className="absolute -right-24 -top-16 h-64 w-64 rounded-full bg-amber-400/20 blur-3xl" />
-      <div className="absolute -bottom-20 -left-24 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl" />
-      <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-3xl font-semibold">{title}</h2>
-          <p className="mt-2 max-w-2xl text-slate-200">{description}</p>
+    <section className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl border border-slate-300/70 bg-gradient-to-br from-slate-900 via-slate-900 to-blue-900 px-6 py-10 text-white shadow-xl md:px-10 md:py-12">
+      <div className="pointer-events-none absolute -right-20 top-0 h-56 w-56 rounded-full bg-cyan-300/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-16 -left-12 h-64 w-64 rounded-full bg-amber-300/20 blur-3xl" />
+      <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        <div className="max-w-3xl">
+          <h2 className="text-2xl font-semibold md:text-3xl">{title}</h2>
+          <p className="mt-2 text-slate-200">{description}</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           {primaryIsAuth ? (
-            <Button className={primaryClassName} onClick={handleAuthClick}>
+            <Button
+              className="bg-white text-slate-900 hover:bg-slate-100"
+              onClick={(event) => {
+                void handleRouteAction(event, primaryTo);
+              }}
+            >
               {primaryLabel}
-              {primaryLabel.toLowerCase().includes("pricing") ? (
-                <ArrowRight className="ml-2 h-5 w-5" />
-              ) : null}
             </Button>
           ) : (
-            <Button className={primaryClassName} asChild>
-              <Link to={primaryTo}>
-                {primaryLabel}
-                {primaryLabel.toLowerCase().includes("pricing") ? (
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                ) : null}
-              </Link>
+            <Button className="bg-white text-slate-900 hover:bg-slate-100" asChild>
+              <Link to={primaryTo}>{primaryLabel}</Link>
             </Button>
           )}
+
           {secondaryLabel ? (
             secondaryIsAuth ? (
               <Button
                 variant="outline"
-                className="border-white/30 bg-transparent text-white hover:bg-white/10"
-                onClick={handleAuthClick}
+                className="border-white/40 bg-transparent text-white hover:bg-white/10"
+                onClick={(event) => {
+                  void handleRouteAction(event, secondaryTo);
+                }}
               >
                 {secondaryLabel}
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
-              <Button variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10" asChild>
-                <Link to={secondaryTo}>{secondaryLabel}</Link>
+              <Button variant="outline" className="border-white/40 bg-transparent text-white hover:bg-white/10" asChild>
+                <Link to={secondaryTo}>
+                  {secondaryLabel}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
             )
           ) : null}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
