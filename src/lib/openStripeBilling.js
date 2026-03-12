@@ -27,7 +27,7 @@ function appendQueryParam(url, key, value) {
   }
 }
 
-export async function openStripeBilling({ workspaceId, returnUrl }) {
+export async function openStripeBilling({ workspaceId, returnUrl, mode = "manage" }) {
   if (!workspaceId) {
     return { ok: false, error: "Workspace is missing." };
   }
@@ -37,26 +37,28 @@ export async function openStripeBilling({ workspaceId, returnUrl }) {
     return { ok: false, error: "Return URL is missing." };
   }
 
-  try {
-    const { data } = await base44.functions.invoke(
-      "createBillingPortal",
-      {
-        workspace_id: workspaceId,
-        return_url: resolvedReturnUrl,
-      },
-      { authMode: "user" }
-    );
-    if (data?.url) {
-      window.location.href = data.url;
-      return { ok: true, destination: "portal" };
-    }
-  } catch (portalError) {
-    const portalStatus = getErrorStatus(portalError);
-    if (portalStatus !== 404) {
-      return {
-        ok: false,
-        error: getErrorMessage(portalError, "Unable to open Stripe billing portal."),
-      };
+  if (mode !== "subscribe") {
+    try {
+      const { data } = await base44.functions.invoke(
+        "createBillingPortal",
+        {
+          workspace_id: workspaceId,
+          return_url: resolvedReturnUrl,
+        },
+        { authMode: "user" }
+      );
+      if (data?.url) {
+        window.location.href = data.url;
+        return { ok: true, destination: "portal" };
+      }
+    } catch (portalError) {
+      const portalStatus = getErrorStatus(portalError);
+      if (portalStatus !== 404) {
+        return {
+          ok: false,
+          error: getErrorMessage(portalError, "Unable to open Stripe billing portal."),
+        };
+      }
     }
   }
 

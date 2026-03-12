@@ -282,6 +282,7 @@ export default function Workspace({ section = "items", itemId = null }) {
       const result = await openStripeBilling({
         workspaceId: workspace.id,
         returnUrl: window.location.href,
+        mode: "subscribe",
       });
       if (!result.ok) {
         setBillingError(result.error || "Unable to open Stripe billing.");
