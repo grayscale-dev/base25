@@ -15,6 +15,11 @@ function getErrorMessage(error, fallback) {
   return normalized || fallback;
 }
 
+function isMissingCustomerError(error) {
+  const message = getErrorMessage(error, "").toLowerCase();
+  return message.includes("no such customer") || message.includes("no billing customer found");
+}
+
 function appendQueryParam(url, key, value) {
   try {
     const parsed = new URL(url);
@@ -53,7 +58,7 @@ export async function openStripeBilling({ workspaceId, returnUrl, mode = "manage
       }
     } catch (portalError) {
       const portalStatus = getErrorStatus(portalError);
-      if (portalStatus !== 404) {
+      if (portalStatus !== 404 && !isMissingCustomerError(portalError)) {
         return {
           ok: false,
           error: getErrorMessage(portalError, "Unable to open Stripe billing portal."),
@@ -75,14 +80,38 @@ export async function openStripeBilling({ workspaceId, returnUrl, mode = "manage
     );
     data = response?.data || null;
   } catch (checkoutError) {
-    return {
-      ok: false,
-      error: getErrorMessage(checkoutError, "Unable to open Stripe checkout."),
-    };
+    if (isMissingCustomerError(checkoutError)) {
+      try {
+        const retryResponse = await base44.functions.invoke(
+          "createCheckoutSession",
+          {
+            workspace_id: workspaceId,
+            success_url: appendQueryParam(resolvedReturnUrl, "billing", "success"),
+            cancel_url: appendQueryParam(resolvedReturnUrl, "billing", "cancel"),
+            force_new_customer: true,
+          },
+          { authMode: "user" }
+        );
+        data = retryResponse?.data || null;
+      } catch (retryError) {
+        return {
+          ok: false,
+          error: getErrorMessage(retryError, "Unable to open Stripe checkout."),
+        };
+      }
+    } else {
+      return {
+        ok: false,
+        error: getErrorMessage(checkoutError, "Unable to open Stripe checkout."),
+      };
+    }
   }
 
   if (!data?.url) {
-    return { ok: false, error: "Stripe checkout URL was not returned." };
+    return {
+      ok: false,
+      error: "Stripe checkout URL was not returned.",
+    };
   }
 
   window.location.href = data.url;

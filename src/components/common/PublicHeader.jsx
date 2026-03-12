@@ -14,12 +14,6 @@ const primaryLinks = [
   { label: 'Pricing', page: 'pricing', to: publicRoutes.pricing },
 ];
 
-const capabilityLinks = [
-  { label: 'Feedback', page: 'feedback', to: publicRoutes.feedback },
-  { label: 'Roadmap', page: 'roadmap', to: publicRoutes.roadmap },
-  { label: 'Changelog', page: 'changelog', to: publicRoutes.changelog },
-];
-
 const secondaryLinks = [{ label: 'About', page: 'about', to: publicRoutes.about }];
 
 export default function PublicHeader({ currentPage = 'home' }) {
@@ -68,21 +62,6 @@ export default function PublicHeader({ currentPage = 'home' }) {
               {link.label}
             </Link>
           ))}
-          <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 xl:flex">
-            {capabilityLinks.map((link) => (
-              <Link
-                key={link.page}
-                to={link.to}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                  currentPage === link.page
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </div>
           {secondaryLinks.map((link) => (
             <Link
               key={link.page}
@@ -118,7 +97,7 @@ export default function PublicHeader({ currentPage = 'home' }) {
           <SheetContent side="right" className="w-80 border-l border-slate-200 bg-white px-6">
             <div className="flex flex-col gap-8 pt-8">
               <nav className="flex flex-col gap-3 text-sm">
-                {[...primaryLinks, ...capabilityLinks, ...secondaryLinks].map((link) => (
+                {[...primaryLinks, ...secondaryLinks].map((link) => (
                   <Link
                     key={link.page}
                     to={link.to}

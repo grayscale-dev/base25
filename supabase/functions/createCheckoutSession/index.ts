@@ -44,6 +44,11 @@ function resolveFlatPriceId() {
   return firstLegacyPrice || "";
 }
 
+function isMissingStripeCustomerError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.toLowerCase().includes("no such customer");
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method === "OPTIONS") {
@@ -74,6 +79,7 @@ Deno.serve(async (req) => {
     const enabledServices: string[] = Array.isArray(payload.enabled_services) ? payload.enabled_services : [];
     const successUrl = payload.success_url;
     const cancelUrl = payload.cancel_url;
+    const forceNewCustomer = payload.force_new_customer === true;
 
     if (!workspaceId || !successUrl || !cancelUrl) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -146,8 +152,7 @@ Deno.serve(async (req) => {
       .eq("workspace_id", workspaceId)
       .maybeSingle();
 
-    let customerId = billingRow?.stripe_customer_id ?? null;
-    if (!customerId) {
+    const ensureStripeCustomer = async () => {
       const customer = await stripe.customers.create({
         email: authCheck.user.email ?? undefined,
         name: workspaceName,
@@ -156,11 +161,16 @@ Deno.serve(async (req) => {
           workspace_name: workspaceName,
         },
       });
-      customerId = customer.id;
       await supabaseAdmin.from("billing_customers").upsert({
         workspace_id: workspaceId,
-        stripe_customer_id: customerId,
+        stripe_customer_id: customer.id,
       });
+      return customer.id;
+    };
+
+    let customerId = forceNewCustomer ? null : (billingRow?.stripe_customer_id ?? null);
+    if (!customerId) {
+      customerId = await ensureStripeCustomer();
     } else {
       try {
         await stripe.customers.update(customerId, {
@@ -171,41 +181,57 @@ Deno.serve(async (req) => {
           },
         });
       } catch (customerUpdateError) {
-        console.warn("createCheckoutSession customer update warning:", customerUpdateError);
+        if (isMissingStripeCustomerError(customerUpdateError)) {
+          customerId = await ensureStripeCustomer();
+        } else {
+          console.warn("createCheckoutSession customer update warning:", customerUpdateError);
+        }
       }
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
+    const buildCheckoutSession = (resolvedCustomerId: string) =>
+      stripe.checkout.sessions.create({
+        mode: "subscription",
+        customer: resolvedCustomerId,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        subscription_data: {
+          trial_period_days: 7,
+          metadata: {
+            workspace_id: workspaceId,
+            billing_model: "flat_monthly",
+          },
         },
-      ],
-      subscription_data: {
-        trial_period_days: 7,
         metadata: {
           workspace_id: workspaceId,
+          workspace_name: workspaceName,
           billing_model: "flat_monthly",
+          // Keep legacy metadata shape populated to simplify transition consumers.
+          enabled_services: enabledServices.join(","),
         },
-      },
-      metadata: {
-        workspace_id: workspaceId,
-        workspace_name: workspaceName,
-        billing_model: "flat_monthly",
-        // Keep legacy metadata shape populated to simplify transition consumers.
-        enabled_services: enabledServices.join(","),
-      },
-      custom_text: {
-        submit: {
-          message: `Workspace: ${workspaceName}`,
+        custom_text: {
+          submit: {
+            message: `Workspace: ${workspaceName}`,
+          },
         },
-      },
-    });
+      });
+
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await buildCheckoutSession(customerId);
+    } catch (sessionError) {
+      if (!isMissingStripeCustomerError(sessionError)) {
+        throw sessionError;
+      }
+      customerId = await ensureStripeCustomer();
+      session = await buildCheckoutSession(customerId);
+    }
 
     return new Response(
       JSON.stringify({ url: session.url }),

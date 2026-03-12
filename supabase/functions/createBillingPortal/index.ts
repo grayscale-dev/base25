@@ -11,6 +11,11 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+function isMissingStripeCustomerError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.toLowerCase().includes("no such customer");
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method === "OPTIONS") {
@@ -64,10 +69,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    const session = await stripe.billingPortal.sessions.create({
-      customer: billingRow.stripe_customer_id,
-      return_url: returnUrl,
-    });
+    let session;
+    try {
+      session = await stripe.billingPortal.sessions.create({
+        customer: billingRow.stripe_customer_id,
+        return_url: returnUrl,
+      });
+    } catch (portalError) {
+      if (!isMissingStripeCustomerError(portalError)) {
+        throw portalError;
+      }
+
+      await supabaseAdmin
+        .from("billing_customers")
+        .upsert({
+          workspace_id: workspaceId,
+          stripe_customer_id: null,
+        });
+
+      return new Response(JSON.stringify({ error: "No billing customer found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
