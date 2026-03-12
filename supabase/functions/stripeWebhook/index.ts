@@ -51,6 +51,10 @@ Deno.serve(async (req) => {
     }
 
     if (!stripeSecretKey || !webhookSecret) {
+      console.error("Stripe webhook missing configuration", {
+        hasStripeSecretKey: Boolean(stripeSecretKey),
+        hasStripeWebhookSecret: Boolean(webhookSecret),
+      });
       return new Response(JSON.stringify({ error: "Stripe not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

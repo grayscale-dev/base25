@@ -5,7 +5,6 @@ import { useNavigate } from "@/lib/router";
 import {
   Settings,
   Users,
-  Key,
   Trash2,
   Save,
   Copy,
@@ -55,7 +54,6 @@ import {
 } from "@/lib/workspace-session";
 import { workspaceDefaultUrl, workspaceUrl } from "@/components/utils/workspaceUrl";
 import AccountSettingsPanel from "@/components/workspace/AccountSettingsPanel";
-import WorkspaceApiPanel from "@/components/workspace/WorkspaceApiPanel";
 import { useToast } from "@/components/ui/use-toast";
 import RelativeDate from "@/components/common/RelativeDate";
 import { openStripeBilling } from "@/lib/openStripeBilling";
@@ -74,7 +72,7 @@ import {
 } from "@/lib/item-groups";
 import { isAdminRole, isOwnerRole } from "@/lib/roles";
 
-const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "item-types", "api"];
+const SETTINGS_TABS = ["my-account", "general", "access", "status-groups", "item-types"];
 
 function byDisplayOrder(a, b) {
   return (a.display_order || 0) - (b.display_order || 0);
@@ -1175,10 +1173,6 @@ export default function WorkspaceSettings() {
             <Check className="h-4 w-4" />
             Item Types
           </TabsTrigger>
-          <TabsTrigger value="api" className="flex items-center gap-2">
-            <Key className="h-4 w-4" />
-            API Access
-          </TabsTrigger>
             </>
           ) : null}
         </TabsList>
@@ -1873,10 +1867,6 @@ export default function WorkspaceSettings() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="api">
-          <WorkspaceApiPanel workspace={workspace} role={role} />
         </TabsContent>
           </>
         ) : null}

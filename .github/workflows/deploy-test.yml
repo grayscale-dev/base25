@@ -22,6 +22,9 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      STRIPE_PRICE_FLAT_MONTHLY_ID: ${{ secrets.STRIPE_PRICE_FLAT_MONTHLY_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -57,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          for secret_name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+          for secret_name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_PRICE_FLAT_MONTHLY_ID VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
             if [[ -z "${!secret_name:-}" ]]; then
               echo "::error::Missing required environment secret: ${secret_name}"
               missing=1
@@ -74,6 +77,16 @@ jobs:
 
       - name: Link Supabase project (test)
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Sync Supabase Edge secrets (test)
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase secrets set \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
+            STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" \
+            STRIPE_PRICE_FLAT_MONTHLY_ID="$STRIPE_PRICE_FLAT_MONTHLY_ID"
 
       - name: Push database migrations (test)
         run: supabase db push --linked --yes
