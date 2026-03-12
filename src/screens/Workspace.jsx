@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter as useNextRouter } from "next/navigation";
 import { useNavigate, useParams } from "@/lib/router";
+import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { StatePanel } from "@/components/common/StateDisplay";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { setWorkspaceSession } from "@/lib/workspace-session";
 import { workspaceUrl } from "@/components/utils/workspaceUrl";
 import {
@@ -51,6 +53,16 @@ function getErrorStatus(error) {
   return error.status ?? error.context?.status ?? error.response?.status ?? null;
 }
 
+function getErrorMessage(error, fallback = "") {
+  const message =
+    error?.context?.body?.error ||
+    error?.body?.error ||
+    error?.message ||
+    "";
+  const normalized = String(message || "").trim();
+  return normalized || fallback;
+}
+
 export default function Workspace({ section = "items", itemId = null }) {
   const navigate = useNavigate();
   const nextRouter = useNextRouter();
@@ -72,6 +84,8 @@ export default function Workspace({ section = "items", itemId = null }) {
   const [openingBilling, setOpeningBilling] = useState(false);
   const [syncingBillingStatus, setSyncingBillingStatus] = useState(false);
   const [billingError, setBillingError] = useState("");
+  const [showDeleteWorkspaceDialog, setShowDeleteWorkspaceDialog] = useState(false);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
 
   const sectionPrefetchTargets = useMemo(
     () => (isAdminRole(role) && !isPublicAccess
@@ -358,6 +372,39 @@ export default function Workspace({ section = "items", itemId = null }) {
     }
   };
 
+  const handleDeleteWorkspace = async () => {
+    if (!workspace?.id) return;
+    setDeletingWorkspace(true);
+    setBillingError("");
+    try {
+      await base44.functions.invoke(
+        "archiveWorkspace",
+        { workspace_id: workspace.id },
+        { authMode: "user" }
+      );
+      sessionStorage.clear();
+      navigate(createPageUrl("Workspaces"));
+    } catch (deleteError) {
+      console.error("Failed to archive workspace from billing gate:", deleteError);
+      const status = getErrorStatus(deleteError);
+      if (status === 403) {
+        setBillingError("Only the workspace owner can delete this workspace.");
+      } else if (status === 409) {
+        setBillingError(
+          getErrorMessage(
+            deleteError,
+            "Active billing must be canceled before deleting this workspace."
+          )
+        );
+      } else {
+        setBillingError(getErrorMessage(deleteError, "Failed to delete workspace."));
+      }
+    } finally {
+      setDeletingWorkspace(false);
+      setShowDeleteWorkspaceDialog(false);
+    }
+  };
+
   const handleAccessCodeSubmit = async () => {
     if (!accessCode.trim() || !slug) return;
     setAccessSubmitting(true);
@@ -371,13 +418,18 @@ export default function Workspace({ section = "items", itemId = null }) {
       if (data?.workspace) {
         const nextRole = data.role || "contributor";
         const targetSection = getDefaultWorkspaceSection(nextRole, false);
+        const targetUrl = workspaceUrl(data.workspace.slug, targetSection);
         setWorkspaceSession({
           workspace: data.workspace,
           role: nextRole,
           isPublicAccess: false,
           billingBlocked: false,
         });
-        navigate(workspaceUrl(data.workspace.slug, targetSection), { replace: true });
+        if (typeof window !== "undefined" && window.location.pathname === targetUrl) {
+          window.location.replace(targetUrl);
+          return;
+        }
+        navigate(targetUrl, { replace: true });
       }
     } catch (joinError) {
       console.error("Failed to join with access code:", joinError);
@@ -480,7 +532,7 @@ export default function Workspace({ section = "items", itemId = null }) {
                 onClick={() => {
                   void handleOpenBilling();
                 }}
-                disabled={openingBilling || syncingBillingStatus}
+                disabled={openingBilling || syncingBillingStatus || deletingWorkspace}
                 className="bg-slate-900 hover:bg-slate-800"
               >
                 {openingBilling ? (
@@ -493,10 +545,23 @@ export default function Workspace({ section = "items", itemId = null }) {
               <Button
                 variant="outline"
                 onClick={() => navigate("/workspaces")}
-                disabled={openingBilling || syncingBillingStatus}
+                disabled={openingBilling || syncingBillingStatus || deletingWorkspace}
               >
                 Back to Workspaces
               </Button>
+              {isOwnerRole(role) ? (
+                <Button
+                  variant="destructive"
+                  className="bg-rose-600 hover:bg-rose-700"
+                  onClick={() => setShowDeleteWorkspaceDialog(true)}
+                  disabled={openingBilling || syncingBillingStatus || deletingWorkspace}
+                >
+                  {deletingWorkspace ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  Delete Workspace
+                </Button>
+              ) : null}
             </div>
           ) : (
             <div className="mt-6">
@@ -507,6 +572,18 @@ export default function Workspace({ section = "items", itemId = null }) {
           )}
 
           {billingError ? <p className="mt-4 text-sm text-rose-600">{billingError}</p> : null}
+          <ConfirmDialog
+            open={showDeleteWorkspaceDialog}
+            onOpenChange={setShowDeleteWorkspaceDialog}
+            title="Delete Workspace"
+            description="This archives the workspace and removes access for everyone. This action cannot be undone."
+            confirmLabel={deletingWorkspace ? "Deleting..." : "Delete Workspace"}
+            onConfirm={() => {
+              void handleDeleteWorkspace();
+            }}
+            loading={deletingWorkspace}
+            confirmClassName="bg-rose-600 hover:bg-rose-700"
+          />
         </div>
       </div>
     );

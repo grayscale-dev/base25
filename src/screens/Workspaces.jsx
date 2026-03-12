@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "@/lib/router";
-import { Link as LinkIcon, Loader2, LogOut, Plus } from "lucide-react";
+import { Link as LinkIcon, Loader2, Plus, Settings } from "lucide-react";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import {
   Dialog,
@@ -23,6 +23,7 @@ import PageEmptyState from "@/components/common/PageEmptyState";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import { StatePanel } from "@/components/common/StateDisplay";
 import { setWorkspaceSession } from "@/lib/workspace-session";
+import AccountSettingsPanel from "@/components/workspace/AccountSettingsPanel";
 import {
   ensureWorkspaceMembership,
   joinWorkspaceWithCode,
@@ -62,7 +63,7 @@ export default function Workspaces() {
   const [createError, setCreateError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [slugStatus, setSlugStatus] = useState(EMPTY_SLUG_STATUS);
-  const [signingOut, setSigningOut] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
 
   useEffect(() => {
     void loadData();
@@ -296,17 +297,6 @@ export default function Workspaces() {
     }
   };
 
-  const handleLogout = async () => {
-    setSigningOut(true);
-    try {
-      sessionStorage.clear();
-      await base44.auth.logout(window.location.origin + createPageUrl("Home"));
-    } catch (error) {
-      console.error("Failed to sign out:", error);
-      setSigningOut(false);
-    }
-  };
-
   const canCreateWorkspace =
     Boolean(newWorkspace.name.trim() && newWorkspace.slug.trim()) &&
     slugStatus.available === true &&
@@ -334,9 +324,14 @@ export default function Workspaces() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={handleLogout} disabled={signingOut} className="text-slate-600">
-                {signingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
-                {signingOut ? "Signing Out..." : "Sign Out"}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAccountSettings(true)}
+                className="text-slate-600"
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
               </Button>
             </div>
           </div>
@@ -529,6 +524,18 @@ export default function Workspaces() {
                     </div>
                   </div>
                 </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog
+              open={showAccountSettings}
+              onOpenChange={setShowAccountSettings}
+            >
+              <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Account Settings</DialogTitle>
+                </DialogHeader>
+                <AccountSettingsPanel />
               </DialogContent>
             </Dialog>
 

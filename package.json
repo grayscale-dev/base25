@@ -10,6 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "seed:acme-demo": "node scripts/seed_acme_demo.cjs",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "env:local": "bash ./scripts/use-env-profile.sh local",

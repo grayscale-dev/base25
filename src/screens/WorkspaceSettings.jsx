@@ -85,6 +85,16 @@ function getErrorStatus(error) {
   return error.status ?? error.context?.status ?? error.response?.status ?? null;
 }
 
+function getErrorMessage(error, fallback = "") {
+  const message =
+    error?.context?.body?.error ||
+    error?.body?.error ||
+    error?.message ||
+    "";
+  const normalized = String(message || "").trim();
+  return normalized || fallback;
+}
+
 function getDefaultSettingsTab(role) {
   return isAdminRole(role) ? "general" : "my-account";
 }
@@ -1042,8 +1052,16 @@ export default function WorkspaceSettings() {
       const status = getErrorStatus(error);
       if (status === 403) {
         notifyStatus("danger", "Only the workspace owner can delete this workspace.");
+      } else if (status === 409) {
+        notifyStatus(
+          "danger",
+          getErrorMessage(
+            error,
+            "Active billing must be canceled before deleting this workspace."
+          )
+        );
       } else {
-        notifyStatus("danger", "Failed to delete workspace.");
+        notifyStatus("danger", getErrorMessage(error, "Failed to delete workspace."));
       }
     } finally {
       setDeletingWorkspace(false);
