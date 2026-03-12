@@ -18,6 +18,7 @@ import {
   Pencil,
   GripVertical,
   Loader2,
+  Upload,
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
@@ -119,6 +120,8 @@ export default function WorkspaceSettings() {
   const [visibility, setVisibility] = useState("restricted");
   const [settings, setSettings] = useState({});
   const [logoUrl, setLogoUrl] = useState("");
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#0f172a");
   const [slugError, setSlugError] = useState("");
 
@@ -187,6 +190,14 @@ export default function WorkspaceSettings() {
     if (typeof window === "undefined") return;
     setSiteOrigin(window.location.origin);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (logoPreviewUrl) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+    };
+  }, [logoPreviewUrl]);
 
   useEffect(() => {
     const { workspace: storedWorkspace, role: storedRole } = getWorkspaceSession();
@@ -456,6 +467,14 @@ export default function WorkspaceSettings() {
 
     setSaving(true);
     try {
+      let nextLogoUrl = logoUrl || null;
+      if (logoFile) {
+        const { file_url: uploadedUrl } = await base44.integrations.Core.UploadFile({
+          file: logoFile,
+        });
+        nextLogoUrl = uploadedUrl || null;
+      }
+
       const { data: updatedWorkspaceRecord } = await base44.functions.invoke(
         "updateWorkspaceSettings",
         {
@@ -465,7 +484,7 @@ export default function WorkspaceSettings() {
           description,
           visibility,
           settings,
-          logo_url: logoUrl,
+          logo_url: nextLogoUrl,
           primary_color: primaryColor,
         },
         { authMode: "user" }
@@ -478,10 +497,16 @@ export default function WorkspaceSettings() {
         description,
         visibility,
         settings,
-        logo_url: logoUrl,
+        logo_url: nextLogoUrl,
         primary_color: primaryColor,
       };
       setWorkspace(updatedWorkspace);
+      setLogoUrl(nextLogoUrl || "");
+      if (logoPreviewUrl) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+      setLogoPreviewUrl("");
+      setLogoFile(null);
       setWorkspaceSession({ workspace: updatedWorkspace, role, isPublicAccess: false });
       notifyStatus("success", "Workspace settings saved.");
 
@@ -499,6 +524,25 @@ export default function WorkspaceSettings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleLogoFileSelect = (event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) return;
+    if (logoPreviewUrl) {
+      URL.revokeObjectURL(logoPreviewUrl);
+    }
+    setLogoFile(file);
+    setLogoPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleRemoveLogo = () => {
+    if (logoPreviewUrl) {
+      URL.revokeObjectURL(logoPreviewUrl);
+    }
+    setLogoPreviewUrl("");
+    setLogoFile(null);
+    setLogoUrl("");
   };
 
   const handleOpenBilling = async () => {
@@ -1237,25 +1281,39 @@ export default function WorkspaceSettings() {
               <div>
                 <Label>Workspace Logo</Label>
                 <div className="mt-1.5 flex items-center gap-4">
-                  {logoUrl ? (
+                  {logoPreviewUrl || logoUrl ? (
                     <img
-                      src={logoUrl}
+                      src={logoPreviewUrl || logoUrl}
                       alt="Workspace logo"
-                      className="h-12 w-12 rounded-lg border border-slate-200 object-contain"
+                      className="h-12 w-12 rounded-lg border border-slate-200 object-cover"
                     />
-                  ) : null}
-                  <Input
-                    value={logoUrl}
-                    onChange={(event) => setLogoUrl(event.target.value)}
-                    placeholder="https://example.com/logo.png"
-                    className="max-w-sm"
-                  />
-                  {logoUrl ? (
-                    <Button variant="ghost" size="sm" onClick={() => setLogoUrl("")}>
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs font-medium uppercase text-slate-400">
+                      Logo
+                    </div>
+                  )}
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleLogoFileSelect}
+                      disabled={saving}
+                    />
+                    <Button variant="outline" size="sm" asChild>
+                      <span>
+                        <Upload className="mr-2 h-4 w-4" />
+                        {logoFile ? "Change Logo" : "Upload Logo"}
+                      </span>
+                    </Button>
+                  </label>
+                  {logoPreviewUrl || logoUrl ? (
+                    <Button variant="ghost" size="sm" onClick={handleRemoveLogo} disabled={saving}>
                       Remove
                     </Button>
                   ) : null}
                 </div>
+                <p className="mt-1 text-xs text-slate-500">Upload an image file for your workspace logo.</p>
               </div>
 
               <div>
