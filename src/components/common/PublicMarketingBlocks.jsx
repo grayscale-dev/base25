@@ -21,13 +21,6 @@ export function MarketingHeroActions({ className }) {
       >
         Get Started
       </Button>
-      <Link
-        to={publicRoutes.workspaceHub}
-        onClick={handleAuthClick}
-        className="text-sm text-slate-500 hover:text-slate-900"
-      >
-        Have access? Sign in
-      </Link>
     </div>
   );
 }
@@ -37,7 +30,7 @@ export function MarketingCtaBanner({
   description,
   primaryLabel = "Get Started",
   primaryTo = publicRoutes.workspaceHub,
-  secondaryLabel = "Sign in",
+  secondaryLabel = null,
   secondaryTo = publicRoutes.workspaceHub,
   primaryVariant = "light",
 }) {
@@ -80,19 +73,21 @@ export function MarketingCtaBanner({
               </Link>
             </Button>
           )}
-          {secondaryIsAuth ? (
-            <Button
-              variant="outline"
-              className="border-white/30 bg-transparent text-white hover:bg-white/10"
-              onClick={handleAuthClick}
-            >
-              {secondaryLabel}
-            </Button>
-          ) : (
-            <Button variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10" asChild>
-              <Link to={secondaryTo}>{secondaryLabel}</Link>
-            </Button>
-          )}
+          {secondaryLabel ? (
+            secondaryIsAuth ? (
+              <Button
+                variant="outline"
+                className="border-white/30 bg-transparent text-white hover:bg-white/10"
+                onClick={handleAuthClick}
+              >
+                {secondaryLabel}
+              </Button>
+            ) : (
+              <Button variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10" asChild>
+                <Link to={secondaryTo}>{secondaryLabel}</Link>
+              </Button>
+            )
+          ) : null}
         </div>
       </div>
     </div>

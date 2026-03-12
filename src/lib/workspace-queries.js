@@ -12,11 +12,13 @@ export const workspaceQueryKeys = {
     Number(limit || 80),
   ],
   listMyWorkspaces: ["listMyWorkspaces"],
-  listItems: ({ workspaceId, groupKey, statusId = "all" }) => [
+  listItems: ({ workspaceId, groupKey, statusId = "all", watchedOnly = false, limit = 50 }) => [
     "listItems",
     String(workspaceId || ""),
     String(groupKey || "all"),
     String(statusId || "all"),
+    watchedOnly ? "watched" : "all-items",
+    Number(limit || 50),
   ],
   alerts: ({ workspaceId, limit = 200 }) => [
     "alerts",
@@ -191,10 +193,19 @@ export function fetchListMyWorkspacesCached() {
   });
 }
 
-export async function fetchWorkspaceItems({ workspaceId, groupKey = null, statusId = "all", authMode = "user" }) {
+export async function fetchWorkspaceItems({
+  workspaceId,
+  groupKey = null,
+  statusId = "all",
+  watchedOnly = false,
+  limit = 50,
+  authMode = "user",
+}) {
   const payload = { workspace_id: workspaceId };
   if (groupKey) payload.group_key = groupKey;
   if (statusId && statusId !== "all") payload.status_id = statusId;
+  if (watchedOnly) payload.watched_only = true;
+  payload.limit = Math.min(Math.max(Number(limit || 50), 1), 200);
   const { data } = await base44.functions.invoke("listItems", payload, { authMode });
   return Array.isArray(data?.items) ? data.items : [];
 }
@@ -203,11 +214,13 @@ export function fetchWorkspaceItemsCached({
   workspaceId,
   groupKey = null,
   statusId = "all",
+  watchedOnly = false,
+  limit = 50,
   authMode = "user",
 }) {
   return queryClientInstance.fetchQuery({
-    queryKey: workspaceQueryKeys.listItems({ workspaceId, groupKey, statusId }),
-    queryFn: () => fetchWorkspaceItems({ workspaceId, groupKey, statusId, authMode }),
+    queryKey: workspaceQueryKeys.listItems({ workspaceId, groupKey, statusId, watchedOnly, limit }),
+    queryFn: () => fetchWorkspaceItems({ workspaceId, groupKey, statusId, watchedOnly, limit, authMode }),
     staleTime: WORKSPACE_CACHE_STALE_TIME_MS,
   });
 }

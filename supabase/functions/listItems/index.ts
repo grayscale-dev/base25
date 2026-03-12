@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
     const limit = Math.min(Math.max(Number(payload.limit || 50), 1), 200);
     const statusId =
       typeof payload.status_id === "string" ? String(payload.status_id) : null;
+    const watchedOnly = payload?.watched_only === true || payload?.watched_only === "true";
 
     let query = supabaseAdmin
       .from("items")
@@ -66,6 +67,41 @@ Deno.serve(async (req) => {
     if (groupKey) query = query.eq("group_key", groupKey);
     if (statusId) query = query.eq("status_id", statusId);
     if (access.isPublicAccess) query = query.eq("visibility", "public");
+    if (watchedOnly) {
+      if (!access.user?.id) {
+        return json({
+          items: [],
+          workspace: {
+            id: access.workspace.id,
+            slug: access.workspace.slug,
+            visibility: access.workspace.visibility,
+          },
+        });
+      }
+      const { data: watchedRows, error: watchedRowsError } = await supabaseAdmin
+        .from("item_watchers")
+        .select("item_id")
+        .eq("workspace_id", access.workspace.id)
+        .eq("user_id", access.user.id);
+
+      if (watchedRowsError) {
+        console.error("listItems watched lookup error:", watchedRowsError);
+        return json({ error: "Failed to list items" }, 500);
+      }
+
+      const watchedItemIds = (watchedRows || []).map((row) => String(row.item_id || "")).filter(Boolean);
+      if (watchedItemIds.length === 0) {
+        return json({
+          items: [],
+          workspace: {
+            id: access.workspace.id,
+            slug: access.workspace.slug,
+            visibility: access.workspace.visibility,
+          },
+        });
+      }
+      query = query.in("id", watchedItemIds);
+    }
 
     const { data, error } = await query
       .order("created_at", { ascending: false })
@@ -108,6 +144,8 @@ Deno.serve(async (req) => {
 
     const itemIds = items.map((item) => String(item.id || "")).filter(Boolean);
     const reactionRowsByItemId = new Map<string, Array<{ emoji: string; user_id: string }>>();
+    const watcherRowsByItemId = new Map<string, Array<{ user_id: string }>>();
+    const watchedByItemId = new Set<string>();
     if (itemIds.length > 0) {
       const { data: reactionRows, error: reactionError } = await supabaseAdmin
         .from("item_reactions")
@@ -127,6 +165,26 @@ Deno.serve(async (req) => {
         });
         reactionRowsByItemId.set(key, existing);
       });
+
+      const { data: watcherRows, error: watcherError } = await supabaseAdmin
+        .from("item_watchers")
+        .select("item_id, user_id")
+        .eq("workspace_id", access.workspace.id)
+        .in("item_id", itemIds);
+      if (watcherError) {
+        console.error("listItems watcher lookup error:", watcherError);
+        return json({ error: "Failed to list items" }, 500);
+      }
+      (watcherRows || []).forEach((row) => {
+        const key = String(row.item_id || "");
+        const userId = String(row.user_id || "");
+        const existing = watcherRowsByItemId.get(key) || [];
+        existing.push({ user_id: userId });
+        watcherRowsByItemId.set(key, existing);
+        if (access.user?.id && userId === access.user.id) {
+          watchedByItemId.add(key);
+        }
+      });
     }
 
     return json({
@@ -137,6 +195,8 @@ Deno.serve(async (req) => {
           reactionRowsByItemId.get(String(item.id || "")) || [],
           access.user?.id || null,
         ),
+        watched: watchedByItemId.has(String(item.id || "")),
+        watcher_count: (watcherRowsByItemId.get(String(item.id || "")) || []).length,
       })),
       workspace: {
         id: access.workspace.id,

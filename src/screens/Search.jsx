@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Search as SearchIcon } from "lucide-react";
+import { base44 } from "@/api/base44Client";
 import { useLocation, useNavigate } from "@/lib/router";
 import { getWorkspaceSession } from "@/lib/workspace-session";
 import { createPageUrl } from "@/utils";
@@ -12,7 +13,8 @@ import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
-import RelativeDate from "@/components/common/RelativeDate";
+import WorkspaceItemCard from "@/components/workspace/WorkspaceItemCard";
+import { isAdminRole } from "@/lib/roles";
 import { WORKSPACE_LOADING_COPY } from "@/lib/workspace-loading";
 import { fetchWorkspaceSearchCached } from "@/lib/workspace-queries";
 
@@ -21,37 +23,72 @@ function getSearchQueryFromUrl(search) {
   return String(params.get("q") || "").trim();
 }
 
-function formatMatchedIn(value) {
-  return String(value || "")
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function createMemberDirectoryMap(members) {
+  const map = new Map();
+  (members || []).forEach((member) => {
+    if (!member?.user_id) return;
+    const firstName = String(member.first_name || "").trim();
+    const lastName = String(member.last_name || "").trim();
+    const displayName = `${firstName} ${lastName}`.trim() || String(member.full_name || "").trim() || member.email;
+    map.set(String(member.user_id), {
+      ...member,
+      display_name: displayName,
+    });
+  });
+  return map;
 }
 
 export default function Search() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [workspace, setWorkspace] = useState(() => getWorkspaceSession().workspace || null);
+  const session = getWorkspaceSession();
+  const [workspace, setWorkspace] = useState(session.workspace || null);
+  const [role, setRole] = useState(session.role || "contributor");
+  const [isPublicAccess, setIsPublicAccess] = useState(Boolean(session.isPublicAccess));
   const [queryInput, setQueryInput] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [watchPendingIds, setWatchPendingIds] = useState(() => new Set());
+  const [assigneeDirectoryById, setAssigneeDirectoryById] = useState(() => new Map());
 
   const query = useMemo(() => getSearchQueryFromUrl(location.search), [location.search]);
 
   useEffect(() => {
-    const { workspace: storedWorkspace } = getWorkspaceSession();
-    if (!storedWorkspace?.id) {
+    const sessionState = getWorkspaceSession();
+    if (!sessionState.workspace?.id) {
       navigate(createPageUrl("Workspaces"), { replace: true });
       return;
     }
-    setWorkspace((prev) => (prev?.id === storedWorkspace.id ? prev : storedWorkspace));
+    setWorkspace((prev) => (prev?.id === sessionState.workspace.id ? prev : sessionState.workspace));
+    setRole(sessionState.role || "contributor");
+    setIsPublicAccess(Boolean(sessionState.isPublicAccess));
   }, []);
 
   useEffect(() => {
     setQueryInput(query);
   }, [query]);
+
+  useEffect(() => {
+    const loadMemberDirectory = async () => {
+      if (!workspace?.id || !isAdminRole(role)) {
+        setAssigneeDirectoryById(new Map());
+        return;
+      }
+      try {
+        const { data } = await base44.functions.invoke(
+          "listWorkspaceMemberDirectory",
+          { workspace_id: workspace.id },
+          { authMode: "user" }
+        );
+        setAssigneeDirectoryById(createMemberDirectoryMap(data?.members || []));
+      } catch (memberError) {
+        console.error("Failed to load member directory for search:", memberError);
+        setAssigneeDirectoryById(new Map());
+      }
+    };
+    void loadMemberDirectory();
+  }, [workspace?.id, role]);
 
   useEffect(() => {
     if (!workspace?.id) return;
@@ -108,6 +145,68 @@ export default function Search() {
     navigate(workspaceItemUrl(workspace.slug, itemId));
   };
 
+  const toggleItemWatch = async (item) => {
+    if (!workspace?.id || !item?.id) return;
+    if (watchPendingIds.has(item.id)) return;
+
+    const previousResults = results;
+    const nextWatched = !Boolean(item.watched);
+    const nextWatcherCount = Math.max(
+      0,
+      Number(item.watcher_count || 0) + (nextWatched ? 1 : -1),
+    );
+
+    setWatchPendingIds((prev) => {
+      const next = new Set(prev);
+      next.add(item.id);
+      return next;
+    });
+    setResults((prev) =>
+      prev.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              watched: nextWatched,
+              watcher_count: nextWatcherCount,
+            }
+          : entry
+      )
+    );
+
+    try {
+      const { data } = await base44.functions.invoke(
+        "toggleItemWatch",
+        {
+          workspace_id: workspace.id,
+          item_id: item.id,
+        },
+        { authMode: "user" }
+      );
+      const resolvedWatched = Boolean(data?.watched);
+      const resolvedWatcherCount = Number(data?.watcher_count || 0);
+      setResults((prev) =>
+        prev.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                watched: resolvedWatched,
+                watcher_count: resolvedWatcherCount,
+              }
+            : entry
+        )
+      );
+    } catch (watchError) {
+      console.error("Failed to toggle watch from search:", watchError);
+      setResults(previousResults);
+    } finally {
+      setWatchPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  };
+
   if (!workspace?.id) {
     return <PageLoadingState text={WORKSPACE_LOADING_COPY} />;
   }
@@ -157,47 +256,17 @@ export default function Search() {
       ) : (
         <div className="space-y-3">
           {results.map((result) => (
-            <article
+            <WorkspaceItemCard
               key={result.id}
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <p className="text-base font-semibold text-slate-900">{result.title}</p>
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span
-                      className="rounded-full px-2 py-0.5 text-white"
-                      style={{ backgroundColor: result.group_color || "#0F172A" }}
-                    >
-                      {result.group_label || result.group_key}
-                    </span>
-                    {result.status_label ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
-                        {result.status_label}
-                      </span>
-                    ) : null}
-                    {Array.isArray(result.matched_in)
-                      ? result.matched_in.map((matchValue) => (
-                          <span key={`${result.id}:${matchValue}`} className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
-                            {formatMatchedIn(matchValue)}
-                          </span>
-                        ))
-                      : null}
-                  </div>
-                  <p className="line-clamp-3 whitespace-pre-wrap text-sm text-slate-600">
-                    {result.match_preview || result.description || "No description provided."}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="text-xs text-slate-500">
-                    <RelativeDate value={result.updated_at || result.updated_date || result.created_at || result.created_date} />
-                  </span>
-                  <Button size="sm" variant="outline" onClick={() => openItem(result.id)}>
-                    Open item
-                  </Button>
-                </div>
-              </div>
-            </article>
+              item={result}
+              role={role}
+              isPublicAccess={isPublicAccess}
+              assigneeDirectoryById={assigneeDirectoryById}
+              matchContext={result.matched_in}
+              watchToggleDisabled={watchPendingIds.has(result.id)}
+              onOpen={() => openItem(result.id)}
+              onToggleWatch={toggleItemWatch}
+            />
           ))}
         </div>
       )}

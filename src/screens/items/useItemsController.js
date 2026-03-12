@@ -37,6 +37,49 @@ function sortByCreatedDesc(left, right) {
   return sortByCreatedAsc(right, left);
 }
 
+function sortStatusesForDefault(left, right) {
+  const leftOrder = Number(left?.display_order || 0);
+  const rightOrder = Number(right?.display_order || 0);
+  if (leftOrder !== rightOrder) {
+    return leftOrder - rightOrder;
+  }
+
+  const leftCreated = new Date(left?.created_at || 0).getTime();
+  const rightCreated = new Date(right?.created_at || 0).getTime();
+  if (leftCreated !== rightCreated) {
+    return leftCreated - rightCreated;
+  }
+
+  return String(left?.id || "").localeCompare(String(right?.id || ""));
+}
+
+function normalizeStatusKey(status) {
+  const groupKey = String(status?.group_key || "").trim().toLowerCase();
+  const statusKey = String(status?.status_key || "").trim().toLowerCase();
+  const labelKey = String(status?.label || "").trim().toLowerCase();
+  return `${groupKey}::${statusKey || labelKey}`;
+}
+
+function dedupeStatuses(statuses) {
+  if (!Array.isArray(statuses)) return [];
+  const seen = new Set();
+  const output = [];
+  statuses.forEach((status) => {
+    if (!status?.id) return;
+    const dedupeKey = normalizeStatusKey(status);
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    output.push(status);
+  });
+  return output;
+}
+
+function normalizeStatusDisplayKey(status) {
+  const groupKey = String(status?.group_key || "").trim().toLowerCase();
+  const label = String(status?.label || "").trim().toLowerCase();
+  return `${groupKey}::${label}`;
+}
+
 function resolveActivityAuthorLabel(activity, currentUserId) {
   if (currentUserId && activity?.author_id === currentUserId) return "You";
   if (activity?.author_role === "admin") return "Admin";
@@ -66,6 +109,14 @@ function buildMemberName(member) {
     .join(" ");
 }
 
+function normalizeMemberEntry(member) {
+  if (!member) return member;
+  return {
+    ...member,
+    display_name: buildMemberName(member),
+  };
+}
+
 function resolveApiErrorMessage(error, fallback = "") {
   const message =
     error?.context?.body?.error ||
@@ -74,6 +125,10 @@ function resolveApiErrorMessage(error, fallback = "") {
     "";
   const normalized = String(message || "").trim();
   return normalized || fallback;
+}
+
+function getErrorStatus(error) {
+  return error?.status ?? error?.context?.status ?? error?.response?.status ?? null;
 }
 
 function normalizeHexColor(value) {
@@ -159,7 +214,7 @@ function createEmptyItemEngagement() {
 
 export function useItemsController({ workspace, role, isPublicAccess, bootstrapData = null }) {
   const bootstrapGroups = Array.isArray(bootstrapData?.groups) ? bootstrapData.groups : [];
-  const bootstrapStatuses = Array.isArray(bootstrapData?.statuses) ? bootstrapData.statuses : [];
+  const bootstrapStatuses = dedupeStatuses(Array.isArray(bootstrapData?.statuses) ? bootstrapData.statuses : []);
   const bootstrapItemTypes = Array.isArray(bootstrapData?.itemTypes) ? bootstrapData.itemTypes : [];
   const bootstrapItems = Array.isArray(bootstrapData?.items) ? bootstrapData.items : [];
   const hasBootstrapConfig = bootstrapStatuses.length > 0 || bootstrapItemTypes.length > 0;
@@ -190,6 +245,7 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
   const bootstrapListKeyRef = useRef(null);
   const bootstrapListConsumedRef = useRef(false);
   const lastConfigLoadRef = useRef(0);
+  const lastMemberDirectoryLoadRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,7 +265,7 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
 
   useEffect(() => {
     const nextGroups = Array.isArray(bootstrapData?.groups) ? bootstrapData.groups : [];
-    const nextStatuses = Array.isArray(bootstrapData?.statuses) ? bootstrapData.statuses : [];
+    const nextStatuses = dedupeStatuses(Array.isArray(bootstrapData?.statuses) ? bootstrapData.statuses : []);
     const nextItemTypes = Array.isArray(bootstrapData?.itemTypes) ? bootstrapData.itemTypes : [];
     const nextItems = Array.isArray(bootstrapData?.items) ? bootstrapData.items : [];
     const bootstrapSection = String(bootstrapData?.section || "").toLowerCase();
@@ -220,7 +276,7 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
 
     if (nextStatuses.length > 0 || nextItemTypes.length > 0) {
       setGroups(nextGroups);
-      setStatuses(nextStatuses);
+      setStatuses(dedupeStatuses(nextStatuses));
       setItemTypes(nextItemTypes);
       setLoadingConfig(false);
       lastConfigLoadRef.current = Date.now();
@@ -248,7 +304,16 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
       grouped[status.group_key].push(status);
     });
     Object.keys(grouped).forEach((groupKey) => {
-      grouped[groupKey].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+      const sorted = grouped[groupKey]
+        .slice()
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+      const seen = new Set();
+      grouped[groupKey] = sorted.filter((status) => {
+        const key = normalizeStatusDisplayKey(status);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     });
     return grouped;
   }, [statuses]);
@@ -279,6 +344,18 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
     });
     return map;
   }, [memberDirectory]);
+  const assignableMembers = useMemo(
+    () =>
+      memberDirectory.filter(
+        (member) =>
+          Boolean(member?.user_id) && isAdminRole(String(member?.role || "").toLowerCase())
+      ),
+    [memberDirectory]
+  );
+  const assignableMemberIds = useMemo(
+    () => new Set(assignableMembers.map((member) => String(member.user_id))),
+    [assignableMembers]
+  );
 
   const hydrateItem = (item) => {
     if (!item) return item;
@@ -399,6 +476,37 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
   }, [groups, statuses, itemTypes, memberDirectory]);
 
   const loadWorkspaceConfig = async (workspaceId, { background = false } = {}) => {
+    const loadMemberDirectory = async ({ force = false } = {}) => {
+      if (!isPublicAccess && canContributeRole(role)) {
+        const now = Date.now();
+        if (
+          !force &&
+          memberDirectory.length > 0 &&
+          lastMemberDirectoryLoadRef.current > 0 &&
+          now - lastMemberDirectoryLoadRef.current < WORKSPACE_CACHE_STALE_TIME_MS
+        ) {
+          return;
+        }
+
+        try {
+          const memberResult = await base44.functions.invoke(
+            "listWorkspaceMemberDirectory",
+            { workspace_id: workspaceId },
+            { authMode: "user" }
+          );
+          setMemberDirectory((memberResult?.data?.members || []).map((member) => normalizeMemberEntry(member)));
+          lastMemberDirectoryLoadRef.current = Date.now();
+        } catch (memberError) {
+          console.error("Failed to load workspace member directory:", memberError);
+          setMemberDirectory([]);
+          lastMemberDirectoryLoadRef.current = 0;
+        }
+      } else {
+        setMemberDirectory([]);
+        lastMemberDirectoryLoadRef.current = 0;
+      }
+    };
+
     try {
       const now = Date.now();
       if (
@@ -406,6 +514,7 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
         lastConfigLoadRef.current > 0 &&
         now - lastConfigLoadRef.current < WORKSPACE_CACHE_STALE_TIME_MS
       ) {
+        await loadMemberDirectory();
         return;
       }
 
@@ -446,28 +555,16 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
       }
 
       setGroups(nextGroups);
-      setStatuses(nextStatuses);
+      setStatuses(dedupeStatuses(nextStatuses));
       setItemTypes(nextItemTypes);
       lastConfigLoadRef.current = Date.now();
-
-      if (!isPublicAccess && canContributeRole(role)) {
-        try {
-          const memberResult = await base44.functions.invoke(
-            "listWorkspaceMemberDirectory",
-            { workspace_id: workspaceId },
-            { authMode: "user" }
-          );
-          setMemberDirectory(memberResult?.data?.members || []);
-        } catch (memberError) {
-          console.error("Failed to load workspace member directory:", memberError);
-          setMemberDirectory([]);
-        }
-      } else {
-        setMemberDirectory([]);
-      }
+      await loadMemberDirectory({ force: true });
     } catch (configError) {
-      console.error("Failed to load item configuration:", configError);
-      setError("Unable to load item configuration.");
+      const status = getErrorStatus(configError);
+      if (status !== 402) {
+        console.error("Failed to load item configuration:", configError);
+      }
+      setError(status === 402 ? "Billing setup is required before loading items." : "Unable to load item configuration.");
       if (!hasLocalConfig) {
         setGroups([]);
         setStatuses([]);
@@ -515,8 +612,11 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
       });
       setItems(rows.map((row) => hydrateItem(row)));
     } catch (itemsError) {
-      console.error("Failed to load items:", itemsError);
-      setError("Unable to load items.");
+      const status = getErrorStatus(itemsError);
+      if (status !== 402) {
+        console.error("Failed to load items:", itemsError);
+      }
+      setError(status === 402 ? "Billing setup is required before loading items." : "Unable to load items.");
       if (!hasAnyItems) {
         setItems([]);
       }
@@ -639,10 +739,11 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
     if (!workspace?.id) return { ok: false, error: "Workspace is missing." };
 
     const isContributor = role === "contributor" && !isPublicAccess;
-    const defaultFeedbackStatus = (statusesByGroup.feedback || [])
-      .find((status) => status?.is_active !== false)
-      || (statusesByGroup.feedback || [])[0]
-      || null;
+    const feedbackStatuses = (statusesByGroup.feedback || [])
+      .filter((status) => status?.is_active !== false)
+      .slice()
+      .sort(sortStatusesForDefault);
+    const defaultFeedbackStatus = feedbackStatuses[0] || null;
     const defaultItemType = itemTypes
       .filter((itemType) => itemType?.is_active !== false)
       .slice()
@@ -704,6 +805,13 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
 
     if (!isAdmin && effectivePayload.assigned_to) {
       return { ok: false, error: "Only admin or owner can assign items." };
+    }
+    if (
+      isAdmin &&
+      effectivePayload.assigned_to &&
+      !assignableMemberIds.has(String(effectivePayload.assigned_to))
+    ) {
+      return { ok: false, error: "Assignee must be an owner or admin." };
     }
 
     try {
@@ -948,6 +1056,68 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
     if (!workspace?.id || !itemId) {
       return { ok: false, error: "Item is required." };
     }
+    const listItem = items.find((entry) => entry.id === itemId) || null;
+    const selectedSnapshot =
+      selectedItem?.id === itemId
+        ? {
+            watched: Boolean(selectedItem?.watched),
+            watcher_count: Number(selectedItem?.watcher_count || 0),
+          }
+        : null;
+    const engagementSnapshot =
+      selectedItem?.id === itemId
+        ? {
+            watched: Boolean(itemEngagement.watched),
+            watcher_count: Number(itemEngagement.watcher_count || 0),
+          }
+        : null;
+    const listSnapshot = listItem
+      ? {
+          watched: Boolean(listItem.watched),
+          watcher_count: Number(listItem.watcher_count || 0),
+        }
+      : null;
+    const currentWatched = engagementSnapshot
+      ? engagementSnapshot.watched
+      : listSnapshot
+        ? listSnapshot.watched
+        : false;
+    const currentWatcherCount = engagementSnapshot
+      ? engagementSnapshot.watcher_count
+      : listSnapshot
+        ? listSnapshot.watcher_count
+        : 0;
+    const nextWatched = !currentWatched;
+    const nextWatcherCount = Math.max(0, currentWatcherCount + (nextWatched ? 1 : -1));
+
+    setItems((prev) =>
+      prev.map((entry) =>
+        entry.id === itemId
+          ? {
+              ...entry,
+              watched: nextWatched,
+              watcher_count: nextWatcherCount,
+            }
+          : entry
+      )
+    );
+    setSelectedItem((prev) =>
+      prev?.id === itemId
+        ? {
+            ...prev,
+            watched: nextWatched,
+            watcher_count: nextWatcherCount,
+          }
+        : prev
+    );
+    if (engagementSnapshot) {
+      setItemEngagement((prev) => ({
+        ...prev,
+        watched: nextWatched,
+        watcher_count: nextWatcherCount,
+      }));
+    }
+
     try {
       const { data } = await base44.functions.invoke(
         "toggleItemWatch",
@@ -957,14 +1127,70 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
         },
         { authMode: "user" }
       );
-      setItemEngagement((prev) => ({
-        ...prev,
-        watched: Boolean(data?.watched),
-        watcher_count: Number(data?.watcher_count || 0),
-      }));
-      return { ok: true, watched: Boolean(data?.watched) };
+      const resolvedWatched = Boolean(data?.watched);
+      const resolvedWatcherCount = Number(data?.watcher_count || 0);
+
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.id === itemId
+            ? {
+                ...entry,
+                watched: resolvedWatched,
+                watcher_count: resolvedWatcherCount,
+              }
+            : entry
+        )
+      );
+      setSelectedItem((prev) =>
+        prev?.id === itemId
+          ? {
+              ...prev,
+              watched: resolvedWatched,
+              watcher_count: resolvedWatcherCount,
+            }
+          : prev
+      );
+      if (engagementSnapshot) {
+        setItemEngagement((prev) => ({
+          ...prev,
+          watched: resolvedWatched,
+          watcher_count: resolvedWatcherCount,
+        }));
+      }
+      return { ok: true, watched: resolvedWatched };
     } catch (watchError) {
       console.error("Failed to toggle item watch:", watchError);
+      if (listSnapshot) {
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.id === itemId
+              ? {
+                  ...entry,
+                  watched: listSnapshot.watched,
+                  watcher_count: listSnapshot.watcher_count,
+                }
+              : entry
+          )
+        );
+      }
+      if (selectedSnapshot) {
+        setSelectedItem((prev) =>
+          prev?.id === itemId
+            ? {
+                ...prev,
+                watched: selectedSnapshot.watched,
+                watcher_count: selectedSnapshot.watcher_count,
+              }
+            : prev
+        );
+      }
+      if (engagementSnapshot) {
+        setItemEngagement((prev) => ({
+          ...prev,
+          watched: engagementSnapshot.watched,
+          watcher_count: engagementSnapshot.watcher_count,
+        }));
+      }
       return { ok: false, error: "Unable to update watch state." };
     }
   };
@@ -1153,6 +1379,7 @@ export function useItemsController({ workspace, role, isPublicAccess, bootstrapD
     itemTypesById,
     memberDirectory,
     memberDirectoryById,
+    assignableMembers,
     items,
     selectedItem,
     itemActivities,

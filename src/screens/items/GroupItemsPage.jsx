@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
-import { GripVertical, Loader2, Pencil, Plus } from "lucide-react";
+import { GripVertical, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -9,14 +9,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import Badge from "@/components/common/Badge";
 import { PageHeader, PageShell } from "@/components/common/PageScaffold";
 import PageEmptyState from "@/components/common/PageEmptyState";
 import { StatePanel } from "@/components/common/StateDisplay";
 import RelativeDate from "@/components/common/RelativeDate";
 import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
-import AssigneeDisplay from "./AssigneeDisplay";
+import WorkspaceItemCard from "@/components/workspace/WorkspaceItemCard";
 import { getGroupLabel } from "@/lib/item-groups";
 import { isAdminRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
@@ -57,7 +56,6 @@ export default function GroupItemsPage({
   const isContributorFeedback =
     !isPublicAccess && role === "contributor" && groupKey === "feedback";
   const canCreateItems = isAdmin || isContributorFeedback;
-  const canEditFromCard = isAdmin && groupKey !== "feedback";
   const showListSkeleton = (controller.loadingConfig || controller.loadingItems) && controller.items.length === 0;
 
   useEffect(() => {
@@ -73,12 +71,6 @@ export default function GroupItemsPage({
   const openCreate = () => {
     if (!canCreateItems) return;
     setEditingItem(null);
-    setShowEditor(true);
-  };
-
-  const openEdit = (item) => {
-    if (!canEditFromCard) return;
-    setEditingItem(item);
     setShowEditor(true);
   };
 
@@ -369,89 +361,23 @@ export default function GroupItemsPage({
         </div>
       ) : (
         <div className="space-y-4">
-          {controller.items.map((item) => {
-            const statusLabel =
-              groupStatuses.find((status) => status.id === item.status_id)?.label ||
-              item.status_label ||
-              item.status_key;
-            return (
-              <article
-                key={item.id}
-                className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300"
-                onClick={() => {
-                  void openItemThread(item);
-                }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold text-slate-900">{item.title}</h3>
-                    </div>
-                    <p className="text-sm leading-relaxed text-slate-600">
-                      {item.description || "No description provided."}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className="border-0 text-white"
-                      style={{ backgroundColor: item.group_color || "#0F172A" }}
-                    >
-                      {statusLabel}
-                    </Badge>
-                    {item.group_key === "feedback" && !isPublicAccess ? (
-                      <AssigneeDisplay
-                        assignee={item.assignee}
-                        fallback="Unassigned"
-                        sizeClassName="h-5 w-5"
-                        textClassName="text-xs text-slate-500"
-                      />
-                    ) : null}
-                    {canEditFromCard ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openEdit(item);
-                        }}
-                        disabled={openingItemId === item.id}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                    {openingItemId === item.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                    ) : null}
-                  </div>
-                </div>
-                <div className="mt-3 flex items-end justify-between gap-2 text-xs text-slate-500">
-                  <span>
-                    Updated{" "}
-                    <RelativeDate value={item.updated_date || item.updated_at || item.created_date || item.created_at} />
-                  </span>
-                  {getItemReactionSummary(item).length > 0 ? (
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
-                      {getItemReactionSummary(item).map((reaction) => (
-                        <span
-                          key={`${item.id}-${reaction.emoji}`}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs",
-                            reaction.reacted
-                              ? "border-[var(--workspace-brand)] bg-[var(--workspace-brand-soft)] text-[var(--workspace-brand-fg)]"
-                              : "border-slate-200 bg-white text-slate-700"
-                          )}
-                        >
-                          <span>{reaction.emoji}</span>
-                          <span>{reaction.count}</span>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
+          {controller.items.map((item) => (
+            <WorkspaceItemCard
+              key={item.id}
+              item={item}
+              role={role}
+              isPublicAccess={isPublicAccess}
+              assigneeDirectoryById={controller.memberDirectoryById}
+              isOpening={openingItemId === item.id}
+              watchToggleDisabled={openingItemId === item.id}
+              onOpen={() => {
+                void openItemThread(item);
+              }}
+              onToggleWatch={(targetItem) => {
+                void controller.toggleItemWatch(targetItem.id);
+              }}
+            />
+          ))}
         </div>
       )}
 
@@ -464,7 +390,7 @@ export default function GroupItemsPage({
         availableGroupKeys={[groupKey]}
         availableStatusesByGroup={controller.statusesByGroup}
         itemTypes={controller.itemTypes}
-        assigneeOptions={controller.memberDirectory}
+        assigneeOptions={controller.assignableMembers}
         canAssign={controller.canManageAssignee}
         canManageGroupTransition={false}
         defaultGroup={groupKey}

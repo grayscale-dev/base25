@@ -250,7 +250,7 @@ export default function WorkspaceItemView({
                   className="h-3.5 w-3.5"
                   style={
                     controller.itemEngagement.watched
-                      ? { color: "var(--workspace-brand)", fill: "var(--workspace-brand)" }
+                      ? { color: "#F59E0B", fill: "#F59E0B" }
                       : undefined
                   }
                 />

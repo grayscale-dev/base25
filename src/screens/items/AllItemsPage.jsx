@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Filter, Loader2, Plus } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Filter, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Table,
   TableBody,
   TableCell,
@@ -35,6 +42,7 @@ import ItemEditorDialog from "./ItemEditorDialog";
 import ItemDetailDrawer from "./ItemDetailDrawer";
 import AssigneeDisplay from "./AssigneeDisplay";
 import { ITEM_GROUP_KEYS, getGroupLabel } from "@/lib/item-groups";
+import { cn } from "@/lib/utils";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
@@ -50,9 +58,9 @@ function sortableValue(item, key) {
 function uniqueStatuses(statuses) {
   const map = new Map();
   statuses.forEach((status) => {
-    if (!map.has(status.id)) {
-      map.set(status.id, status);
-    }
+    const dedupeKey = `${String(status?.group_key || "").toLowerCase()}::${String(status?.label || "").trim().toLowerCase()}`;
+    if (map.has(dedupeKey)) return;
+    map.set(dedupeKey, status);
   });
   return [...map.values()];
 }
@@ -96,6 +104,15 @@ export default function AllItemsPage({ workspace, controller }) {
     if (draftGroupFilter === "all") return uniqueStatuses(controller.statuses);
     return controller.statusesByGroup[draftGroupFilter] || [];
   }, [draftGroupFilter, controller.statuses, controller.statusesByGroup]);
+  const selectedDraftAssignee = useMemo(
+    () => (controller.assignableMembers || []).find((member) => member.user_id === draftAssigneeFilter) || null,
+    [controller.assignableMembers, draftAssigneeFilter]
+  );
+  const draftAssigneeTriggerLabel = useMemo(() => {
+    if (draftAssigneeFilter === "all") return "All assignees";
+    if (draftAssigneeFilter === "unassigned") return "Unassigned";
+    return selectedDraftAssignee?.display_name || "Assignee";
+  }, [draftAssigneeFilter, selectedDraftAssignee]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -159,13 +176,12 @@ export default function AllItemsPage({ workspace, controller }) {
     if (canFilterByAssignee && assigneeFilter !== "all") {
       const assigneeLabel = assigneeFilter === "unassigned"
         ? "Unassigned"
-        : controller.memberDirectory.find((member) => member.user_id === assigneeFilter)?.display_name
-          || controller.memberDirectory.find((member) => member.user_id === assigneeFilter)?.email
+        : (controller.assignableMembers || []).find((member) => member.user_id === assigneeFilter)?.display_name
           || assigneeFilter;
       filters.push({ id: "assignee", label: "Assignee", value: assigneeLabel });
     }
     return filters;
-  }, [groupFilter, statusFilter, assigneeFilter, statusOptions, statusLabelById, controller.memberDirectory, canFilterByAssignee]);
+  }, [groupFilter, statusFilter, assigneeFilter, statusOptions, statusLabelById, controller.assignableMembers, canFilterByAssignee]);
 
   useEffect(() => {
     if (canFilterByAssignee) return;
@@ -510,20 +526,72 @@ export default function AllItemsPage({ workspace, controller }) {
             {canFilterByAssignee ? (
               <div>
                 <Label>Assignee</Label>
-                <Select value={draftAssigneeFilter} onValueChange={setDraftAssigneeFilter}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All assignees</SelectItem>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {controller.memberDirectory.map((member) => (
-                      <SelectItem key={member.user_id} value={member.user_id}>
-                        {member.display_name || member.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="mt-1.5">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background"
+                        aria-label="Filter by assignee"
+                      >
+                        {selectedDraftAssignee && draftAssigneeFilter !== "all" && draftAssigneeFilter !== "unassigned" ? (
+                          <AssigneeDisplay
+                            assignee={{
+                              name: selectedDraftAssignee.display_name,
+                              profile_photo_url: selectedDraftAssignee.profile_photo_url || null,
+                            }}
+                            fallback={draftAssigneeTriggerLabel}
+                            sizeClassName="h-5 w-5"
+                            textClassName="text-sm text-slate-700"
+                          />
+                        ) : (
+                          <span className="line-clamp-1">{draftAssigneeTriggerLabel}</span>
+                        )}
+                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-64">
+                      <DropdownMenuItem
+                        className={cn("w-full justify-between", draftAssigneeFilter === "all" && "bg-slate-100 text-slate-900")}
+                        onClick={() => setDraftAssigneeFilter("all")}
+                      >
+                        <span>All assignees</span>
+                        {draftAssigneeFilter === "all" ? <Check className="h-4 w-4 text-slate-600" /> : null}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className={cn(
+                          "w-full justify-between",
+                          draftAssigneeFilter === "unassigned" && "bg-slate-100 text-slate-900"
+                        )}
+                        onClick={() => setDraftAssigneeFilter("unassigned")}
+                      >
+                        <span>Unassigned</span>
+                        {draftAssigneeFilter === "unassigned" ? <Check className="h-4 w-4 text-slate-600" /> : null}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {(controller.assignableMembers || []).map((member) => {
+                        const isCurrent = draftAssigneeFilter === member.user_id;
+                        return (
+                          <DropdownMenuItem
+                            key={member.user_id}
+                            className={cn("w-full justify-between", isCurrent && "bg-slate-100 text-slate-900")}
+                            onClick={() => setDraftAssigneeFilter(member.user_id)}
+                          >
+                            <AssigneeDisplay
+                              assignee={{
+                                name: member.display_name,
+                                profile_photo_url: member.profile_photo_url || null,
+                              }}
+                              sizeClassName="h-5 w-5"
+                              textClassName="text-sm text-slate-700"
+                            />
+                            {isCurrent ? <Check className="h-4 w-4 text-slate-600" /> : null}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             ) : null}
           </div>
@@ -561,7 +629,7 @@ export default function AllItemsPage({ workspace, controller }) {
         availableGroupKeys={ITEM_GROUP_KEYS}
         availableStatusesByGroup={controller.statusesByGroup}
         itemTypes={controller.itemTypes}
-        assigneeOptions={controller.memberDirectory}
+        assigneeOptions={controller.assignableMembers}
         canAssign={controller.canManageAssignee}
         canManageGroupTransition
         defaultGroup="feedback"

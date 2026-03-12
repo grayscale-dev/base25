@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import PageLoadingState from "@/components/common/PageLoadingState";
 import { StatePanel } from "@/components/common/StateDisplay";
-import { getWorkspaceSession, setWorkspaceSession } from "@/lib/workspace-session";
+import { setWorkspaceSession } from "@/lib/workspace-session";
 import { workspaceUrl } from "@/components/utils/workspaceUrl";
 import {
   getDefaultWorkspaceSection,
@@ -57,35 +57,18 @@ export default function Workspace({ section = "items", itemId = null }) {
   const params = useParams();
   const routeSlug = toSingleRouteParam(params?.slug);
   const routeSection = String(section || "items").toLowerCase();
-  const storedSession = getWorkspaceSession();
-  const storedWorkspace = storedSession.workspace;
-  const hasMatchingSession =
-    Boolean(storedWorkspace?.id) &&
-    Boolean(routeSlug) &&
-    String(storedWorkspace?.slug || "") === String(routeSlug);
-
-  const [loading, setLoading] = useState(!hasMatchingSession);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [accessRequired, setAccessRequired] = useState(false);
   const [accessSubmitting, setAccessSubmitting] = useState(false);
   const [accessCode, setAccessCode] = useState("");
-  const [slug, setSlug] = useState(hasMatchingSession ? storedWorkspace.slug : null);
-  const [workspace, setWorkspace] = useState(hasMatchingSession ? storedWorkspace : null);
-  const [role, setRole] = useState(hasMatchingSession ? (storedSession.role || "contributor") : "contributor");
-  const [isPublicAccess, setIsPublicAccess] = useState(hasMatchingSession ? Boolean(storedSession.isPublicAccess) : false);
-  const [activeSection, setActiveSection] = useState(
-    hasMatchingSession
-      ? (routeSection === "item"
-          ? "item"
-          : resolveWorkspaceSection(routeSection, storedSession.role || "contributor", Boolean(storedSession.isPublicAccess)))
-      : null
-  );
+  const [slug, setSlug] = useState(null);
+  const [workspace, setWorkspace] = useState(null);
+  const [role, setRole] = useState("contributor");
+  const [isPublicAccess, setIsPublicAccess] = useState(false);
+  const [activeSection, setActiveSection] = useState(null);
   const [bootstrapData, setBootstrapData] = useState(null);
-  const [billingGate, setBillingGate] = useState(
-    hasMatchingSession && storedSession.billingBlocked
-      ? { status: String(storedWorkspace?.billing_status || "inactive") }
-      : null
-  );
+  const [billingGate, setBillingGate] = useState(null);
   const [openingBilling, setOpeningBilling] = useState(false);
   const [syncingBillingStatus, setSyncingBillingStatus] = useState(false);
   const [billingError, setBillingError] = useState("");
@@ -123,7 +106,8 @@ export default function Workspace({ section = "items", itemId = null }) {
       setError(null);
       setAccessRequired(false);
       setBillingError("");
-      setActiveSection((previous) => (workspace?.slug === routeSlugParam ? previous : null));
+      setLoading(true);
+      setActiveSection(null);
       setBootstrapData(null);
       setBillingGate(null);
 
@@ -135,11 +119,6 @@ export default function Workspace({ section = "items", itemId = null }) {
 
       const workspaceSlug = String(routeSlugParam).trim().toLowerCase();
       setSlug(workspaceSlug);
-
-      const shouldShowGlobalLoader = !workspace?.id || workspace?.slug !== workspaceSlug;
-      if (shouldShowGlobalLoader) {
-        setLoading(true);
-      }
 
       const includeItems = sectionParam !== "item";
       const sectionStartMark = workspace?.id
@@ -338,7 +317,7 @@ export default function Workspace({ section = "items", itemId = null }) {
       const unlocked = await syncBillingStatus({ silent: true, clearFlag: false });
       if (cancelled || unlocked) return;
       if (attempts >= 6) {
-        setBillingError("Billing is still processing. Click \"I've Started Billing\" in a few seconds.");
+        setBillingError("Billing is still processing. Try again in a few seconds.");
         return;
       }
       window.setTimeout(() => {
@@ -470,7 +449,7 @@ export default function Workspace({ section = "items", itemId = null }) {
               ? () => startWorkspaceLogin({ redirectTo: window.location.href })
               : () => navigate("/")
           }
-          actionLabel={isPrivateWorkspaceError ? "Login" : "Go Home"}
+          actionLabel={isPrivateWorkspaceError ? "Get Started" : "Go Home"}
           secondaryAction={isPrivateWorkspaceError ? () => navigate("/") : undefined}
           secondaryActionLabel={isPrivateWorkspaceError ? "Go Home" : undefined}
         />
@@ -509,23 +488,7 @@ export default function Workspace({ section = "items", itemId = null }) {
                 ) : (
                   <CreditCard className="mr-2 h-4 w-4" />
                 )}
-                {openingBilling ? "Opening Stripe..." : "Start Billing"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  void syncBillingStatus();
-                }}
-                disabled={openingBilling || syncingBillingStatus}
-              >
-                {syncingBillingStatus ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Checking...
-                  </>
-                ) : (
-                  "I've Started Billing"
-                )}
+                {openingBilling ? "Opening Stripe..." : "Go to Billing"}
               </Button>
               <Button
                 variant="outline"

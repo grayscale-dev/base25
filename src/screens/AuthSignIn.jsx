@@ -164,7 +164,7 @@ export default function AuthSignIn() {
           {errorMessage ? <p className="text-sm text-rose-600">{errorMessage}</p> : null}
 
           <Button
-            className="w-full bg-slate-900 text-white hover:bg-slate-800"
+            className="w-full bg-black text-white hover:bg-black/90"
             onClick={() => {
               void sendMagicLink();
             }}

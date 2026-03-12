@@ -182,6 +182,8 @@ Deno.serve(async (req) => {
 
       const itemIds = (itemRows || []).map((row) => String(row.id || "")).filter(Boolean);
       const reactionRowsByItemId = new Map<string, Array<{ emoji: string; user_id: string }>>();
+      const watcherRowsByItemId = new Map<string, Array<{ user_id: string }>>();
+      const watchedByItemId = new Set<string>();
       if (itemIds.length > 0) {
         const { data: reactionRows, error: reactionError } = await supabaseAdmin
           .from("item_reactions")
@@ -201,6 +203,26 @@ Deno.serve(async (req) => {
           });
           reactionRowsByItemId.set(key, existing);
         });
+
+        const { data: watcherRows, error: watcherError } = await supabaseAdmin
+          .from("item_watchers")
+          .select("item_id, user_id")
+          .eq("workspace_id", workspace.id)
+          .in("item_id", itemIds);
+        if (watcherError) {
+          console.error("workspaceBootstrap watchers query error:", watcherError);
+          return json({ error: "Failed to load initial items" }, 500);
+        }
+        (watcherRows || []).forEach((row) => {
+          const key = String(row.item_id || "");
+          const userId = String(row.user_id || "");
+          const existing = watcherRowsByItemId.get(key) || [];
+          existing.push({ user_id: userId });
+          watcherRowsByItemId.set(key, existing);
+          if (userId === authCheck.user.id) {
+            watchedByItemId.add(key);
+          }
+        });
       }
 
       items = (itemRows || []).map((row) => {
@@ -215,6 +237,8 @@ Deno.serve(async (req) => {
           item_type_label: row.item_type?.label || null,
           reaction_count: reactionRows.length,
           reaction_summary: buildReactionSummary(reactionRows, authCheck.user.id),
+          watched: watchedByItemId.has(String(row.id || "")),
+          watcher_count: (watcherRowsByItemId.get(String(row.id || "")) || []).length,
         };
       });
     }
@@ -243,4 +267,3 @@ Deno.serve(async (req) => {
     return json({ error: "Internal server error" }, 500);
   }
 });
-

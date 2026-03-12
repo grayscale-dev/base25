@@ -55,9 +55,6 @@ export default function PublicHeader({ currentPage = 'home' }) {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={handleWorkspaceAuthClick}>
-            Sign In
-          </Button>
           <Button
             size="sm"
             className="bg-slate-900 hover:bg-slate-800 text-white"
@@ -94,14 +91,6 @@ export default function PublicHeader({ currentPage = 'home' }) {
                 ))}
               </nav>
               <div className="flex flex-col gap-3">
-                <Button variant="outline" className="w-full" asChild>
-                  <Link
-                    to={publicRoutes.workspaceHub}
-                    onClick={handleMobileAuthClick}
-                  >
-                    Sign In
-                  </Link>
-                </Button>
                 <Button className="bg-slate-900 hover:bg-slate-800 text-white w-full" asChild>
                   <Link
                     to={publicRoutes.workspaceHub}

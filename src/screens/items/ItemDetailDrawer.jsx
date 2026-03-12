@@ -203,7 +203,7 @@ export default function ItemDetailDrawer({
                     className="h-4 w-4"
                     style={
                       controller.itemEngagement.watched
-                        ? { color: "var(--workspace-brand)", fill: "var(--workspace-brand)" }
+                        ? { color: "#F59E0B", fill: "#F59E0B" }
                         : undefined
                     }
                   />

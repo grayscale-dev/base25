@@ -434,7 +434,7 @@ export default function ItemDetailPanel({
                 {!currentItem.assigned_to ? <Check className="h-4 w-4 text-slate-600" /> : null}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {controller.memberDirectory.map((member) => {
+              {(controller.assignableMembers || []).map((member) => {
                 const isCurrent = currentItem.assigned_to === member.user_id;
                 return (
                   <DropdownMenuItem

@@ -46,12 +46,11 @@ function getErrorStatus(error) {
 }
 
 export function WorkspaceProvider({ children }) {
-  const cachedSession = getWorkspaceSession();
   const [state, setState] = useState({
-    workspace: cachedSession.workspace || null,
+    workspace: null,
     user: null,
-    role: cachedSession.role || "contributor",
-    isPublicAccess: Boolean(cachedSession.isPublicAccess),
+    role: "contributor",
+    isPublicAccess: false,
     loading: true,
     permissions: {
       canView: false,

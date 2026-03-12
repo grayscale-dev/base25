@@ -83,18 +83,13 @@ function getErrorStatus(error) {
 export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const initialSession = getWorkspaceSession();
-  const initialWorkspace = initialSession.workspace || null;
-  const initialRole = initialSession.role || 'contributor';
-  const initialPublicAccess = Boolean(initialSession.isPublicAccess);
-  const initialBillingBlocked = Boolean(initialSession.billingBlocked);
   const [user, setUser] = useState(null);
-  const [workspace, setWorkspace] = useState(initialWorkspace);
+  const [workspace, setWorkspace] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
-  const [role, setRole] = useState(initialRole);
+  const [role, setRole] = useState('contributor');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isPublicViewing, setIsPublicViewing] = useState(initialPublicAccess);
-  const [billingBlocked, setBillingBlocked] = useState(initialBillingBlocked);
+  const [isPublicViewing, setIsPublicViewing] = useState(false);
+  const [billingBlocked, setBillingBlocked] = useState(false);
   const [noAccessMessage, setNoAccessMessage] = useState(null);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
@@ -452,13 +447,13 @@ export default function Layout({ children, currentPageName }) {
 
             {/* Right: User menu & Admin links */}
             <div className="flex items-center gap-2">
-                {/* Login prompt for public viewers */}
+                {/* Get started prompt for public viewers */}
                 {isPublicViewing && !user && (
                   <Button 
                     onClick={handleInteractiveSignIn}
                     className="bg-slate-900 hover:bg-slate-800 text-white"
                   >
-                    Login to Contribute
+                    Get Started to Contribute
                   </Button>
                 )}
                 

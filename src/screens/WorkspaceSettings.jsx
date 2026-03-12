@@ -25,7 +25,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -99,26 +98,20 @@ function canAccessSettingsTab(tab, role) {
 
 export default function WorkspaceSettings() {
   const navigate = useNavigate();
-  const initialSession = getWorkspaceSession();
-  const initialWorkspace = initialSession.workspace || null;
-  const initialRole = initialSession.role || "contributor";
-  const initialIsAdmin = isAdminRole(initialRole);
-
-  const [workspace, setWorkspace] = useState(initialWorkspace);
-  const [role, setRole] = useState(initialRole);
-  const [roleInitialized, setRoleInitialized] = useState(Boolean(initialWorkspace));
-  const [loading, setLoading] = useState(Boolean(initialWorkspace) ? initialIsAdmin : true);
+  const [workspace, setWorkspace] = useState(null);
+  const [role, setRole] = useState("contributor");
+  const [roleInitialized, setRoleInitialized] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState("");
 
-  const [name, setName] = useState(initialWorkspace?.name || "");
-  const [slug, setSlug] = useState(initialWorkspace?.slug || "");
-  const [description, setDescription] = useState(initialWorkspace?.description || "");
-  const [visibility, setVisibility] = useState(initialWorkspace?.visibility || "restricted");
-  const [settings, setSettings] = useState(initialWorkspace?.settings || {});
-  const [logoUrl, setLogoUrl] = useState(initialWorkspace?.logo_url || "");
-  const [primaryColor, setPrimaryColor] = useState(initialWorkspace?.primary_color || "#0f172a");
-  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [description, setDescription] = useState("");
+  const [visibility, setVisibility] = useState("restricted");
+  const [settings, setSettings] = useState({});
+  const [logoUrl, setLogoUrl] = useState("");
+  const [primaryColor, setPrimaryColor] = useState("#0f172a");
   const [slugError, setSlugError] = useState("");
 
   const [members, setMembers] = useState([]);
@@ -135,6 +128,7 @@ export default function WorkspaceSettings() {
   const [rotatingAccessCode, setRotatingAccessCode] = useState(false);
   const [showRotateAccessCodeDialog, setShowRotateAccessCodeDialog] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [siteOrigin, setSiteOrigin] = useState("");
 
   const [statusGroups, setStatusGroups] = useState([]);
   const [statuses, setStatuses] = useState([]);
@@ -160,7 +154,7 @@ export default function WorkspaceSettings() {
   const [savingItemType, setSavingItemType] = useState(false);
   const [showDeleteWorkspaceDialog, setShowDeleteWorkspaceDialog] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
-  const [activeTab, setActiveTab] = useState(getDefaultSettingsTab(initialRole));
+  const [activeTab, setActiveTab] = useState(getDefaultSettingsTab("contributor"));
   const [openingBilling, setOpeningBilling] = useState(false);
   const { toast } = useToast();
 
@@ -180,6 +174,11 @@ export default function WorkspaceSettings() {
       variant,
     });
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setSiteOrigin(window.location.origin);
+  }, []);
 
   useEffect(() => {
     const { workspace: storedWorkspace, role: storedRole } = getWorkspaceSession();
@@ -515,27 +514,12 @@ export default function WorkspaceSettings() {
 
   const handleCopyUrl = () => {
     if (!workspace?.slug) return;
-    const fullUrl = `${window.location.origin}${workspaceUrl(workspace.slug, "feedback")}`;
+    const origin = siteOrigin || (typeof window !== "undefined" ? window.location.origin : "");
+    const fullUrl = `${origin}${workspaceUrl(workspace.slug, "feedback")}`;
     navigator.clipboard.writeText(fullUrl);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 1800);
     notifyStatus("success", "Workspace URL copied.");
-  };
-
-  const handleLogoUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setUploadingLogo(true);
-    try {
-      const { file_url: uploadedUrl } = await base44.integrations.Core.UploadFile({ file });
-      setLogoUrl(uploadedUrl);
-      notifyStatus("success", "Logo uploaded. Save changes to publish it.");
-    } catch (error) {
-      console.error("Failed to upload logo:", error);
-      notifyStatus("danger", "Failed to upload logo.");
-    } finally {
-      setUploadingLogo(false);
-    }
   };
 
   const handleUpdateMemberRole = async (memberId, nextRole) => {
@@ -1248,15 +1232,12 @@ export default function WorkspaceSettings() {
                       className="h-12 w-12 rounded-lg border border-slate-200 object-contain"
                     />
                   ) : null}
-                  <label className="cursor-pointer">
-                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-                    <Button variant="outline" size="sm" asChild>
-                      <span>
-                        {uploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        {uploadingLogo ? "Uploading..." : logoUrl ? "Change Logo" : "Upload Logo"}
-                      </span>
-                    </Button>
-                  </label>
+                  <Input
+                    value={logoUrl}
+                    onChange={(event) => setLogoUrl(event.target.value)}
+                    placeholder="https://example.com/logo.png"
+                    className="max-w-sm"
+                  />
                   {logoUrl ? (
                     <Button variant="ghost" size="sm" onClick={() => setLogoUrl("")}>
                       Remove
@@ -1280,41 +1261,6 @@ export default function WorkspaceSettings() {
                     className="max-w-32 font-mono"
                   />
                 </div>
-              </div>
-
-              <div>
-                <Label>Public Workspace URL</Label>
-                <div className="mt-1.5 flex max-w-xl gap-2">
-                  <Input
-                    value={`${window.location.origin}${workspace?.slug ? workspaceUrl(workspace.slug, "feedback") : ""}`}
-                    readOnly
-                    className="font-mono text-sm"
-                  />
-                  <Button variant="outline" size="icon" onClick={handleCopyUrl}>
-                    {copiedUrl ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Workspace Behavior</CardTitle>
-              <CardDescription>Configure contribution settings.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex max-w-md items-center justify-between">
-                <div>
-                  <Label>File Attachments</Label>
-                  <p className="text-sm text-slate-500">Allow uploads on item submissions.</p>
-                </div>
-                <Switch
-                  checked={settings.allow_attachments !== false}
-                  onCheckedChange={(checked) =>
-                    setSettings((prev) => ({ ...prev, allow_attachments: checked }))
-                  }
-                />
               </div>
             </CardContent>
           </Card>
@@ -1345,6 +1291,20 @@ export default function WorkspaceSettings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
+              <div>
+                <Label>Public Workspace URL</Label>
+                <div className="mt-1.5 flex max-w-xl gap-2">
+                  <Input
+                    value={`${siteOrigin}${workspace?.slug ? workspaceUrl(workspace.slug, "feedback") : ""}`}
+                    readOnly
+                    className="font-mono text-sm"
+                  />
+                  <Button variant="outline" size="icon" onClick={handleCopyUrl}>
+                    {copiedUrl ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
               <div className="flex max-w-md items-center justify-between">
                 <div>
                   <Label>Workspace Visibility</Label>

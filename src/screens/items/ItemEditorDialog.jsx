@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, Loader2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -20,11 +20,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import {
   getGroupLabel,
   getMetadataShapeForGroup,
   normalizeGroupKey,
   validateMetadata,
 } from "@/lib/item-groups";
+import AssigneeDisplay from "./AssigneeDisplay";
 
 export default function ItemEditorDialog({
   open,
@@ -42,6 +52,7 @@ export default function ItemEditorDialog({
   contributorFeedbackMode = false,
 }) {
   const isContributorFeedbackSubmit = contributorFeedbackMode && !item;
+  const isInternalCreate = !item && !isContributorFeedbackSubmit;
   const initialGroup = normalizeGroupKey(item?.group_key || defaultGroup);
   const [groupKey, setGroupKey] = useState(initialGroup);
   const [statusId, setStatusId] = useState(item?.status_id || "");
@@ -51,6 +62,8 @@ export default function ItemEditorDialog({
   const [description, setDescription] = useState(item?.description || "");
   const [metadata, setMetadata] = useState(item?.metadata || getMetadataShapeForGroup(initialGroup));
   const [error, setError] = useState("");
+  const statusTriggerRef = useRef(null);
+  const statusMenuRef = useRef(null);
 
   useEffect(() => {
     const nextGroup = normalizeGroupKey(item?.group_key || defaultGroup);
@@ -65,24 +78,96 @@ export default function ItemEditorDialog({
   }, [item, defaultGroup, open]);
 
   const statusOptions = availableStatusesByGroup[groupKey] || [];
+  const combinedStatusOptions = useMemo(() => {
+    return availableGroupKeys.flatMap((key) =>
+      (availableStatusesByGroup[key] || []).map((status) => ({
+        ...status,
+        group_key: key,
+      }))
+    );
+  }, [availableGroupKeys, availableStatusesByGroup]);
+  const statusGroupById = useMemo(() => {
+    const map = new Map();
+    combinedStatusOptions.forEach((status) => {
+      if (!status?.id) return;
+      map.set(status.id, status.group_key);
+    });
+    return map;
+  }, [combinedStatusOptions]);
+  const selectableStatusOptions = isInternalCreate ? combinedStatusOptions : statusOptions;
+  const statusSections = useMemo(() => {
+    return availableGroupKeys
+      .map((key) => ({
+        groupKey: key,
+        groupLabel: getGroupLabel(key),
+        statuses: (availableStatusesByGroup[key] || []).map((status) => ({
+          ...status,
+          group_key: key,
+        })),
+      }))
+      .filter((section) => section.statuses.length > 0);
+  }, [availableGroupKeys, availableStatusesByGroup]);
   const sortedItemTypes = itemTypes
     .filter((itemType) => itemType?.is_active !== false)
     .slice()
     .sort((left, right) => (left.display_order || 0) - (right.display_order || 0));
+  const validAssigneeOptions = useMemo(() => {
+    const seen = new Set();
+    return (assigneeOptions || [])
+      .filter((member) => member?.user_id && !seen.has(member.user_id) && seen.add(member.user_id))
+      .map((member) => ({
+        ...member,
+        display_label:
+          member.display_name ||
+          [member.first_name, member.last_name].filter(Boolean).join(" ").trim() ||
+          member.full_name ||
+          member.email ||
+          "Unknown member",
+      }));
+  }, [assigneeOptions]);
+  const selectedAssigneeOption = useMemo(
+    () => validAssigneeOptions.find((member) => member.user_id === assignedTo) || null,
+    [validAssigneeOptions, assignedTo]
+  );
 
   useEffect(() => {
-    if (!statusId && statusOptions.length > 0) {
-      setStatusId(statusOptions[0].id);
+    if (!statusId && selectableStatusOptions.length > 0) {
+      const fallbackStatusId = selectableStatusOptions[0].id;
+      setStatusId(fallbackStatusId);
+      if (isInternalCreate) {
+        const fallbackGroupKey = statusGroupById.get(fallbackStatusId);
+        if (fallbackGroupKey && fallbackGroupKey !== groupKey) {
+          setGroupKey(fallbackGroupKey);
+          setMetadata(getMetadataShapeForGroup(fallbackGroupKey));
+        }
+      }
       return;
     }
 
-    if (statusId && statusOptions.length > 0) {
-      const stillValid = statusOptions.some((status) => status.id === statusId);
+    if (statusId && selectableStatusOptions.length > 0) {
+      const stillValid = selectableStatusOptions.some((status) => status.id === statusId);
       if (!stillValid) {
-        setStatusId(statusOptions[0].id);
+        const fallbackStatusId = selectableStatusOptions[0].id;
+        setStatusId(fallbackStatusId);
+        if (isInternalCreate) {
+          const fallbackGroupKey = statusGroupById.get(fallbackStatusId);
+          if (fallbackGroupKey && fallbackGroupKey !== groupKey) {
+            setGroupKey(fallbackGroupKey);
+            setMetadata(getMetadataShapeForGroup(fallbackGroupKey));
+          }
+        }
+      }
+      return;
+    }
+
+    if (isInternalCreate && statusId) {
+      const selectedGroupKey = statusGroupById.get(statusId);
+      if (selectedGroupKey && selectedGroupKey !== groupKey) {
+        setGroupKey(selectedGroupKey);
+        setMetadata(getMetadataShapeForGroup(selectedGroupKey));
       }
     }
-  }, [statusId, statusOptions]);
+  }, [statusId, selectableStatusOptions, isInternalCreate, statusGroupById, groupKey]);
 
   useEffect(() => {
     if (!itemTypeId && sortedItemTypes.length > 0) {
@@ -103,8 +188,42 @@ export default function ItemEditorDialog({
     setError("");
   };
 
+  const handleStatusChange = (nextStatusId) => {
+    setStatusId(nextStatusId);
+    if (isInternalCreate) {
+      const selectedGroupKey = statusGroupById.get(nextStatusId);
+      if (selectedGroupKey && selectedGroupKey !== groupKey) {
+        setGroupKey(selectedGroupKey);
+        setMetadata(getMetadataShapeForGroup(selectedGroupKey));
+      }
+    }
+    setError("");
+  };
+
+  const positionStatusMenuBelow = () => {
+    if (typeof window === "undefined") return;
+    const trigger = statusTriggerRef.current;
+    const overlay = statusMenuRef.current?.getElement?.();
+    if (!trigger || !overlay) return;
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const scrollLeft = window.scrollX || document.documentElement.scrollLeft || 0;
+    const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+
+    overlay.style.left = `${triggerRect.left + scrollLeft}px`;
+    overlay.style.top = `${triggerRect.bottom + scrollTop + 8}px`;
+    overlay.setAttribute("data-p-overlaypanel-flipped", "false");
+    overlay.classList.remove("p-overlaypanel-flipped");
+  };
+
+  const selectedStatusRecord =
+    selectableStatusOptions.find((status) => status.id === statusId) || selectableStatusOptions[0] || null;
+  const selectedGroupKey = selectedStatusRecord?.group_key || groupKey;
+  const selectedStatusLabel = selectedStatusRecord?.label || "Select status";
+  const selectedStatusDisplayLabel = `${getGroupLabel(selectedGroupKey)} • ${selectedStatusLabel}`;
+
   const submit = () => {
-    const resolvedStatusId = statusId || statusOptions[0]?.id || "";
+    const resolvedStatusId = statusId || selectableStatusOptions[0]?.id || "";
     const resolvedItemTypeId = itemTypeId || sortedItemTypes[0]?.id || "";
     const resolvedMetadata = isContributorFeedbackSubmit
       ? getMetadataShapeForGroup(groupKey)
@@ -155,43 +274,100 @@ export default function ItemEditorDialog({
 
         <div className="space-y-4">
           {!isContributorFeedbackSubmit ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            isInternalCreate ? (
               <div>
-                <Label>Group</Label>
-                <Select
-                  value={groupKey}
-                  onValueChange={handleGroupChange}
-                  disabled={saving || (item && !canManageGroupTransition)}
-                >
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableGroupKeys.map((key) => (
-                      <SelectItem key={key} value={key}>
-                        {getGroupLabel(key)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Group + Status</Label>
+                <div className="mt-1.5">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      asChild
+                      onClick={(event) => {
+                        statusTriggerRef.current = event.currentTarget;
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+                        )}
+                        disabled={saving}
+                        aria-label="Select group and status"
+                      >
+                        <span className="line-clamp-1">{selectedStatusDisplayLabel}</span>
+                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      ref={statusMenuRef}
+                      onShow={positionStatusMenuBelow}
+                      className="w-72"
+                      style={{ maxHeight: "18rem", overflowY: "auto" }}
+                    >
+                      {statusSections.map((section, sectionIndex) => (
+                        <div key={section.groupKey}>
+                          <DropdownMenuLabel className="px-2 pb-1 pt-2 text-xs uppercase tracking-wide text-slate-500">
+                            {section.groupLabel}
+                          </DropdownMenuLabel>
+                          {section.statuses.map((status) => {
+                            const isCurrent = status.id === statusId;
+                            return (
+                              <DropdownMenuItem
+                                key={`${section.groupKey}:${status.id}`}
+                                className={cn("w-full justify-between", isCurrent && "bg-slate-100 text-slate-900")}
+                                disabled={saving}
+                                onClick={() => handleStatusChange(status.id)}
+                              >
+                                <span>{status.label || "Unnamed status"}</span>
+                                {isCurrent ? <Check className="h-4 w-4 text-slate-600" /> : null}
+                              </DropdownMenuItem>
+                            );
+                          })}
+                          {sectionIndex < statusSections.length - 1 ? <DropdownMenuSeparator /> : null}
+                        </div>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <Label>Group</Label>
+                  <Select
+                    value={groupKey}
+                    onValueChange={handleGroupChange}
+                    disabled={saving || (item && !canManageGroupTransition)}
+                  >
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableGroupKeys.map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {getGroupLabel(key)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div>
-                <Label>Status</Label>
-                <Select value={statusId} onValueChange={setStatusId} disabled={saving}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {statusOptions.map((status) => (
-                      <SelectItem key={status.id} value={status.id}>
-                        {status.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div>
+                  <Label>Status</Label>
+                  <Select value={statusId} onValueChange={handleStatusChange} disabled={saving}>
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((status) => (
+                        <SelectItem key={status.id} value={status.id}>
+                          {status.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
+            )
           ) : null}
 
           {!isContributorFeedbackSubmit ? (
@@ -215,23 +391,70 @@ export default function ItemEditorDialog({
               {groupKey === "feedback" ? (
                 <div>
                   <Label>Assignee</Label>
-                  <Select
-                    value={assignedTo || "unassigned"}
-                    onValueChange={(value) => setAssignedTo(value === "unassigned" ? "" : value)}
-                    disabled={saving || !canAssign}
-                  >
-                    <SelectTrigger className="mt-1.5">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unassigned">Unassigned</SelectItem>
-                      {assigneeOptions.map((member) => (
-                        <SelectItem key={member.user_id} value={member.user_id}>
-                          {member.display_name || member.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1.5">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+                          )}
+                          disabled={saving || !canAssign}
+                          aria-label="Select assignee"
+                        >
+                          <AssigneeDisplay
+                            assignee={
+                              selectedAssigneeOption
+                                ? {
+                                    name: selectedAssigneeOption.display_label,
+                                    profile_photo_url: selectedAssigneeOption.profile_photo_url || null,
+                                  }
+                                : null
+                            }
+                            fallback="Unassigned"
+                            sizeClassName="h-5 w-5"
+                            textClassName="text-sm text-slate-700"
+                          />
+                          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-64">
+                        <DropdownMenuItem
+                          className="w-full justify-between"
+                          disabled={saving || !canAssign}
+                          onClick={() => setAssignedTo("")}
+                        >
+                          <span>Unassigned</span>
+                          {!assignedTo ? <Check className="h-4 w-4 text-slate-600" /> : null}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {validAssigneeOptions.map((member) => {
+                          const isCurrent = assignedTo === member.user_id;
+                          return (
+                            <DropdownMenuItem
+                              key={member.user_id}
+                              className={cn(
+                                "w-full justify-between",
+                                isCurrent && "bg-slate-100 text-slate-900"
+                              )}
+                              disabled={saving || !canAssign}
+                              onClick={() => setAssignedTo(member.user_id)}
+                            >
+                              <AssigneeDisplay
+                                assignee={{
+                                  name: member.display_label,
+                                  profile_photo_url: member.profile_photo_url || null,
+                                }}
+                                sizeClassName="h-5 w-5"
+                                textClassName="text-sm text-slate-700"
+                              />
+                              {isCurrent ? <Check className="h-4 w-4 text-slate-600" /> : null}
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -253,7 +476,7 @@ export default function ItemEditorDialog({
             />
           </div>
 
-          {!isContributorFeedbackSubmit && groupKey === "feedback" ? (
+          {!isContributorFeedbackSubmit && Boolean(item) && groupKey === "feedback" ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label>Type</Label>

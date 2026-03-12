@@ -110,6 +110,23 @@ function parseFromToContent(content) {
   };
 }
 
+function resolveAssigneeLabel(controller, value) {
+  if (value === null || value === undefined || value === "" || value === "unassigned") {
+    return "Unassigned";
+  }
+
+  const normalized = String(value);
+  const byId = controller?.memberDirectoryById?.get?.(normalized);
+  if (byId?.display_name) return byId.display_name;
+
+  const byRow = (controller?.memberDirectory || []).find(
+    (member) => String(member?.user_id || "") === normalized
+  );
+  if (byRow?.display_name) return byRow.display_name;
+
+  return normalized;
+}
+
 function resolveFromToValues(activity, controller) {
   const metadata = activity?.metadata || {};
 
@@ -149,6 +166,21 @@ function resolveFromToValues(activity, controller) {
         toGroupKey,
       };
     }
+  }
+
+  if (activity.activity_type === "assignee_change") {
+    const fromAssigneeRaw = Object.prototype.hasOwnProperty.call(metadata, "from_assignee_id")
+      ? metadata.from_assignee_id
+      : metadata.from_assignee;
+    const toAssigneeRaw = Object.prototype.hasOwnProperty.call(metadata, "to_assignee_id")
+      ? metadata.to_assignee_id
+      : metadata.to_assignee;
+    return {
+      from: resolveAssigneeLabel(controller, fromAssigneeRaw),
+      to: resolveAssigneeLabel(controller, toAssigneeRaw),
+      fromGroupKey: null,
+      toGroupKey: null,
+    };
   }
 
   const metadataFromKey = Object.keys(metadata).find((key) => key.startsWith("from_"));

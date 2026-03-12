@@ -166,7 +166,39 @@ Deno.serve(async (req) => {
       };
     });
 
-    return json({ results, query });
+    const resultItemIds = results.map((item) => String(item.id || "")).filter(Boolean);
+    const watcherRowsByItemId = new Map<string, Array<{ user_id: string }>>();
+    const watchedByItemId = new Set<string>();
+    if (resultItemIds.length > 0) {
+      const { data: watcherRows, error: watcherError } = await supabaseAdmin
+        .from("item_watchers")
+        .select("item_id, user_id")
+        .eq("workspace_id", workspaceId)
+        .in("item_id", resultItemIds);
+      if (watcherError) {
+        console.error("searchWorkspaceItems watcher lookup error:", watcherError);
+        return json({ error: "Search failed" }, 500);
+      }
+      (watcherRows || []).forEach((row) => {
+        const key = String(row.item_id || "");
+        const userId = String(row.user_id || "");
+        const existing = watcherRowsByItemId.get(key) || [];
+        existing.push({ user_id: userId });
+        watcherRowsByItemId.set(key, existing);
+        if (access.user?.id && userId === access.user.id) {
+          watchedByItemId.add(key);
+        }
+      });
+    }
+
+    return json({
+      results: results.map((item) => ({
+        ...item,
+        watched: watchedByItemId.has(String(item.id || "")),
+        watcher_count: (watcherRowsByItemId.get(String(item.id || "")) || []).length,
+      })),
+      query,
+    });
   } catch (error) {
     console.error("searchWorkspaceItems error:", error);
     return json({ error: "Internal server error" }, 500);
