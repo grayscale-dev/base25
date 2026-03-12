@@ -63,6 +63,11 @@ jobs:
             exit 1
           fi
 
+      - name: Show deploy target (production)
+        run: |
+          echo "GitHub environment: prod"
+          echo "Supabase project ref: $SUPABASE_PROJECT_REF"
+
       - name: Link Supabase project (production)
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 
@@ -96,6 +101,17 @@ jobs:
                   | awk -F/ '/^supabase\/functions\/[^/]+\// && $3 != "_shared" { print $3 }' \
                   | sort -u
               )
+            fi
+          fi
+
+          # If the target project has no deployed functions yet, deploy all even if this commit
+          # did not touch supabase/functions.
+          if [[ "${#functions_to_deploy[@]}" -eq 0 ]]; then
+            remote_functions_json="$(supabase functions list --project-ref "$SUPABASE_PROJECT_REF" --output json)"
+            remote_count="$(printf '%s' "$remote_functions_json" | node -e 'const fs=require("fs"); const s=fs.readFileSync(0,"utf8").trim(); const arr=s ? JSON.parse(s) : []; process.stdout.write(String(Array.isArray(arr) ? arr.length : 0));')"
+            if [[ "$remote_count" -eq 0 ]]; then
+              echo "No remote edge functions found in target project. Deploying all functions."
+              mapfile -t functions_to_deploy < <(all_functions)
             fi
           fi
 
