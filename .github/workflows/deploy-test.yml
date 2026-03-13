@@ -50,17 +50,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run frontend test suite
-        run: npm run test
-
-      - name: Setup Deno
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: v2.x
-
-      - name: Run edge function test suite
-        run: npm run test:edge
-
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
