@@ -2,6 +2,7 @@ import "../src/index.css";
 import "primeicons/primeicons.css";
 import AppProviders from "@/components/AppProviders";
 import { getSiteBaseUrl } from "@/lib/site-url";
+import { Analytics } from "@vercel/analytics/next";
 
 const siteBaseUrl = getSiteBaseUrl();
 
@@ -19,6 +20,7 @@ export default function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <body>
         <AppProviders>{children}</AppProviders>
+        <Analytics />
       </body>
     </html>
   );
