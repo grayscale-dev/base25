@@ -1,9 +1,12 @@
 name: Deploy Production
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Branch, tag, or commit SHA to deploy"
+        required: true
+        default: "main"
 
 concurrency:
   group: deploy-production
@@ -29,6 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.git_ref }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -45,6 +49,17 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Run frontend test suite
+        run: npm run test
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.x
+
+      - name: Run edge function test suite
+        run: npm run test:edge
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -102,9 +117,7 @@ jobs:
               | sort -u
           }
 
-          if [[ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]]; then
-            mapfile -t functions_to_deploy < <(all_functions)
-          else
+          if [[ -n "${{ github.event.before }}" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
             changed_files="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")"
             if echo "$changed_files" | grep -q '^supabase/functions/_shared/'; then
               mapfile -t functions_to_deploy < <(all_functions)
@@ -115,6 +128,8 @@ jobs:
                   | sort -u
               )
             fi
+          else
+            mapfile -t functions_to_deploy < <(all_functions)
           fi
 
           # If the target project has no deployed functions yet, deploy all even if this commit

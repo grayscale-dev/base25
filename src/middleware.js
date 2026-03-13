@@ -5,7 +5,7 @@ import {
   withSupabaseCookies,
 } from "./lib/supabase/middleware";
 
-const canonicalStaticPaths = {
+export const canonicalStaticPaths = {
   "/home": "/",
   "/about": "/about",
   "/features": "/features",
@@ -30,7 +30,7 @@ const PUBLIC_PATHS = new Set([
   "/auth/callback",
 ]);
 
-function isStaticAsset(pathname) {
+export function isStaticAsset(pathname) {
   if (
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/favicon") ||
@@ -43,7 +43,7 @@ function isStaticAsset(pathname) {
   return /\.[a-zA-Z0-9]+$/.test(pathname);
 }
 
-function getCanonicalPath(pathname) {
+export function getCanonicalPath(pathname) {
   const lowerPathname = pathname.toLowerCase();
 
   if (lowerPathname.startsWith("/workspace/")) {
@@ -73,7 +73,7 @@ function getCanonicalPath(pathname) {
   return mappedPath || normalizedPath;
 }
 
-function sanitizeReturnTo(rawValue) {
+export function sanitizeReturnTo(rawValue) {
   if (!rawValue) return null;
 
   const value = String(rawValue).trim();

@@ -19,6 +19,7 @@ dist
 dist-ssr
 .next
 .next_stale_*/
+coverage/
 *.local
 
 # Editor directories and files
